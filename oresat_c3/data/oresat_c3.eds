@@ -10712,47 +10712,71 @@ DefaultValue=0x4F53
 [6007]
 ParameterName=APRS
 ObjectType=0x09
-SubNumber=4
+SubNumber=7
 
 [6007sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x06
 
 [6007sub1]
 ParameterName=Dest Callsign
 ObjectType=0x07
 DataType=0x0009
-AccessType=rw
+AccessType=const
 DefaultValue=SPACE
 
 [6007sub2]
 ParameterName=Src Callsign
 ObjectType=0x07
 DataType=0x0009
-AccessType=rw
+AccessType=const
 DefaultValue=KJ7SAT
 
 [6007sub3]
 ParameterName=Satellite ID
 ObjectType=0x07
 DataType=0x0005
-AccessType=rw
+AccessType=const
 DefaultValue=0x00
+
+;APRS start bytes
+[6007sub4]
+ParameterName=Start Chars
+ObjectType=0x07
+DataType=0x0009
+AccessType=const
+DefaultValue={{z
+
+;Revision of the beacon definition
+[6007sub5]
+ParameterName=Beacon Revision
+ObjectType=0x07
+DataType=0x0005
+AccessType=const
+DefaultValue=1
+
+;Unix time in seconds for beacon
+[6007sub6]
+ParameterName=Unix Time
+ObjectType=0x07
+DataType=0x0007
+AccessType=ro
+DefaultValue=0
 
 [7000]
 ParameterName=C3 Telemetry
 ObjectType=0x09
-SubNumber=7
+SubNumber=10
 
 [7000sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x06
+DefaultValue=0x09
 
 ;Uptime of C3 in seconds
 [7000sub1]
@@ -10802,8 +10826,29 @@ DataType=0x0005
 AccessType=ro
 DefaultValue=0
 
+[7000sub7]
+ParameterName=LBand RSSI
+ObjectType=0x07
+DataType=0x0002
+AccessType=ro
+DefaultValue=0
+
+[7000sub8]
+ParameterName=UHF RSSI
+ObjectType=0x07
+DataType=0x0002
+AccessType=ro
+DefaultValue=0
+
+[7000sub9]
+ParameterName=Bank State
+ObjectType=0x07
+DataType=0x0005
+AccessType=ro
+DefaultValue=0
+
 [7001]
-ParameterName=Battery
+ParameterName=Battery 0
 ObjectType=0x09
 SubNumber=45
 
@@ -11167,7 +11212,7 @@ DefaultValue=0
 PDOMapping=1
 
 [7002]
-ParameterName=Battery
+ParameterName=Battery 1
 ObjectType=0x09
 SubNumber=45
 
@@ -11531,7 +11576,7 @@ DefaultValue=0
 PDOMapping=1
 
 [7003]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 0
 ObjectType=0x09
 SubNumber=17
 
@@ -11671,7 +11716,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7004]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 1
 ObjectType=0x09
 SubNumber=17
 
@@ -11811,7 +11856,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7005]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 2
 ObjectType=0x09
 SubNumber=17
 
@@ -11951,7 +11996,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7006]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 3
 ObjectType=0x09
 SubNumber=17
 
@@ -12091,7 +12136,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7007]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 4
 ObjectType=0x09
 SubNumber=17
 
@@ -12231,7 +12276,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7008]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 5
 ObjectType=0x09
 SubNumber=17
 
@@ -12371,7 +12416,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [7009]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 6
 ObjectType=0x09
 SubNumber=17
 
@@ -12511,7 +12556,7 @@ DefaultValue=-128
 PDOMapping=1
 
 [700A]
-ParameterName=Solar Panel
+ParameterName=Solar Panel 7
 ObjectType=0x09
 SubNumber=17
 
@@ -12651,9 +12696,9 @@ DefaultValue=-128
 PDOMapping=1
 
 [700B]
-ParameterName=Star Tracker
+ParameterName=Star Tracker 0
 ObjectType=0x09
-SubNumber=13
+SubNumber=14
 
 [700Bsub0]
 ParameterName=Highest sub-index supported
@@ -12758,8 +12803,16 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+[700BsubD]
+ParameterName=Timestamp Short
+ObjectType=0x07
+DataType=0x0004
+AccessType=ro
+DefaultValue=0
+PDOMapping=1
+
 [700C]
-ParameterName=Star Tracker
+ParameterName=Star Tracker 1
 ObjectType=0x09
 SubNumber=13
 
@@ -12869,7 +12922,7 @@ PDOMapping=1
 [700D]
 ParameterName=GPS
 ObjectType=0x09
-SubNumber=18
+SubNumber=19
 
 [700Dsub0]
 ParameterName=Highest sub-index supported
@@ -13013,6 +13066,15 @@ DataType=0x0004
 AccessType=rwr
 DefaultValue=0
 PDOMapping=1
+
+[700Dsub12]
+ParameterName=Timestamp Short
+ObjectType=0x07
+DataType=0x0004
+AccessType=ro
+DefaultValue=0
+PDOMapping=1
+
 
 [700E]
 ParameterName=ACS
@@ -14102,6 +14164,7 @@ ParameterName=File data
 ObjectType=0x07
 DataType=0x000F
 AccessType=ro
+DefaultValue=0
 
 ;Gets the CRC32 of the file
 [3003sub3]
@@ -14144,6 +14207,7 @@ ParameterName=File data
 ObjectType=0x07
 DataType=0x000F
 AccessType=wo
+DefaultValue=0
 
 [3005]
 ParameterName=App manager
@@ -14218,7 +14282,7 @@ SubNumber=6
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
-AccessType=ro
+AccessType=const
 DefaultValue=0x05
 
 ;Get the status of updater

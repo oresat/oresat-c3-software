@@ -10,7 +10,7 @@ BEACON_FIELDS = [
     ('APRS', 'Start Chars'),
     ('APRS', 'Satellite ID'),
     ('APRS', 'Beacon Revision'),
-    ('C3 State'),
+    ('C3 State', None),
     ('C3 Telemetry', 'Uptime'),
     ('APRS', 'Unix Time'),
     ('Persistent State', 'Power Cycles'),
@@ -188,11 +188,11 @@ class BeaconResource(Resource):
         packet = bytearray(header)
 
         # add payload
-        for i in BEACON_FIELDS:
-            if len(i) == 1:
-                obj = self.od[i[0]]
-            elif len(i) == 2:
-                obj = self.od[i[0]][i[1]]
+        for field in BEACON_FIELDS:
+            if field[1] is None:
+                obj = self.od[field[0]]
+            else:
+                obj = self.od[field[0]][field[1]]
             packet += obj.encode_raw(obj.value)
 
         crc32 = zlib.crc32(packet, 0)

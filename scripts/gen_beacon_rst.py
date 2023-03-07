@@ -24,21 +24,24 @@ def gen_beacon_rst():
     data.append((0, 'APRS: Header', DataType.OCTET_STRING.name, 16, ''))
     offset = 16
 
-    for fields in BEACON_FIELDS:
+    for field in BEACON_FIELDS:
         for index in eds.indexes:
             index_obj = eds[index]
-            if index_obj.parameter_name != fields[0]:
+            if index_obj.parameter_name != field[0]:
                 continue
 
             name = index_obj.parameter_name
-            if len(fields) == 1:
-                size = index_obj.data_type.size // 8
+            if field[1] is None:
+                if index_obj.data_type == DataType.VISIBLE_STRING:
+                    size = len(index_obj.default_value)
+                else:
+                    size = index_obj.data_type.size // 8
                 data.append((offset, name, index_obj.data_type.name, size, index_obj.comments))
                 offset += size
             else:
                 for subindex in index_obj.subindexes:
                     subindex_obj = index_obj[subindex]
-                    if subindex_obj.parameter_name != fields[1]:
+                    if subindex_obj.parameter_name != field[1]:
                         continue
 
                     name += f': {subindex_obj.parameter_name}'
@@ -55,13 +58,11 @@ def gen_beacon_rst():
     data.append((offset, 'APRS: CRC32', DataType.UNSIGNED32.name, 4, ''))
     offset += 4
 
-    length = offset + 1  # +1 for offset to length
-
     lines = []
     lines.append('Beacon\n')
     lines.append('======\n')
     lines.append('\n')
-    lines.append(f'Beacon total length: {length}\n')
+    lines.append(f'Beacon total length: {offset}\n')
     lines.append('\n')
     lines.append('.. csv-table::\n')
     lines.append('    :header: "Offset", "Name", "Data Type", "Octets", "Comments"\n')

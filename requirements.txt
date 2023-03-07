@@ -1,2 +1,5 @@
+eds-utils
 flake8
 oresat-olaf
+sphinx
+sphinx-rtd-theme

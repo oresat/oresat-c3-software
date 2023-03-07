@@ -130,3 +130,6 @@ dmypy.json
 
 # Drawio
 .*.drawio.bkp
+
+# Generated rst files
+/docs/comms/beacon.rst

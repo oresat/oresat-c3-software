@@ -69,7 +69,8 @@ def gen_beacon_rst():
     lines.append('    :widths: 5, 30, 10, 5, 50\n')
     lines.append('\n')
     for i in data:
-        comments = i[4].replace('\n', '\n\n    ')  # fix for multi-line comments
+        comments = i[4].replace('\n', '\n    ')  # fix for multi-line comments
+        comments = comments.replace('\n', '\n\n', 1)
         lines.append(f'    "{i[0]}", "{i[1]}", "{i[2]}", "{i[3]}", "{comments}"\n')
 
     with open(f'{_FILE_PATH}/docs/comms/beacon.rst', 'w') as f:

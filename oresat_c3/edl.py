@@ -1,0 +1,154 @@
+import binascii
+import hashlib
+import hmac
+
+from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen
+from spacepackets.uslp.frame import TransferFrame, TransferFrameDataField, TfdzConstructionRules, \
+    UslpProtocolIdentifier, VarFrameProperties, FrameType
+from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolCommandFlag, \
+    BypassSequenceControlFlag
+
+
+def crc16_bytes(data: bytes) -> bytes:
+    '''Helper function for generating the crc16 of a message as bytes'''
+    return binascii.crc_hqx(data, 0).to_bytes(2, 'little')
+
+
+class EdlError(Exception):
+    '''Error with EdlBase'''
+
+
+class EdlBase:
+
+    SPACECRAFT_ID = 0x4f
+
+    FRAME_PROPS = VarFrameProperties(
+        has_insert_zone=True,
+        has_fecf=True,
+        truncated_frame_len=0,
+        insert_zone_len=4,
+        fecf_len=2,
+    )
+
+    _FECF_LEN = 2
+    _HMAC_KEY_LEN = 32
+    _TC_MIN_LEN = 14 + _HMAC_KEY_LEN
+
+    def __init__(self, hmac_key: bytes, sequence_number: int):
+
+        self._hmac_key = b'\x00' * self._HMAC_KEY_LEN
+        self.hmac_key = hmac_key
+        self._seq_num = sequence_number
+
+    def _gen_hmac(self, message: bytes) -> bytes:
+
+        return hmac.digest(self._hmac_key, message, hashlib.sha3_256)
+
+    def _parse_packet(self, packet: bytes, src_dest: SourceOrDestField) -> bytes:
+
+        if len(packet) < self._TC_MIN_LEN:
+            raise EdlError(f'EDL packet too short: {len(packet)}')
+
+        crc16_raw = packet[-self._FECF_LEN:]
+        crc16_raw_calc = crc16_bytes(packet[:-self._FECF_LEN])
+        if crc16_raw_calc != crc16_raw:
+            raise EdlError(f'Invalid FECF: {crc16_raw} {crc16_raw_calc}')
+
+        try:
+            frame = TransferFrame.unpack(packet, FrameType.VARIABLE, self.FRAME_PROPS)
+        except UslpInvalidRawPacketOrFrameLen:
+            raise EdlError('USLP invalid packet or frame length')
+
+        if frame.insert_zone > self.sequence_number_bytes:
+            raise EdlError(f'invalid sequence number: {frame.insert_zone} '
+                           f'{self.sequence_number_bytes}')
+
+        payload = frame.tfdf.tfdz[:-self._HMAC_KEY_LEN]
+        hmac_bytes = frame.tfdf.tfdz[-self._HMAC_KEY_LEN:]
+        hmac_bytes_calc = self._gen_hmac(payload)
+
+        if hmac_bytes != hmac_bytes_calc:
+            raise EdlError(f'invalid HMAC {hmac_bytes} {hmac_bytes_calc}')
+
+        return payload
+
+    def _generate_packet(self, payload: bytes, src_dest: SourceOrDestField) -> bytes:
+
+        # USLP transfer frame total length - 1
+        frame_len = len(payload) + self._TC_MIN_LEN - 1
+
+        frame_header = PrimaryHeader(
+            scid=self.SPACECRAFT_ID,
+            map_id=0,
+            vcid=0,
+            src_dest=src_dest,
+            frame_len=frame_len,
+            vcf_count_len=0,
+            op_ctrl_flag=False,
+            prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
+            bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
+        )
+
+        tfdz = payload + self._gen_hmac(payload)
+
+        tfdf = TransferFrameDataField(
+            tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
+            uslp_ident=UslpProtocolIdentifier.MISSION_SPECIFIC_INFO_1_MAPA_SDU,
+            tfdz=tfdz,
+        )
+
+        frame = TransferFrame(header=frame_header, tfdf=tfdf,
+                              insert_zone=self.sequence_number_bytes)
+        packet = frame.pack(frame_type=FrameType.VARIABLE)
+        packet += crc16_bytes(packet)
+
+        self._seq_num += 1
+        self._seq_num %= 0xFF_FF_FF_FF
+
+        return packet
+
+    @property
+    def sequence_number(self) -> int:
+
+        return self._seq_num
+
+    @property
+    def sequence_number_bytes(self) -> bytes:
+
+        return self._seq_num.to_bytes(4, 'little')
+
+    @property
+    def hmac_key(self) -> bytes:
+
+        return self._hmac_key
+
+    @hmac_key.setter
+    def hmac_key(self, value: bytes):
+
+        if not isinstance(value, bytes) and not isinstance(value, bytes) \
+                and len(value) != self._HMAC_KEY_LEN:
+            raise EdlError('Invalid HMAC key data type or length')
+
+        return self._hmac_key
+
+
+class EdlServer(EdlBase):
+
+    def parse_telecommand_request(self, packet: bytes) -> bytes:
+
+        return self._parse_packet(packet, src_dest=SourceOrDestField.SOURCE)
+
+    def generate_telecommand_response(self, payload: bytes) -> bytes:
+
+        return self._generate_packet(payload, src_dest=SourceOrDestField.DEST)
+
+
+class EdlClient(EdlBase):
+
+    def generate_telecommand_request(self, payload: bytes) -> bytes:
+
+        return self._generate_packet(payload, src_dest=SourceOrDestField.SOURCE)
+
+    def parse_telecommand_response(self, packet: bytes) -> bytes:
+
+        return self._parse_packet(packet, src_dest=SourceOrDestField.DEST)

@@ -6,3 +6,4 @@ C3 Commication Protocal
    :caption: Contents:
 
    beacon
+   edl

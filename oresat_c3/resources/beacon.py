@@ -142,9 +142,12 @@ NOTE: Do not include leading '{{z' or trailing CRC32.
 
 class BeaconResource(Resource):
 
+    _DOWNLINK_ADDR = ('localhost', 10015)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        logger.info(f'Beacon socket: {self._DOWNLINK_ADDR}')
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
 
         self._event = Event()
@@ -199,4 +202,4 @@ class BeaconResource(Resource):
         packet += crc32.to_bytes(4, 'little')
 
         logger.debug('beaconing')
-        self._socket.sendto(packet, ('127.0.0.1', 10015))
+        self._socket.sendto(packet, self._DOWNLINK_ADDR)

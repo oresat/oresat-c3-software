@@ -1,12 +1,42 @@
 import binascii
 import hashlib
 import hmac
+from enum import IntEnum, auto
 
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen
 from spacepackets.uslp.frame import TransferFrame, TransferFrameDataField, TfdzConstructionRules, \
     UslpProtocolIdentifier, VarFrameProperties, FrameType
 from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolCommandFlag, \
     BypassSequenceControlFlag
+
+
+class EdlCode(IntEnum):
+    '''EDL telecommand codes'''
+
+    TX_CTRL = 0
+    FW_FLASH = auto()
+    FW_BANK = auto()
+    FW_VERIFY = auto()
+    C3_SOFTRESET = auto()
+    C3_HARDRESET = auto()
+    C3_FACTORYRESET = auto()
+    I2C_RESET = auto()
+    FS_FORMAT = auto()
+    FS_UNMOUNT = auto()
+    FS_REMOVE = auto()
+    FS_CRC = auto()
+    NODE_ENABLE = auto()
+    NODE_STATUS = auto()
+    OPD_SYSENABLE = auto()
+    OPD_SYSDISABLE = auto()
+    OPD_SCAN = auto()
+    OPD_ENABLE = auto()
+    OPD_RESET = auto()
+    OPD_STATUS = auto()
+    RTC_SETTIME = auto()
+    SDO_WRITE = auto()
+    SYNC = auto()
+    TIME_SYNC = auto()
 
 
 def crc16_bytes(data: bytes) -> bytes:

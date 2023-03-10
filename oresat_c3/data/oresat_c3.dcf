@@ -38,7 +38,7 @@ LSS_Supported=0
 [DeviceComissioning]
 NodeID=0x1
 NodeName=C3
-Baudrate=1000
+BaudRate=1000
 NetNumber=0
 NetworkName=
 CANopenManager=0

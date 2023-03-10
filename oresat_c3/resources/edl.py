@@ -23,15 +23,16 @@ class EdlResource(Resource):
         logger.info(f'EDL downlink socket: {self._DOWNLINK_ADDR}')
         self._downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        hamc_key = b'\x00' * EdlServer._HMAC_KEY_LEN
-        seq_num = 0
-        self._edl_server = EdlServer(hamc_key, seq_num)
+        self._edl_server = None
 
         self._event = Event()
         self._thread = Thread(target=self._edl_thread)
 
     def on_start(self):
 
+        hamc_key = self.od['Crypto Key'].value
+        seq_num = self.od['Persistent C3 State']['EDL Sequence Count'].value
+        self._edl_server = EdlServer(hamc_key, seq_num)
         self._thread.start()
 
     def on_end(self):
@@ -52,7 +53,7 @@ class EdlResource(Resource):
                 continue  # Skip empty packets
 
             try:
-                payload = self._edl_server.parse_telecommand_request(message)
+                payload = self._edl_server.parse_request(message)
             except EdlError as e:
                 logger.error(e)
                 continue
@@ -60,7 +61,7 @@ class EdlResource(Resource):
             # TODO run command
 
             try:
-                response = self._edl_server.generate_telecommand_response(payload)
+                response = self._edl_server.generate_response(payload)
             except EdlError as e:
                 logger.error(e)
                 continue

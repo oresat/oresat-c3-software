@@ -20,23 +20,26 @@ class EdlError(Exception):
 
 class EdlBase:
 
-    SPACECRAFT_ID = 0x4f
+    SPACECRAFT_ID = 0x4F53  # aka "OS" in ascii
+
+    PRIMARY_HEADER_LEN = 7
+    SEQ_NUM_LEN = 4
+    DFH_LEN = 1
+    HMAC_LEN = 32
+    FECF_LEN = 2
+    _TC_MIN_LEN = PRIMARY_HEADER_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
 
     FRAME_PROPS = VarFrameProperties(
         has_insert_zone=True,
         has_fecf=True,
         truncated_frame_len=0,
-        insert_zone_len=4,
-        fecf_len=2,
+        insert_zone_len=SEQ_NUM_LEN,
+        fecf_len=FECF_LEN,
     )
-
-    _FECF_LEN = 2
-    _HMAC_KEY_LEN = 32
-    _TC_MIN_LEN = 14 + _HMAC_KEY_LEN
 
     def __init__(self, hmac_key: bytes, sequence_number: int):
 
-        self._hmac_key = b'\x00' * self._HMAC_KEY_LEN
+        self._hmac_key = b'\x00'
         self.hmac_key = hmac_key
         self._seq_num = sequence_number
 
@@ -49,10 +52,10 @@ class EdlBase:
         if len(packet) < self._TC_MIN_LEN:
             raise EdlError(f'EDL packet too short: {len(packet)}')
 
-        crc16_raw = packet[-self._FECF_LEN:]
-        crc16_raw_calc = crc16_bytes(packet[:-self._FECF_LEN])
+        crc16_raw = packet[-self.FECF_LEN:]
+        crc16_raw_calc = crc16_bytes(packet[:-self.FECF_LEN])
         if crc16_raw_calc != crc16_raw:
-            raise EdlError(f'Invalid FECF: {crc16_raw} {crc16_raw_calc}')
+            raise EdlError(f'invalid FECF: {crc16_raw} vs {crc16_raw_calc}')
 
         try:
             frame = TransferFrame.unpack(packet, FrameType.VARIABLE, self.FRAME_PROPS)
@@ -60,15 +63,15 @@ class EdlBase:
             raise EdlError('USLP invalid packet or frame length')
 
         if frame.insert_zone > self.sequence_number_bytes:
-            raise EdlError(f'invalid sequence number: {frame.insert_zone} '
+            raise EdlError(f'invalid sequence number: {frame.insert_zone} vs '
                            f'{self.sequence_number_bytes}')
 
-        payload = frame.tfdf.tfdz[:-self._HMAC_KEY_LEN]
-        hmac_bytes = frame.tfdf.tfdz[-self._HMAC_KEY_LEN:]
+        payload = frame.tfdf.tfdz[:-self.HMAC_LEN]
+        hmac_bytes = frame.tfdf.tfdz[-self.HMAC_LEN:]
         hmac_bytes_calc = self._gen_hmac(payload)
 
         if hmac_bytes != hmac_bytes_calc:
-            raise EdlError(f'invalid HMAC {hmac_bytes} {hmac_bytes_calc}')
+            raise EdlError(f'invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}')
 
         return payload
 
@@ -115,7 +118,7 @@ class EdlBase:
     @property
     def sequence_number_bytes(self) -> bytes:
 
-        return self._seq_num.to_bytes(4, 'little')
+        return self._seq_num.to_bytes(self.SEQ_NUM_LEN, 'little')
 
     @property
     def hmac_key(self) -> bytes:
@@ -125,30 +128,29 @@ class EdlBase:
     @hmac_key.setter
     def hmac_key(self, value: bytes):
 
-        if not isinstance(value, bytes) and not isinstance(value, bytes) \
-                and len(value) != self._HMAC_KEY_LEN:
-            raise EdlError('Invalid HMAC key data type or length')
+        if not isinstance(value, bytes) and not isinstance(value, bytes):
+            raise EdlError('invalid HMAC key data type')
 
         return self._hmac_key
 
 
 class EdlServer(EdlBase):
 
-    def parse_telecommand_request(self, packet: bytes) -> bytes:
+    def parse_request(self, packet: bytes) -> bytes:
 
         return self._parse_packet(packet, src_dest=SourceOrDestField.SOURCE)
 
-    def generate_telecommand_response(self, payload: bytes) -> bytes:
+    def generate_response(self, payload: bytes) -> bytes:
 
         return self._generate_packet(payload, src_dest=SourceOrDestField.DEST)
 
 
 class EdlClient(EdlBase):
 
-    def generate_telecommand_request(self, payload: bytes) -> bytes:
+    def generate_request(self, payload: bytes) -> bytes:
 
         return self._generate_packet(payload, src_dest=SourceOrDestField.SOURCE)
 
-    def parse_telecommand_response(self, packet: bytes) -> bytes:
+    def parse_response(self, packet: bytes) -> bytes:
 
         return self._parse_packet(packet, src_dest=SourceOrDestField.DEST)

@@ -1,8 +1,8 @@
-import bitstring
 import socket
 import zlib
 from threading import Thread, Event
 
+import bitstring
 from olaf import Resource, logger
 
 BEACON_FIELDS = [
@@ -133,10 +133,10 @@ BEACON_FIELDS = [
 '''
 List of OD locations for the beacon fields.
 
-Field location must be list with one value for a Variables at a index or two values for Variables
-at a index and subindex.
+Field location must be list of tuples with one value and None for a Variables at a index or 
+two values for Variables at a index and subindex.
 
-NOTE: Do not include leading '{{z' or trailing CRC32.
+NOTE: Do not include leading APRS header or trailing CRC32.
 '''
 
 

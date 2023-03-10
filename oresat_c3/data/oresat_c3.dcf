@@ -36,9 +36,9 @@ NrOfTXPDO=16
 LSS_Supported=0
 
 [DeviceComissioning]
-NodeID=1
+NodeID=0x1
 NodeName=C3
-BaudRate=1000
+Baudrate=1000
 NetNumber=0
 NetworkName=
 CANopenManager=0
@@ -10660,40 +10660,7 @@ AccessType=rw
 DefaultValue=0
 
 [6005]
-ParameterName=Crypto Keys
-ObjectType=0x08
-SubNumber=5
-
-[6005sub0]
-ParameterName=Highest sub-index supported
-ObjectType=0x07
-DataType=0x0005
-AccessType=const
-DefaultValue=0x04
-
-[6005sub1]
-ParameterName=Key 1
-ObjectType=0x07
-DataType=0x000A
-AccessType=wo
-DefaultValue=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-[6005sub2]
-ParameterName=Key 2
-ObjectType=0x07
-DataType=0x000A
-AccessType=wo
-DefaultValue=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-[6005sub3]
-ParameterName=Key 3
-ObjectType=0x07
-DataType=0x000A
-AccessType=wo
-DefaultValue=00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-[6005sub4]
-ParameterName=Key 4
+ParameterName=Crypto Key
 ObjectType=0x07
 DataType=0x000A
 AccessType=wo
@@ -12714,7 +12681,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x0C
+DefaultValue=0x0D
 
 [700Bsub1]
 ParameterName=Root Partition Percent
@@ -12938,7 +12905,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x11
+DefaultValue=0x12
 
 [700Dsub1]
 ParameterName=Root Partition Percent
@@ -13083,7 +13050,6 @@ DataType=0x0004
 AccessType=ro
 DefaultValue=0
 PDOMapping=1
-
 
 [700E]
 ParameterName=ACS

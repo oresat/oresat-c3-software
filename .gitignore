@@ -132,4 +132,4 @@ dmypy.json
 .*.drawio.bkp
 
 # Generated rst files
-/docs/comms/beacon.rst
+/docs/beacon.rst

@@ -10,20 +10,23 @@ class OpdError(Exception):
 
 
 class OpdNode(IntEnum):
+    '''OPD I2C addresses'''
+
     BATTERY_0 = 0x18
     BATTERY_1 = 0x1D
-    STAR_TRACKER = 0x1C
+    STAR_TRACKER_0 = 0x1C
     GPS = 0x19
     ACS = 0x1A
-    RWB_0 = 0x20
-    RWB_1 = 0x20
-    RWB_2 = 0x20
-    RWB_3 = 0x20
+    RW_0 = 0x20
+    RW_1 = 0x21
+    RW_2 = 0x22
+    RW_3 = 0x23
     DXWIFI = 0x1B
     CFC = 0x1E
 
     @staticmethod
     def from_bytes(value: bytes):
+        '''Convert `bytes` value to `OpdNode` object'''
 
         if len(value) != 1:
             raise OpdError(f'invalid OPD node: 0x{value.hex().upper()}')
@@ -36,6 +39,7 @@ class OpdNode(IntEnum):
         return OpdNode[tmp]
 
     def to_bytes(self) -> bytes:
+        '''Convert object to `bytes` value'''
 
         return self.value.to_bytes(1, 'little')
 

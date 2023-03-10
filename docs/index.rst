@@ -3,9 +3,11 @@ Welcome to OreSat C3's documentation!
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
-   comms/index
+   opd
+   co_nodes
+   edl
+   beacon
 
 
 

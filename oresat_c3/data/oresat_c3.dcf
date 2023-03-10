@@ -10364,7 +10364,6 @@ DataType=0x0007
 AccessType=rw
 DefaultValue=0
 
-;C3 State
 ;'A': Offline
 ;     This state is never actually reachable by the device. Reset vector is 'B'.
 ;'B': Pre-Deployment (Reset/Power-on)

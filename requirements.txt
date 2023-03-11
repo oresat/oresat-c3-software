@@ -1,5 +1,7 @@
+bitstring
 eds-utils
 flake8
 oresat-olaf
 sphinx
+spacepackets
 sphinx-rtd-theme

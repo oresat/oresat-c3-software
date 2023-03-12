@@ -11,32 +11,210 @@ from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolC
 
 
 class EdlCode(IntEnum):
-    '''EDL telecommand codes'''
+    '''The EDL telecommand codes.'''
 
     TX_CTRL = 0
-    FW_FLASH = auto()
-    FW_BANK = auto()
-    FW_VERIFY = auto()
+    '''
+    Enable / Disable Tx.
+
+    Parameters
+    ----------
+    enable: bool
+        True to enable Tx or False to disable Tx
+
+    Returns
+    -------
+    bool
+        Tx status
+    '''
+
     C3_SOFTRESET = auto()
+    '''
+    Soft reset the C3 (reboot C3 daemon).
+    '''
+
     C3_HARDRESET = auto()
+    '''
+    Hard reset the C3 (reboot system).
+    '''
+
     C3_FACTORYRESET = auto()
+    '''
+    Factory reset the C3 (clear FRAM and reboot system).
+    '''
+
     I2C_RESET = auto()
-    FS_FORMAT = auto()
-    FS_UNMOUNT = auto()
-    FS_REMOVE = auto()
-    FS_CRC = auto()
-    NODE_ENABLE = auto()
-    NODE_STATUS = auto()
+    '''
+    Reset I2C? OPD? TODO
+
+    Returns
+    -------
+    uint8
+        with value of 0
+    '''
+
+    CO_NODE_ENABLE = auto()
+    '''
+    Enable a CANopen node.
+
+    Parameters
+    ----------
+    node_id: uint8
+        Node id of the CANopen node to enable / disable
+    enable: bool
+        True to enable or False to disable
+
+    Returns
+    -------
+    uint8
+        node status
+    '''
+
+    CO_NODE_STATUS = auto()
+    '''
+    Get the status of a CANopen node.
+
+    Parameters
+    ----------
+    node_id: uint8
+        Node id of node to get the status for
+
+    Return
+    ------
+    uint8
+        node status
+    '''
+
+    CO_SDO_WRITE = auto()
+    '''
+    Send a CANopen SDO write command over CAN bus.
+
+    Parameters
+    ----------
+    node_id: uint8
+        The id of The CANopen node to write to.
+    index: uint16
+        The OD index to write to.
+    subindex: uint8
+        The OD subindex to write to.
+    size: uint32
+        Size of the data buffer.
+    buffer: bytes
+        Data buffer.
+
+    Returns
+    -------
+    uint32
+        SDO error code (0 is no error).
+    '''
+
+    CO_SYNC = auto()
+    '''
+    Send a CANopen SYNC command on the CAN bus.
+
+    Return
+    ------
+    bool
+        The CANopen SYNC command was sent successfully.
+    '''
+
     OPD_SYSENABLE = auto()
-    OPD_SYSDISABLE = auto()
+    '''
+    Enable the OPD system.
+
+    Parameters
+    ----------
+    enable: bool
+        True to enable or False to disable.
+
+    Return
+    ------
+    bool
+        OPD system status
+    '''
+
     OPD_SCAN = auto()
+    '''
+    Scan for a node on the OPD.
+
+    Parameters
+    ----------
+    node_id: int8
+        The id of the OPD node to scan for.
+
+    Return
+        int8: OPD node status ??? TODO.
+    '''
+
     OPD_ENABLE = auto()
+    '''
+    Enable / Disable a node on the OPD.
+
+    Parameters
+    ----------
+    node_id: int8
+        The id of the OPD node to enable / disable.
+    enable: bool
+        True to enable or False to disable.
+
+    Return
+        int8: OPD node status ??? TODO.
+    '''
+
     OPD_RESET = auto()
+    '''
+    Reset a node on the OPD.
+
+    Parameters
+    ----------
+    node_id: int8
+        The id of the OPD node to reset.
+
+    Returns
+    -------
+    int8
+        OPD node status ??? TODO
+    '''
+
     OPD_STATUS = auto()
-    RTC_SETTIME = auto()
-    SDO_WRITE = auto()
-    SYNC = auto()
+    '''
+    Get the status of a node on the OPD.
+
+    Parameters
+    ----------
+    node_id: int8
+        The id of the OPD node to get the status of.
+
+    Returns
+    -------
+    int8
+        OPD node status.
+    '''
+
+    RTC_SET_TIME = auto()
+    '''
+    Set the RTC time
+
+    Parameters
+    ----------
+    time: uint32
+        The unix time in seconds.
+
+    Return
+    ------
+    bool
+        The RTC time was set successfully.
+    '''
+
     TIME_SYNC = auto()
+    '''
+    Send OreSat's Time Sync TPDO over the CAN bus.
+
+    Returns
+    -------
+    bool
+        Time sync was sent.
+    '''
 
 
 def crc16_bytes(data: bytes) -> bytes:

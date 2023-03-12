@@ -7,7 +7,7 @@ from eds_utils.core.file_io.read_eds import read_eds
 from eds_utils.core import DataType
 
 # add parent dir of file dir to path
-_FILE_PATH = dirname(abspath(__file__ + '/..'))
+_FILE_PATH = dirname(abspath(__file__ + '/../..'))
 sys.path.insert(0, _FILE_PATH)
 
 from oresat_c3.resources.beacon import BEACON_FIELDS

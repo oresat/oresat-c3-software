@@ -9,7 +9,9 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath('..'))
 from oresat_c3 import __version__
-from scripts.gen_beacon_rst import gen_beacon_rst
+
+sys.path.insert(0, os.path.abspath('scripts'))
+from gen_beacon_rst import gen_beacon_rst
 
 
 # -- Project information -----------------------------------------------------

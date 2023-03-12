@@ -30,7 +30,7 @@ class C3State(Enum):
         return chr(self.value)
 
 
-class Node(IntEnum):
+class NodeId(Enum):
     '''All the CANopen Node ID for OreSat boards.'''
 
     C3 = 0x01

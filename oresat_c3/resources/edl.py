@@ -6,6 +6,7 @@ from olaf import Resource, logger
 
 from ..opd import Opd, OpdNode
 from ..edl import EdlServer, EdlError, EdlCode
+from . import soft_reset, hard_reset, factory_reset
 
 
 class EdlResource(Resource):
@@ -84,9 +85,15 @@ class EdlResource(Resource):
         if code == EdlCode.TX_CTRL:
             logger.info('enabling OPD system')
             if args == b'\x00':
-                self.od['Persistent state']['Last TX Enable'].value = 0
+                self.od['Persistent State']['Last TX Enable'].value = 0
             else:
-                self.od['Persistent state']['Last TX Enable'].value = int(time())
+                self.od['Persistent State']['Last TX Enable'].value = int(time())
+        if code == EdlCode.C3_SOFTRESET:
+            soft_reset()
+        elif code == EdlCode.C3_HARDRESET:
+            hard_reset()
+        elif code == EdlCode.C3_FACTORYRESET:
+            factory_reset()
         elif code == EdlCode.OPD_SYSENABLE:
             logger.info('enabling OPD system')
             self._opd.start()

@@ -10381,11 +10381,9 @@ DefaultValue=0
 [6000]
 ParameterName=C3 State
 ObjectType=0x07
-DataType=0x0009
+DataType=0x0005
 AccessType=ro
-DefaultValue=B
-LowLimit=B
-HighLimit=F
+DefaultValue=66
 
 ;C3 State Control
 [6001]

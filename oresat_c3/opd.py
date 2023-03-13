@@ -51,7 +51,11 @@ class OpdNodeStatus(IntEnum):
 
 class Opd:
 
-    def __init__(self):
+    def __init__(self, mock: bool = False):
+
+        self._mock = mock
+        if self._mock:
+            raise NotImplementedError
 
         self._nodes = {i: OpdNodeStatus for i in OpdNode}
         self._enabled = True

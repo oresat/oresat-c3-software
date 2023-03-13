@@ -1,9 +1,9 @@
 import socket
-import zlib
 from threading import Thread, Event
 
-import bitstring
 from olaf import Resource, logger
+
+from ..ax25 import generate_ax25_packet
 
 BEACON_FIELDS = [
     # C3
@@ -133,7 +133,7 @@ BEACON_FIELDS = [
 '''
 List of OD locations for the beacon fields.
 
-Field location must be list of tuples with one value and None for a Variables at a index or 
+Field location must be list of tuples with one value and None for a Variables at a index or
 two values for Variables at a index and subindex.
 
 NOTE: Do not include leading APRS header or trailing CRC32.
@@ -170,36 +170,24 @@ class BeaconResource(Resource):
 
     def _send_beacon(self):
 
-        # APRS packet header fields
-        dest = self.od['APRS']['Dest Callsign'].value
-        dest_ssid = 0
-        src = self.od['APRS']['Src Callsign'].value
-        src_ssid = 0
-        control = 0
-        pid = 0
-
-        # callsigns must be 6 chars, add trailing spaces as padding
-        src += ' ' * (6 - len(src))
-        dest += ' ' * (6 - len(dest))
-
-        # make APRS packet header
-        header = dest.encode() + dest_ssid.to_bytes(1, 'little') + \
-            src.encode() + src_ssid.to_bytes(1, 'little') + \
-            control.to_bytes(1, 'little') + pid.to_bytes(1, 'little')
-        header = (bitstring.BitArray(header) << 1).bytes
-
-        packet = bytearray(header)
-
-        # add payload
+        payload = bytes()
         for field in BEACON_FIELDS:
             if field[1] is None:
                 obj = self.od[field[0]]
             else:
                 obj = self.od[field[0]][field[1]]
-            packet += obj.encode_raw(obj.value)
+            payload += obj.encode_raw(obj.value)
 
-        crc32 = zlib.crc32(packet, 0)
-        packet += crc32.to_bytes(4, 'little')
+        packet = generate_ax25_packet(
+            dest=self.od['APRS']['Dest Callsign'].value,
+            dest_ssid=0,
+            src=self.od['APRS']['Src Callsign'].value,
+            src_ssid=0,
+            control=0,
+            pid=0,
+            payload=payload,
+            crc32=True
+        )
 
         logger.debug('beaconing')
         self._socket.sendto(packet, self._DOWNLINK_ADDR)

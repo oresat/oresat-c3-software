@@ -144,8 +144,8 @@ class BeaconResource(Resource):
 
     _DOWNLINK_ADDR = ('localhost', 10015)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self):
+        super().__init__()
 
         logger.info(f'Beacon socket: {self._DOWNLINK_ADDR}')
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
@@ -166,22 +166,22 @@ class BeaconResource(Resource):
 
         while not self._event.is_set():
             self._send_beacon()
-            self._event.wait(self.od['TX Control']['Beacon Interval'].value / 1000)
+            self._event.wait(self.node.od['TX Control']['Beacon Interval'].value / 1000)
 
     def _send_beacon(self):
 
         payload = bytes()
         for field in BEACON_FIELDS:
             if field[1] is None:
-                obj = self.od[field[0]]
+                obj = self.node.od[field[0]]
             else:
-                obj = self.od[field[0]][field[1]]
+                obj = self.node.od[field[0]][field[1]]
             payload += obj.encode_raw(obj.value)
 
         packet = generate_ax25_packet(
-            dest=self.od['APRS']['Dest Callsign'].value,
+            dest=self.node.od['APRS']['Dest Callsign'].value,
             dest_ssid=0,
-            src=self.od['APRS']['Src Callsign'].value,
+            src=self.node.od['APRS']['Src Callsign'].value,
             src_ssid=0,
             control=0,
             pid=0,

@@ -1,11 +1,15 @@
 from time import time
 
+from olaf import logger
+
 
 class Rtc:
 
     def __init__(self, mock: bool = False):
 
         self._mock = mock
+        if mock:
+            logger.warning('mocking the RTC')
 
     def get_time(self) -> float:
 

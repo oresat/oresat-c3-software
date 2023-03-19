@@ -13,12 +13,12 @@ class StateResource(Resource):
     BAT_LEVEL_HIGH = 7_000
     BAT_LEVEL_LOW = 6_500
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, rtc: Rtc):
+        super().__init__()
 
-        self._rtc = Rtc(mock=True)
-        self._boot_time = self._rtc.get_time()
-        self._edl_eabled = False  # TODO replace with shared Edl class
+        self.rtc = rtc
+
+        self._boot_time = self.rtc.get_time()
         self._tx_enabledd = False
 
         self._event = Event()
@@ -27,8 +27,8 @@ class StateResource(Resource):
     def on_start(self):
 
         self._restore_state()
-        self._p_state_rec = self.od['Persistent State']
-        self._c3_state_obj = self.od['C3 State']
+        self._p_state_rec = self.node.od['Persistent State']
+        self._c3_state_obj = self.node.od['C3 State']
         self._thread.start()
 
     def on_end(self):
@@ -39,10 +39,10 @@ class StateResource(Resource):
     def _send_beacon_thread(self):
 
         attempts = 0
-        pre_deply_timeout = self.od['Deployment Control']['Timeout']
+        pre_deply_timeout = self.node.od['Deployment Control']['Timeout']
         while not self._event.is_set():
             if self._c3_state_obj.value == C3State.PRE_DEPLOY:
-                if self._boot_time + pre_deply_timeout.value + self._rtc.get_time():
+                if self._boot_time + pre_deply_timeout.value + self.rtc.get_time():
                     self._tx_enabled = True
                 else:
                     logger.info('pre-deploy timeout reached')
@@ -60,21 +60,21 @@ class StateResource(Resource):
                     logger.info('antennas deployed')
                     attempts = 0
             elif self._c3_state_obj.value == C3State.STANDBY:
-                if self._edl_eabled:
+                if self._edl.is_enabled:
                     self._c3_state_obj.value = C3State.EDL.value
                 elif self._trigger_reset:
                     hard_reset()
                 elif self._tx_enabled and self._bat_good:
                     self._c3_state_obj.value = C3State.BEACON.value
             elif self._c3_state_obj.value == C3State.BEACON:
-                if self._edl_eabled:
+                if self._edl.is_enabled:
                     self._c3_state_obj.value = C3State.EDL
                 elif self._trigger_reset:
                     hard_reset()
                 elif self._tx_enabled and not self._bat_good:
                     self._c3_state_obj.value = C3State.STANDBY.value
             elif self._c3_state_obj.value == C3State.EDL:
-                if not self._edl_eabled:
+                if not self._edl.is_enabled:
                     if self._tx_enabled and self._bat_good:
                         self._c3_state_obj.value = C3State.BEACON.value
                     else:
@@ -89,7 +89,7 @@ class StateResource(Resource):
     def _bat_good(self) -> bool:
         '''bool: Helper property to check if the battery levels are good'''
 
-        bat0_rec = self.od['Battery 0']
+        bat0_rec = self.node.od['Battery 0']
         return bat0_rec['VBatt BP1'] < self.BAT_LEVEL_LOW \
             and bat0_rec['VBatt BP2'] < self.BAT_LEVEL_LOW
 
@@ -97,16 +97,16 @@ class StateResource(Resource):
     def _tigger_reset(self) -> bool:
         '''bool: Helper property to check if the reset timeout has been reached'''
 
-        return self._rtc.get_time() - self._boot_time >= self._p_state_rec['Reset Timeout']
+        return self.rtc.get_time() - self._boot_time >= self._p_state_rec['Reset Timeout']
 
     def _store_state(self) -> bool:
 
         if self._c3_state_obj.value == C3State.PRE_DEPLOY:
             return  # Do not store state in PRE_DEPLOY
 
-        # TODO persist_store(self.od, group)
+        # TODO persist_store(self.node.od, group)
 
     def _restore_state(self) -> bool:
 
-        # TODO persist_restore(self.od, group)
+        # TODO persist_restore(self.node.od, group)
         pass

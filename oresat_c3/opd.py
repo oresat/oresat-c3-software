@@ -3,6 +3,9 @@ Everything todo with the OPD (OreSat Power Domain).
 '''
 
 from enum import IntEnum
+from time import sleep
+
+from olaf import logger
 
 
 class OpdError(Exception):
@@ -13,16 +16,17 @@ class OpdNode(IntEnum):
     '''OPD I2C addresses'''
 
     BATTERY_0 = 0x18
-    BATTERY_1 = 0x1D
-    STAR_TRACKER_0 = 0x1C
     GPS = 0x19
     ACS = 0x1A
+    DXWIFI = 0x1B
+    STAR_TRACKER_0 = 0x1C
+    BATTERY_1 = 0x1D
+    CFC = 0x1E
+    CFC_SENSOR = 0x1F
     RW_0 = 0x20
     RW_1 = 0x21
     RW_2 = 0x22
     RW_3 = 0x23
-    DXWIFI = 0x1B
-    CFC = 0x1E
 
     @staticmethod
     def from_bytes(value: bytes):
@@ -53,23 +57,27 @@ class Opd:
 
     def __init__(self, mock: bool = False):
 
-        self._mock = mock
-        if self._mock:
+        if not mock:
             raise NotImplementedError
+        else:
+            logger.warning('mocking OPD')
 
-        self._nodes = {i: OpdNodeStatus for i in OpdNode}
+        self.enable_system()
+
+    def enable_system(self):
+
+        logger.info('enabling OPD subsystem')
+        self._nodes = {i: OpdNodeStatus.OFF for i in OpdNode}  # reset
         self._enabled = True
 
-    def start(self):
+    def disable_system(self):
 
-        self._enabled = True
-        self._nodes = {i: OpdNodeStatus for i in OpdNode}  # reset
-
-    def stop(self):
-
+        logger.info('disabling OPD subsystem')
         self._enabled = False
 
-    def is_enabled(self) -> bool:
+    @property
+    def is_system_enabled(self) -> bool:
+        '''bool: OPD is enabled or not.'''
 
         return self._enabled
 
@@ -84,27 +92,52 @@ class Opd:
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
 
-    def reset(self, node: OpdNode):
+    def reset_node(self, node: OpdNode):
 
+        self.disable(node)
+        sleep(0.01)
+        self.enable(node)
+
+    def probe_node(self, node: OpdNode, restart: bool) -> bool:
+
+        logger.info(f'probing OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        return
 
-    def probe(self, node: OpdNode):
+        if restart:
+            self.reset_node(node)
 
-        self._is_valid_and_enabled(node)
-        return
+        return True
 
-    def status(self, node: OpdNode) -> OpdNodeStatus:
+    def node_status(self, node: OpdNode) -> OpdNodeStatus:
 
+        logger.debug(f'getting the status of OPD node {node.name}')
         self._is_valid_and_enabled(node)
         return self._nodes[node]
 
-    def enable(self, node: OpdNode):
+    def enable_node(self, node: OpdNode):
+        '''
+        Enable an OPD node.
 
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+        '''
+
+        logger.info(f'enabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
         self._nodes[node] = OpdNodeStatus.ON
 
-    def disable(self, node: OpdNode):
+    def disable_node(self, node: OpdNode):
+        '''
+        Disable an OPD node.
 
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to disable.
+        '''
+
+        logger.info(f'disabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
         self._nodes[node] = OpdNodeStatus.OFF

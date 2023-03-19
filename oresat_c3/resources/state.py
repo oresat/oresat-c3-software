@@ -1,3 +1,10 @@
+'''
+State Resource
+==============
+
+This handles the main C3 state machine.
+'''
+
 from threading import Thread, Event
 
 from olaf import Resource, logger
@@ -17,6 +24,7 @@ class StateResource(Resource):
         super().__init__()
 
         self.rtc = rtc
+        self._attempts = 0
 
         self._boot_time = self.rtc.get_time()
 
@@ -27,9 +35,13 @@ class StateResource(Resource):
 
         self._restore_state()
 
-        self._p_state_rec = self.node.od['Persistent State']
+        self._attempts_obj = self.node.od['Persistent State']['Attempts']
+        self._deploy_obj = self.node.od['Persistent State']['Deployed']
         self._c3_state_obj = self.node.od['C3 State']
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+        self._pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
+        self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP1']
+        self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP2']
 
         self._thread.start()
 
@@ -38,49 +50,67 @@ class StateResource(Resource):
         self._event.set()
         self._thread.join()
 
+    def _pre_deploy(self):
+
+        if self._boot_time + self._pre_deply_timeout_obj.value + self.rtc.get_time():
+            self._tx_enabled_obj.value = True
+        else:
+            logger.info('pre-deploy timeout reached')
+            self._c3_state_obj.value = C3State.DEPLOY.value
+
+    def _deploy(self):
+
+        if not self._deploy_obj.value and self._attempts < self._attempts_obj.value \
+                and self._bat_good:
+            logger.info(f'deploying antennas, attempt {self._attempts}')
+            deploy_helical()
+            deploy_turnstile()
+            self._attempts += 1
+        else:
+            self._c3_state_obj.value = C3State.STANDBY.value
+            self._deploy_obj.value = True
+            logger.info('antennas deployed')
+            self._attempts = 0
+
+    def _standby(self):
+
+        if self._edl.is_enabled:
+            self._c3_state_obj.value = C3State.EDL.value
+        elif self._trigger_reset:
+            hard_reset()
+        elif self._tx_enabled_obj.value and self._bat_good:
+            self._c3_state_obj.value = C3State.BEACON.value
+
+    def _beacon(self):
+
+        if self._edl.is_enabled:
+            self._c3_state_obj.value = C3State.EDL.value
+        elif self._trigger_reset:
+            hard_reset()
+        elif self._tx_enabled_obj.value and not self._bat_good:
+            self._c3_state_obj.value = C3State.STANDBY.value
+
+    def edl(self):
+
+        if not self._edl.is_enabled:
+            if self._tx_enabled_obj.value and self._bat_good:
+                self._c3_state_obj.value = C3State.BEACON.value
+            else:
+                self._c3_state_obj.value = C3State.STANDBY.value
+
     def _send_beacon_thread(self):
 
-        attempts = 0
-        pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
         while not self._event.is_set():
             if self._c3_state_obj.value == C3State.PRE_DEPLOY:
-                if self._boot_time + pre_deply_timeout_obj.value + self.rtc.get_time():
-                    self._tx_enabled_obj.value = True
-                else:
-                    logger.info('pre-deploy timeout reached')
-                    self._c3_state_obj.value = C3State.DEPLOY.value
+                self._pre_deploy()
             elif self._c3_state_obj.value == C3State.DEPLOY:
-                if not self._p_state_rec['Deployed'] and attempts < self._p_state_rec['Attempts'] \
-                        and self._bat_good:
-                    logger.info(f'deploying antennas, attempt {attempts}')
-                    deploy_helical()
-                    deploy_turnstile()
-                    attempts += 1
-                else:
-                    self._c3_state_obj.value = C3State.STANDBY.value
-                    self._p_state_rec['Deployed'] = True
-                    logger.info('antennas deployed')
-                    attempts = 0
+                self._deploy()
             elif self._c3_state_obj.value == C3State.STANDBY:
-                if self._edl.is_enabled:
-                    self._c3_state_obj.value = C3State.EDL.value
-                elif self._trigger_reset:
-                    hard_reset()
-                elif self._tx_enabled_obj.value and self._bat_good:
-                    self._c3_state_obj.value = C3State.BEACON.value
+                self._standby()
             elif self._c3_state_obj.value == C3State.BEACON:
-                if self._edl.is_enabled:
-                    self._c3_state_obj.value = C3State.EDL.value
-                elif self._trigger_reset:
-                    hard_reset()
-                elif self._tx_enabled_obj.value and not self._bat_good:
-                    self._c3_state_obj.value = C3State.STANDBY.value
+                self._beacon()
             elif self._c3_state_obj.value == C3State.EDL:
-                if not self._edl.is_enabled:
-                    if self._tx_enabled_obj.value and self._bat_good:
-                        self._c3_state_obj.value = C3State.BEACON.value
-                    else:
-                        self._c3_state_obj.value = C3State.STANDBY.value
+                self._edl()
             else:
                 self._c3_state_obj.value = C3State.PRE_DEPLOY.value
 
@@ -91,9 +121,7 @@ class StateResource(Resource):
     def _bat_good(self) -> bool:
         '''bool: Helper property to check if the battery levels are good'''
 
-        bat0_rec = self.node.od['Battery 0']
-        return bat0_rec['VBatt BP1'] < self.BAT_LEVEL_LOW \
-            and bat0_rec['VBatt BP2'] < self.BAT_LEVEL_LOW
+        return self._vbatt_bp1_obj < self.BAT_LEVEL_LOW or self._vbatt_bp2_obj < self.BAT_LEVEL_LOW
 
     @property
     def _tigger_reset(self) -> bool:

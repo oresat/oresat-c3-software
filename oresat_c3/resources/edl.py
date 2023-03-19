@@ -1,3 +1,10 @@
+''''
+EDL Resource
+============
+
+Handle recing EDL command and sending replys.
+'''
+
 import socket
 from time import time
 from threading import Thread, Event

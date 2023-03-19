@@ -1,3 +1,12 @@
+''''
+OPD (OreSat Power Domain) Resource
+==================================
+
+Mostly for testing.
+
+Handle turnin card on and off and keeps track of cards.
+'''
+
 import json
 
 from olaf import Resource

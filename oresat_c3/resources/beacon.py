@@ -1,5 +1,11 @@
+''''
+Beacon Resource
+===============
+
+Handles the beaconing.
+'''
+
 import socket
-from threading import Thread, Event
 
 from olaf import Resource, logger, TimerLoop
 

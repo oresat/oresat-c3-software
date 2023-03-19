@@ -1,5 +1,5 @@
 '''
-Everything todo with the OPD (OreSat Power Domain).
+Everything todo with the OPD (OreSat Power Domain) functionality.
 '''
 
 from enum import IntEnum
@@ -9,11 +9,11 @@ from olaf import logger
 
 
 class OpdError(Exception):
-    '''Error with the OPD'''
+    '''Error with the `Opd`'''
 
 
 class OpdNode(IntEnum):
-    '''OPD I2C addresses'''
+    '''I2C addresses for all cards on the OPD'''
 
     BATTERY_0 = 0x18
     GPS = 0x19
@@ -49,6 +49,9 @@ class OpdNode(IntEnum):
 
 
 class Opd:
+    '''
+    OreSat Power Domain.
+    '''
 
     def __init__(self, mock: bool = False):
 
@@ -60,12 +63,14 @@ class Opd:
         self.enable_system()
 
     def enable_system(self):
+        '''Enable the OPD subsystem.'''
 
         logger.info('enabling OPD subsystem')
         self._nodes = {i: False for i in OpdNode}  # reset
         self._enabled = True
 
     def disable_system(self):
+        '''Disable the OPD subsystem.'''
 
         logger.info('disabling OPD subsystem')
         self._enabled = False
@@ -88,12 +93,30 @@ class Opd:
             raise OpdError(f'invalid OPD node {node}')
 
     def reset_node(self, node: OpdNode):
+        '''
+        Reset a node on the OPD (disable and then re-enable it).
+
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+        '''
 
         self.disable(node)
         sleep(0.01)
         self.enable(node)
 
-    def probe_node(self, node: OpdNode, restart: bool) -> bool:
+    def probe_node(self, node: OpdNode, restart: bool):
+        '''
+        Probe the OPD for a node (see if it is there).
+
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+        restart: bool
+            Restart the node if found.
+        '''
 
         logger.info(f'probing OPD node {node.name}')
         self._is_valid_and_enabled(node)
@@ -104,6 +127,19 @@ class Opd:
         return True
 
     def node_status(self, node: OpdNode) -> bool:
+        '''
+        Get the status of a node.
+
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+
+        Returns
+        -------
+        bool
+            The power status of a node.
+        '''
 
         logger.debug(f'getting the status of OPD node {node.name}')
         self._is_valid_and_enabled(node)

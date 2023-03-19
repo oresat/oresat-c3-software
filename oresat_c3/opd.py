@@ -48,11 +48,6 @@ class OpdNode(IntEnum):
         return self.value.to_bytes(1, 'little')
 
 
-class OpdNodeStatus(IntEnum):
-    OFF = 0
-    ON = 1
-
-
 class Opd:
 
     def __init__(self, mock: bool = False):
@@ -67,7 +62,7 @@ class Opd:
     def enable_system(self):
 
         logger.info('enabling OPD subsystem')
-        self._nodes = {i: OpdNodeStatus.OFF for i in OpdNode}  # reset
+        self._nodes = {i: False for i in OpdNode}  # reset
         self._enabled = True
 
     def disable_system(self):
@@ -87,7 +82,7 @@ class Opd:
         system is not enabled
         '''
 
-        if self._enabled:
+        if not self._enabled:
             raise OpdError('OPD system is not enabled')
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
@@ -108,7 +103,7 @@ class Opd:
 
         return True
 
-    def node_status(self, node: OpdNode) -> OpdNodeStatus:
+    def node_status(self, node: OpdNode) -> bool:
 
         logger.debug(f'getting the status of OPD node {node.name}')
         self._is_valid_and_enabled(node)
@@ -126,7 +121,7 @@ class Opd:
 
         logger.info(f'enabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        self._nodes[node] = OpdNodeStatus.ON
+        self._nodes[node] = True
 
     def disable_node(self, node: OpdNode):
         '''
@@ -140,4 +135,4 @@ class Opd:
 
         logger.info(f'disabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        self._nodes[node] = OpdNodeStatus.OFF
+        self._nodes[node] = False

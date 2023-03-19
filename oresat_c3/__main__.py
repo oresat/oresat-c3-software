@@ -2,16 +2,22 @@ import os
 
 from olaf import olaf_setup, olaf_run, app, rest_api, render_olaf_template
 
-from .resources.beacon import BeaconResource
-from .resources.edl import EdlResource
-from .resources.state import StateResource
 from .rtc import Rtc
 from .opd import Opd
+from .resources.beacon import BeaconResource
+from .resources.edl import EdlResource
+from .resources.opd import OpdResource
+from .resources.state import StateResource
 
 
 @rest_api.app.route('/beacon')
 def edl_template():
     return render_olaf_template('beacon.html', name='Beacon')
+
+
+@rest_api.app.route('/opd')
+def opd_template():
+    return render_olaf_template('opd.html', name='OPD (OreSat Power Domain)')
 
 
 def main():
@@ -27,8 +33,10 @@ def main():
     app.add_resource(StateResource(rtc))
     app.add_resource(BeaconResource())
     app.add_resource(EdlResource(opd, rtc))
+    app.add_resource(OpdResource(opd))
 
     rest_api.add_template(f'{path}/templates/beacon.html')
+    rest_api.add_template(f'{path}/templates/opd.html')
 
     olaf_run()
 

@@ -155,6 +155,8 @@ class BeaconResource(Resource):
 
     def on_start(self):
 
+        self.node.add_sdo_write_callback(0x8000, self._on_write)
+
         self._thread.start()
 
     def on_end(self):
@@ -191,3 +193,6 @@ class BeaconResource(Resource):
 
         logger.debug('beaconing')
         self._socket.sendto(packet, self._DOWNLINK_ADDR)
+
+    def _on_write(self, index: int, subindex: int, value):
+        self._send_beacon()

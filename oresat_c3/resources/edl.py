@@ -35,10 +35,11 @@ class EdlResource(Resource):
 
     def on_start(self):
 
-        self._thread.start()
         hmac_key = self.node.od['Crypto Key'].value
         seq_num = self.node.od['Persistent State']['EDL Sequence Count'].value
         self._edl_server = EdlServer(hmac_key, seq_num)
+
+        self._thread.start()
 
     def on_end(self):
 

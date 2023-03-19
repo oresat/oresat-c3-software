@@ -26,11 +26,13 @@ def main():
 
     args = olaf_setup(f'{path}/data/oresat_c3.dcf')
     mock_args = [i.lower() for i in args.mock_hw]
+    mock_rtc = 'rtc' in mock_args or 'all' in mock_args
+    mock_opd = 'opd' in mock_args or 'all' in mock_args
 
-    rtc = Rtc(mock='rtc' in mock_args or 'all' in mock_args)
-    opd = Opd(mock='opd' in mock_args or 'all' in mock_args)
+    rtc = Rtc(mock=mock_rtc)
+    opd = Opd(mock=mock_opd)
 
-    app.add_resource(StateResource(rtc))
+    app.add_resource(StateResource(rtc))  # add state first
     app.add_resource(BeaconResource())
     app.add_resource(EdlResource(opd, rtc))
     app.add_resource(OpdResource(opd))

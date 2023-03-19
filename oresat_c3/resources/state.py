@@ -19,7 +19,6 @@ class StateResource(Resource):
         self.rtc = rtc
 
         self._boot_time = self.rtc.get_time()
-        self._tx_enabledd = False
 
         self._event = Event()
         self._thread = Thread(target=self._send_beacon_thread)
@@ -27,8 +26,11 @@ class StateResource(Resource):
     def on_start(self):
 
         self._restore_state()
+
         self._p_state_rec = self.node.od['Persistent State']
         self._c3_state_obj = self.node.od['C3 State']
+        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+
         self._thread.start()
 
     def on_end(self):
@@ -39,11 +41,11 @@ class StateResource(Resource):
     def _send_beacon_thread(self):
 
         attempts = 0
-        pre_deply_timeout = self.node.od['Deployment Control']['Timeout']
+        pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
         while not self._event.is_set():
             if self._c3_state_obj.value == C3State.PRE_DEPLOY:
-                if self._boot_time + pre_deply_timeout.value + self.rtc.get_time():
-                    self._tx_enabled = True
+                if self._boot_time + pre_deply_timeout_obj.value + self.rtc.get_time():
+                    self._tx_enabled_obj.value = True
                 else:
                     logger.info('pre-deploy timeout reached')
                     self._c3_state_obj.value = C3State.DEPLOY.value
@@ -64,18 +66,18 @@ class StateResource(Resource):
                     self._c3_state_obj.value = C3State.EDL.value
                 elif self._trigger_reset:
                     hard_reset()
-                elif self._tx_enabled and self._bat_good:
+                elif self._tx_enabled_obj.value and self._bat_good:
                     self._c3_state_obj.value = C3State.BEACON.value
             elif self._c3_state_obj.value == C3State.BEACON:
                 if self._edl.is_enabled:
-                    self._c3_state_obj.value = C3State.EDL
+                    self._c3_state_obj.value = C3State.EDL.value
                 elif self._trigger_reset:
                     hard_reset()
-                elif self._tx_enabled and not self._bat_good:
+                elif self._tx_enabled_obj.value and not self._bat_good:
                     self._c3_state_obj.value = C3State.STANDBY.value
             elif self._c3_state_obj.value == C3State.EDL:
                 if not self._edl.is_enabled:
-                    if self._tx_enabled and self._bat_good:
+                    if self._tx_enabled_obj.value and self._bat_good:
                         self._c3_state_obj.value = C3State.BEACON.value
                     else:
                         self._c3_state_obj.value = C3State.STANDBY.value

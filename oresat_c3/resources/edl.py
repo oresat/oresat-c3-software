@@ -39,6 +39,8 @@ class EdlResource(Resource):
         seq_num = self.node.od['Persistent State']['EDL Sequence Count'].value
         self._edl_server = EdlServer(hmac_key, seq_num)
 
+        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+        self._last_tx_enabled_obj = self.node.od['Persistent State']['Last TX Enable']
         self._thread.start()
 
     def on_end(self):
@@ -85,12 +87,14 @@ class EdlResource(Resource):
         ret = (0).to_bytes(1, 'little')
 
         if code == EdlCode.TX_CTRL:
-            logger.info('enabling OPD system')
             if args == b'\x00':
-                self.node.od['Persistent State']['Last TX Enable'].value = 0
+                logger.info('disabling Tx')
+                self._tx_enabled_obj.value = False
             else:
-                self.node.od['Persistent State']['Last TX Enable'].value = int(time())
-        if code == EdlCode.C3_SOFTRESET:
+                logger.info('enabling Tx')
+                self._tx_enabled_obj.value = True
+                self._last_tx_enabled_obj.value = int(time())
+        elif code == EdlCode.C3_SOFTRESET:
             soft_reset()
         elif code == EdlCode.C3_HARDRESET:
             hard_reset()

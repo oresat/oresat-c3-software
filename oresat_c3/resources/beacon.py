@@ -1,8 +1,9 @@
 import socket
 from threading import Thread, Event
 
-from olaf import Resource, logger
+from olaf import Resource, logger, TimerLoop
 
+from .. import C3State
 from ..ax25 import generate_ax25_packet
 
 BEACON_FIELDS = [
@@ -150,25 +151,32 @@ class BeaconResource(Resource):
         logger.info(f'Beacon socket: {self._DOWNLINK_ADDR}')
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
 
-        self._event = Event()
-        self._thread = Thread(target=self._send_beacon_thread)
-
     def on_start(self):
+
+        # objects
+        self._c3_state_obj = self.node.od['C3 State']
+        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+
+        # contants
+        self._aprs_dest = self.node.od['APRS']['Dest Callsign'].value
+        self._aprs_src = self.node.od['APRS']['Src Callsign'].value
 
         self.node.add_sdo_write_callback(0x8000, self._on_write)
 
-        self._thread.start()
+        interval_obj = self.node.od['TX Control']['Beacon Interval']
+        self._timer_loop = TimerLoop('beacon', self._send_beacon_thread, interval_obj)
+        self._timer_loop.start()
 
     def on_end(self):
 
-        self._event.set()
-        self._thread.join()
+        self._timer_loop.stop()
 
-    def _send_beacon_thread(self):
+    def _send_beacon_thread(self) -> bool:
 
-        while not self._event.is_set():
+        if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
             self._send_beacon()
-            self._event.wait(self.node.od['TX Control']['Beacon Interval'].value / 1000)
+
+        return True
 
     def _send_beacon(self):
 
@@ -181,9 +189,9 @@ class BeaconResource(Resource):
             payload += obj.encode_raw(obj.value)
 
         packet = generate_ax25_packet(
-            dest=self.node.od['APRS']['Dest Callsign'].value,
+            dest=self._aprs_dest,
             dest_ssid=0,
-            src=self.node.od['APRS']['Src Callsign'].value,
+            src=self._aprs_src,
             src_ssid=0,
             control=0,
             pid=0,
@@ -195,4 +203,5 @@ class BeaconResource(Resource):
         self._socket.sendto(packet, self._DOWNLINK_ADDR)
 
     def _on_write(self, index: int, subindex: int, value):
+
         self._send_beacon()

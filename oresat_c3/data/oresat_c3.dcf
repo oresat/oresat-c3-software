@@ -10487,19 +10487,27 @@ DefaultValue=3
 [6003]
 ParameterName=TX Control
 ObjectType=0x09
-SubNumber=3
+SubNumber=4
 
 [6003sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x02
+DefaultValue=0x03
+
+;Transmit enable flag
+[6003sub1]
+ParameterName=Enabled
+ObjectType=0x07
+DataType=0x0001
+AccessType=ro
+DefaultValue=1
 
 ;Transmit timeout in seconds.
 ;
 ;Determines how long the device will maintain TX enabled after receiving an enable command before disabling it.
-[6003sub1]
+[6003sub2]
 ParameterName=Timeout
 ObjectType=0x07
 DataType=0x0007
@@ -10507,7 +10515,7 @@ AccessType=rw
 DefaultValue=1209600
 
 ;Beacon interval in milliseconds.
-[6003sub2]
+[6003sub3]
 ParameterName=Beacon Interval
 ObjectType=0x07
 DataType=0x0007

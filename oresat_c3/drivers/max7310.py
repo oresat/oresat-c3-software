@@ -2,7 +2,7 @@
 
 
 from enum import IntEnum
-from typing import namedtuple
+from dataclasses import dataclass
 
 from smbus2 import SMBus, i2c_msg
 
@@ -26,7 +26,20 @@ class Max7310Error(Exception):
     '''Error with Max7310'''
 
 
-Max7310Status = namedtuple('Max7310Status', ['input', 'opd', 'pol', 'mode', 'timeout'])
+@dataclass
+class Max7310Config:
+    odr: int = 0
+    pol: int = 0
+    iomode: int = 0
+    timeout: int = 0
+
+
+@dataclass
+class Max7310Status:
+    opr: int = 0
+    pol: int = 0
+    mode: int = 0
+    timeout: int = 0
 
 
 class Max7310:
@@ -66,6 +79,24 @@ class Max7310:
         if addr not in self.ADDRESSES:
             raise Max7310Error(f'addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} and '
                                f'0x{self.ADDR_MAX:X}')
+
+    def start(self, addr: int, config: Max7310Config):
+
+        self._i2c_write_reg(addr, Max7310Reg.ODR, config.odr)
+        self._i2c_write_reg(addr, Max7310Reg.POL, config.pol)
+        self._i2c_write_reg(addr, Max7310Reg.MODE, config.iomode)
+        self._i2c_write_reg(addr, Max7310Reg.TIMEOUT, config.timeout)
+
+    def stop(self, addr: int):
+
+        # reset to input
+        self._i2c_write_reg(addr, Max7310Reg.MODE, 0xFF)
+        # reset reg to 0
+        self._i2c_write_reg(addr, Max7310Reg.ODR, 0x00)
+        # reset polarity
+        self._i2c_write_reg(addr, Max7310Reg.POL, 0xF0)
+        # reset timeout
+        self._i2c_write_reg(addr, Max7310Reg.TIMEOUT, 0x01)
 
     def set_pin(self, addr: int, pin_num: int):
 

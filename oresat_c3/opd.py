@@ -4,8 +4,11 @@ Everything todo with the OPD (OreSat Power Domain) functionality.
 
 from enum import IntEnum
 from time import sleep
+from dataclasses import dataclass
 
 from olaf import logger
+
+from .drivers.max7310 import Max7310, Max7310Status, Max7310Config
 
 
 class OpdError(Exception):
@@ -48,32 +51,66 @@ class OpdNode(IntEnum):
         return self.value.to_bytes(1, 'little')
 
 
+class OpdPin(IntEnum):
+    SCL = 0
+    SDA = 1
+    FAULT = 2
+    EN = 3
+    CB_RESET = 4
+    BOOT0 = 5
+    LINUX_BOOT = 6
+    PIN7 = 7
+
+
+@dataclass
+class OpdNodeStatus:
+    max_status: Max7310Status = Max7310Status()
+    config: Max7310Config = Max7310Config(
+        odr=1 << OpdPin.LINUX_BOOT.value,
+        pol=1 << OpdPin.FAULT.value,
+        iomode=1 << OpdPin.SCL.value | 1 << OpdPin.SDA.value | 1 << OpdPin.FAULT.value,
+        timeout=1
+    )
+    valid: bool = False
+    enabled: bool = False
+
+
 class Opd:
     '''
     OreSat Power Domain.
     '''
 
+    _RESET_DELAY_S = 0.25
+
     def __init__(self, mock: bool = False):
 
         if not mock:
-            raise NotImplementedError
+            self._max7310 = Max7310(1)
         else:
+            self._max7310 = None
             logger.warning('mocking OPD')
 
-        self.enable_system()
-
-    def enable_system(self):
-        '''Enable the OPD subsystem.'''
-
-        logger.info('enabling OPD subsystem')
-        self._nodes = {i: False for i in OpdNode}  # reset
+        self._statuses = {i: OpdNodeStatus() for i in OpdNode}
         self._enabled = True
 
-    def disable_system(self):
+    def start(self):
+        '''Enable the OPD subsystem.'''
+
+        logger.info('starting OPD subsystem')
+        self._enabled = True
+        self.scan(True)
+
+    def stop(self):
         '''Disable the OPD subsystem.'''
 
-        logger.info('disabling OPD subsystem')
+        logger.info('stopping OPD subsystem')
         self._enabled = False
+
+        for node in list(OpdNode):
+            if self._max7310:
+                self._max7310.stop(node.value)
+            self._statuses[node].valid = False
+            self._statuses[node].enabled = False
 
     @property
     def is_system_enabled(self) -> bool:
@@ -92,20 +129,6 @@ class Opd:
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
 
-    def reset_node(self, node: OpdNode):
-        '''
-        Reset a node on the OPD (disable and then re-enable it).
-
-        Parameters
-        ----------
-        node: OpdNode
-            The OPD node id to enable.
-        '''
-
-        self.disable(node)
-        sleep(0.01)
-        self.enable(node)
-
     def probe_node(self, node: OpdNode, restart: bool):
         '''
         Probe the OPD for a node (see if it is there).
@@ -121,12 +144,36 @@ class Opd:
         logger.info(f'probing OPD node {node.name}')
         self._is_valid_and_enabled(node)
 
-        if restart:
-            self.reset_node(node)
+        # TODO I2c mater receive ??
+        response = True
 
-        return True
+        if response:
+            status = self._statuses[node]
+            if self._max7310 and (not status.valid or restart):
+                self._max7310.stop(node.value)
+                self._max7310.start(node.value, status.config)
+            self._statuses[node].valid = True
+        else:
+            if self._max7310:
+                self._max7310.stop(node.value)
+            self._statuses[node].valid = False
 
-    def node_status(self, node: OpdNode) -> bool:
+        return self._statuses[node].valid
+
+    def scan(self, restart: bool):
+        '''
+        Scan / probe for all nodes.
+
+        Parameters
+        ----------
+        restart: bool
+            Restart the node if found.
+        '''
+
+        for node in list(OpdNode):
+            self.probe_node(node, restart)
+
+    def node_status(self, node: OpdNode) -> OpdNodeStatus:
         '''
         Get the status of a node.
 
@@ -137,15 +184,23 @@ class Opd:
 
         Returns
         -------
-        bool
-            The power status of a node.
+        OpdNodeStatus
+            The status of a node.
         '''
 
         logger.debug(f'getting the status of OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        return self._nodes[node]
 
-    def enable_node(self, node: OpdNode):
+        if self._max7310:
+            max_status = self._max7310.status(node.value)
+        else:
+            max_status = Max7310Status()
+
+        self._statuses[node].max_status = max_status
+
+        return self._statuses[node]
+
+    def enable(self, node: OpdNode):
         '''
         Enable an OPD node.
 
@@ -157,9 +212,13 @@ class Opd:
 
         logger.info(f'enabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        self._nodes[node] = True
 
-    def disable_node(self, node: OpdNode):
+        if self._max7310:
+            self._max7310.set_pin(node.value, OpdPin.EN)
+
+        self._statuses[node].enabled = True
+
+    def disable(self, node: OpdNode):
         '''
         Disable an OPD node.
 
@@ -171,4 +230,33 @@ class Opd:
 
         logger.info(f'disabling OPD node {node.name}')
         self._is_valid_and_enabled(node)
-        self._nodes[node] = False
+
+        if self._max7310:
+            self._max7310.clear_pin(node.value, OpdPin.EN)
+
+        self._statuses[node].enabled = False
+
+    def reset(self, node: OpdNode):
+        '''
+        Reset a node on the OPD (disable and then re-enable it).
+
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+        '''
+
+        logger.info(f'reseting OPD node {node.name}')
+        self._is_valid_and_enabled(node)
+
+        if self._max7310:
+            self._max7310.set_pin(node.value, OpdPin.CB_RESET)
+
+        self._statuses[node].enabled = False
+
+        sleep(self._RESET_DELAY_S)
+
+        if self._max7310:
+            self._max7310.clear_pin(node.value, OpdPin.CB_RESET)
+
+        self._statuses[node].enabled = True

@@ -109,10 +109,10 @@ class EdlResource(Resource):
             factory_reset()
         elif code == EdlCode.OPD_SYSENABLE:
             logger.info('enabling OPD system')
-            self._opd.enable_system()
+            self._opd.start()
         elif code == EdlCode.OPD_SYSDISABLE:
             logger.info('disabling OPD system')
-            self._opd.disable_system()
+            self._opd.stop()
         elif code == EdlCode.OPD_SCAN:
             node = OpdNode.from_bytes(args[0])
             logger.info(f'scaning for OPD node {node}')
@@ -132,7 +132,7 @@ class EdlResource(Resource):
         elif code == EdlCode.OPD_STATUS:
             node = OpdNode.from_bytes(args[0])
             logger.info(f'getting the status for OPD node {node}')
-            ret = self._opd.node_status(node).to_bytes()
+            # ret = self._opd.node_status(node)
         elif code == EdlCode.TIME_SYNC:
             logger.info('sending time sync TPDO')
             self.node.send_tpdo(0)

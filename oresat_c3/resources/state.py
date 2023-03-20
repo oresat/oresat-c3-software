@@ -35,7 +35,7 @@ class StateResource(Resource):
 
         self._restore_state()
 
-        self._attempts_obj = self.node.od['Persistent State']['Attempts']
+        self._attempts_obj = self.node.od['Deployment Control']['Attempts']
         self._deploy_obj = self.node.od['Persistent State']['Deployed']
         self._c3_state_obj = self.node.od['C3 State']
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']

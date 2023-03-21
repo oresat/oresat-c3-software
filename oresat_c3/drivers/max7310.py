@@ -1,45 +1,58 @@
-''''MAX7310 GPIO Expander driver'''
+''''
+MAX7310 GPIO Expander driver
 
+The MAX7310 is 2-wire-interfaced 8-bit I/O port expander with a reset.
+'''
 
 from enum import IntEnum
-from dataclasses import dataclass
 
 from smbus2 import SMBus, i2c_msg
 
 
 class Max7310Reg(IntEnum):
-    '''MAX7310 register addresses'''
+    '''
+    MAX7310 register addresses
 
-    INPUT = 0x00
-    '''Input port register. Read byte.'''
-    ODR = 0x01
-    '''Output port register. Read/write byte.'''
-    POL = 0x02
-    '''Polarity inversion register. Read/write byte.'''
-    MODE = 0x03
-    '''Configuration register. Read/write byte.'''
+    Each register addresses is uint8.
+
+    For all registers, except TIMEOUT, each bit in the register value corresponds to a port
+    (e.g.: The LSB bit is for port 0, the MSB bit is for port 7).
+    '''
+
+    INPUT_PORT = 0x00
+    '''
+    Input port register. Read byte (all writes are ignored).
+
+    Read to incomming logic level of all ports.
+    '''
+    OUTPUT_PORT = 0x01
+    '''
+    Output port register. Read/write byte.
+
+    Set a bit to enable the output logic level as defined by the CONFIGURATION register.
+    '''
+    POLARITY_INVERSION = 0x02
+    '''
+    Polarity inversion register. Read/write byte.
+
+    Set a bit to invert the corresponding pin polarity.
+    '''
+    CONFIGURATION = 0x03
+    '''
+    Configuration register. Read/write byte.
+
+    Set bit to set corresponding pin to a input or clear bit to set corresponding pin to an output.
+    '''
     TIMEOUT = 0x04
-    '''Timeout register. Read/write byte.'''
+    '''
+    Timeout register. Read/write byte.
+
+    Set the LSB bit to enable the SDA reset timeout or clear that bit to disable the timeout.
+    '''
 
 
 class Max7310Error(Exception):
     '''Error with Max7310'''
-
-
-@dataclass
-class Max7310Config:
-    odr: int = 0
-    pol: int = 0
-    iomode: int = 0
-    timeout: int = 0
-
-
-@dataclass
-class Max7310Status:
-    opr: int = 0
-    pol: int = 0
-    mode: int = 0
-    timeout: int = 0
 
 
 class Max7310:
@@ -49,77 +62,158 @@ class Max7310:
     ADDR_MAX = 64
     ADDRESSES = list(range(ADDR_MIN, ADDR_MAX + 1))
 
-    def __init__(self, bus_num: int):
+    def __init__(self, bus_num: int, addr: int, mock: bool = False):
 
+        if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
+            raise Max7310Error(f'self._addr 0x{self._addr:X} is not between 0x{self.ADDR_MIN:X} '
+                               f'and 0x{self.ADDR_MAX:X}')
+
+        self._mock = mock
+        self._mock_regs = {1: 0x00, 2: 0xF0, 3: 0xFF, 4: 0x01}
         self._bus_num = bus_num
+        self._addr = addr
+        self._enabled = False
 
-    def _i2c_read_reg(self, addr: int, reg: Max7310Reg) -> int:
+    def _i2c_read_reg(self, reg: Max7310Reg) -> int:
 
-        write = i2c_msg.write(addr, bytes([reg.value]))
-        read = i2c_msg.read(addr, 1)
+        if self._mock:
+            result = self._mock_regs[reg]
+        else:
+            write = i2c_msg.write(self._addr, bytes([reg.value]))
+            read = i2c_msg.read(self._addr, 1)
 
-        with SMBus(self._bus_num) as bus:
-            result = bus.i2c_rdwr(write, read)
+            with SMBus(self._bus_num) as bus:
+                result = bus.i2c_rdwr(write, read)
 
         return int.from_bytes(result, 'little')
 
-    def _i2c_write_reg(self, addr: int, reg: Max7310Reg, data: int):
+    def _i2c_write_reg(self, reg: Max7310Reg, data: int):
 
-        buf = bytes([reg.value])
-        buf += data
-        write = i2c_msg.write(addr, buf)
+        if self._mock:
+            self._mock_regs[reg] = data
+        else:
+            buf = bytes([reg.value])
+            buf += data
+            write = i2c_msg.write(self._addr, buf)
 
-        with SMBus(self._bus_num) as bus:
-            bus.i2c_rdwr(write)
+            with SMBus(self._bus_num) as bus:
+                bus.i2c_rdwr(write)
 
-    def _valid_pin(self, addr: int, pin_num: int):
+    def _valid_pin(self, pin_num: int):
 
         if pin_num <= 0 or pin_num > 8:
             raise Max7310Error(f'invalid pin_num: {pin_num}, must be between 0 and 7')
-        if addr not in self.ADDRESSES:
-            raise Max7310Error(f'addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} and '
-                               f'0x{self.ADDR_MAX:X}')
 
-    def start(self, addr: int, config: Max7310Config):
+    def configure(self, output_port: int, polarity_inversion: int, configuration: int,
+                  timeout: int):
+        '''
+        Configure the MAX7310 registers.
 
-        self._i2c_write_reg(addr, Max7310Reg.ODR, config.odr)
-        self._i2c_write_reg(addr, Max7310Reg.POL, config.pol)
-        self._i2c_write_reg(addr, Max7310Reg.MODE, config.iomode)
-        self._i2c_write_reg(addr, Max7310Reg.TIMEOUT, config.timeout)
+        Parameters
+        ----------
+        output_port: int
+            The value to write to the output port register.
+        polarity_inversion: int
+            The value to write to the polarity inversion register.
+        configuration: int
+            The value to write to the configuration register.
+        timeout: : int
+            The value to write to the timeout register.
+        '''
 
-    def stop(self, addr: int):
+        self._i2c_write_reg(self._addr, Max7310Reg.OUTPUT_PORT, output_port)
+        self._i2c_write_reg(self._addr, Max7310Reg.POLARITY_INVERSION, polarity_inversion)
+        self._i2c_write_reg(self._addr, Max7310Reg.CONFIGURATION, configuration)
+        self._i2c_write_reg(self._addr, Max7310Reg.TIMEOUT, timeout)
 
-        # reset to input
-        self._i2c_write_reg(addr, Max7310Reg.MODE, 0xFF)
-        # reset reg to 0
-        self._i2c_write_reg(addr, Max7310Reg.ODR, 0x00)
-        # reset polarity
-        self._i2c_write_reg(addr, Max7310Reg.POL, 0xF0)
-        # reset timeout
-        self._i2c_write_reg(addr, Max7310Reg.TIMEOUT, 0x01)
+        self._enabled = True
 
-    def set_pin(self, addr: int, pin_num: int):
+    def reset(self):
+        '''Reset the registers of the MAX7310 back to the default values.'''
 
-        self._valid_pin(addr, pin_num)
+        # reset to defaults
+        self._i2c_write_reg(self._addr, Max7310Reg.CONFIGURATION, 0xFF)
+        self._i2c_write_reg(self._addr, Max7310Reg.OUTPUT_PORT, 0x00)
+        self._i2c_write_reg(self._addr, Max7310Reg.POLARITY_INVERSION, 0xF0)
+        self._i2c_write_reg(self._addr, Max7310Reg.TIMEOUT, 0x01)
 
-        result = self._i2c_read_reg(addr, Max7310Reg.ODR)
+        self._enabled = False
+
+    def set_pin(self, pin_num: int):
+        '''
+        Set a pin value.
+
+        Parameters
+        ----------
+        pin_num: int
+            The pin / port to set.
+        '''
+
+        self._valid_pin(self._addr, pin_num)
+
+        result = self._i2c_read_reg(self._addr, Max7310Reg.OUTPUT_PORT)
         result |= (1 << pin_num)
-        self._i2c_write_reg(addr, Max7310Reg.ODR, result)
+        self._i2c_write_reg(self._addr, Max7310Reg.OUTPUT_PORT, result)
 
-    def clear_pin(self, addr: int, pin_num: int):
+    def clear_pin(self, pin_num: int):
+        '''
+        Clear a pin value.
 
-        self._valid_pin(addr, pin_num)
+        Parameters
+        ----------
+        pin_num: int
+            The pin / port to clear.
+        '''
 
-        result = self._i2c_read_reg(addr, Max7310Reg.ODR)
+        self._valid_pin(self._addr, pin_num)
+
+        result = self._i2c_read_reg(self._addr, Max7310Reg.OUTPUT_PORT)
         result &= ~(1 << pin_num)
-        self._i2c_write_reg(addr, Max7310Reg.ODR, result)
+        self._i2c_write_reg(self._addr, Max7310Reg.OUTPUT_PORT, result)
 
-    def status(self, addr) -> Max7310Status:
+    @property
+    def input_port(self) -> int:
+        '''int: Value from the input port register.'''
 
-        return Max7310Status(
-            self._i2c_read_reg(addr, Max7310Reg.INPUT.value),
-            self._i2c_read_reg(addr, Max7310Reg.ODR.value),
-            self._i2c_read_reg(addr, Max7310Reg.POL.value),
-            self._i2c_read_reg(addr, Max7310Reg.MODE.value),
-            self._i2c_read_reg(addr, Max7310Reg.TIMEOUT.value),
-        )
+        return self._i2c_read_reg(self._addr, Max7310Reg.INPUT_PORT.value)
+
+    @property
+    def output_port(self) -> int:
+        '''int: Value from the output port register.'''
+
+        return self._i2c_read_reg(self._addr, Max7310Reg.OUTPUT_PORT.value)
+
+    @property
+    def polarity_inversion(self) -> int:
+        '''int: Value from the polarity inversion register.'''
+
+        return self._i2c_read_reg(self._addr, Max7310Reg.POLARITY_INVERSION.value)
+
+    @property
+    def configuration(self) -> int:
+        '''int: Value from the configuration register.'''
+
+        return self._i2c_read_reg(self._addr, Max7310Reg.CONFIGURATION.value)
+
+    @property
+    def timeout(self) -> int:
+        '''int: Value from the timeout register.'''
+
+        return self._i2c_read_reg(self._addr, Max7310Reg.TIMEOUT.value)
+
+    @property
+    def is_enabled(self) -> bool:
+        '''bool: Is the max7310 enabled.'''
+
+        return self._enabled
+
+    @property
+    def is_valid(self) -> bool:
+        '''bool: Is the max7310 valid.'''
+
+        try:
+            self._i2c_read_reg(self._addr, Max7310Reg.INPUT_PORT.value)
+        except Exception:
+            return False
+
+        return True

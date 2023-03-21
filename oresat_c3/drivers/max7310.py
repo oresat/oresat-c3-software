@@ -69,7 +69,7 @@ class Max7310:
                                f'and 0x{self.ADDR_MAX:X}')
 
         self._mock = mock
-        self._mock_regs = {1: 0x00, 2: 0xF0, 3: 0xFF, 4: 0x01}
+        self._mock_regs = [0x00, 0x00, 0xF0, 0xFF, 0x01]
         self._bus_num = bus_num
         self._addr = addr
         self._enabled = False
@@ -141,7 +141,7 @@ class Max7310:
 
     def set_pin(self, pin_num: int):
         '''
-        Set a pin value.
+        Set a pin / port.
 
         Parameters
         ----------
@@ -157,7 +157,7 @@ class Max7310:
 
     def clear_pin(self, pin_num: int):
         '''
-        Clear a pin value.
+        Clear a pin / port.
 
         Parameters
         ----------

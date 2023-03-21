@@ -2,8 +2,8 @@ import os
 
 from olaf import olaf_setup, olaf_run, app, rest_api, render_olaf_template
 
-from .rtc import Rtc
-from .opd import Opd
+from .subsystems.rtc import Rtc
+from .subsystems.opd import Opd
 from .resources.beacon import BeaconResource
 from .resources.edl import EdlResource
 from .resources.opd import OpdResource

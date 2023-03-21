@@ -1,6 +1,5 @@
 ''''
 Beacon Resource
-===============
 
 Handles the beaconing.
 '''
@@ -10,7 +9,7 @@ import socket
 from olaf import Resource, logger, TimerLoop
 
 from .. import C3State
-from ..ax25 import generate_ax25_packet
+from ..protocals.ax25 import generate_ax25_packet
 
 BEACON_FIELDS = [
     # C3

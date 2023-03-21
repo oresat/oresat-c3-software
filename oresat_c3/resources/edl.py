@@ -1,6 +1,5 @@
 ''''
 EDL Resource
-============
 
 Handle recing EDL command and sending replys.
 '''
@@ -11,9 +10,9 @@ from threading import Thread, Event
 
 from olaf import Resource, logger
 
-from ..opd import Opd, OpdNode
-from ..edl import EdlServer, EdlError, EdlCode
-from ..rtc import Rtc
+from ..protocals.edl import EdlServer, EdlError, EdlCode
+from ..subsystems.opd import Opd, OpdNode
+from ..subsystems.rtc import Rtc
 from . import soft_reset, hard_reset, factory_reset
 
 

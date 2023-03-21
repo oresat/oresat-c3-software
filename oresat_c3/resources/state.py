@@ -1,6 +1,5 @@
 '''
 State Resource
-==============
 
 This handles the main C3 state machine.
 '''
@@ -10,8 +9,8 @@ from threading import Thread, Event
 from olaf import Resource, logger
 
 from .. import C3State
-from ..burnwire import deploy_helical, deploy_turnstile
-from ..rtc import Rtc
+from ..subsystems.burnwire import deploy_helical, deploy_turnstile
+from ..subsystems.rtc import Rtc
 from . import hard_reset
 
 

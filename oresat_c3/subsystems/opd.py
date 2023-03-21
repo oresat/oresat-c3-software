@@ -9,7 +9,7 @@ from time import sleep
 
 from olaf import logger
 
-from .drivers.max7310 import Max7310
+from ..drivers.max7310 import Max7310
 
 
 class OpdError(Exception):

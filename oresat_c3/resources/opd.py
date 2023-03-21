@@ -1,17 +1,14 @@
 ''''
 OPD (OreSat Power Domain) Resource
-==================================
 
-Mostly for testing.
-
-Handle turnin card on and off and keeps track of cards.
+Handle powering OreSat cards on and off.
 '''
 
 import json
 
 from olaf import Resource
 
-from ..opd import Opd, OpdNode
+from ..subsystems.opd import Opd, OpdNode
 
 
 class OpdResource(Resource):

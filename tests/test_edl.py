@@ -1,6 +1,6 @@
 import unittest
 
-from oresat_c3.edl import EdlServer, EdlClient
+from oresat_c3.protocals.edl import EdlServer, EdlClient
 
 
 class TestEdl(unittest.TestCase):

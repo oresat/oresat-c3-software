@@ -24,7 +24,7 @@ Packet Stucture
 EDL Codes
 *********
 
-.. autoclass:: oresat_c3.resources.edl.EdlCode
+.. autoclass:: oresat_c3.protocals.edl.EdlCode
    :members:
    :undoc-members:
    :member-order: bysource

@@ -1,7 +1,7 @@
 OreSat Power Domain
 ===================
 
-.. autoclass:: oresat_c3.opd.OpdNode
+.. autoclass:: oresat_c3.subsystems.opd.OpdNode
    :members:
    :undoc-members:
    :member-order: bysource

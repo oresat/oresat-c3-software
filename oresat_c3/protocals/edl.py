@@ -334,12 +334,12 @@ class EdlBase:
         return self._hmac_key
 
     @hmac_key.setter
-    def hmac_key(self, value: bytes):
+    def hmac_key(self, value: bytes | bytearray):
 
-        if not isinstance(value, bytes) and not isinstance(value, bytes):
+        if not isinstance(value, bytes) and not isinstance(value, bytearray):
             raise EdlError('invalid HMAC key data type')
 
-        return self._hmac_key
+        self._hmac_key = bytes(value)
 
 
 class EdlServer(EdlBase):

@@ -45,6 +45,7 @@ class Rv3082cvReg(IntEnum):
 
     @property
     def size(self) -> int:
+        '''int: Get ths size of value in register in bytes'''
 
         r = 1
 
@@ -56,8 +57,8 @@ class Rv3082cvReg(IntEnum):
 
         return r
 
-    @property
     def to_bytes(self) -> bytes:
+        '''bytes: Get the register value as a bytes'''
 
         return self.value.to_bytes(1, 'little')
 
@@ -72,15 +73,14 @@ class Rv3082cv:
         self._mock = mock
         self._mock_regs = bytearray([0] * 0x29)
         self._bus_num = bus_num
-        self._enabled = False
 
-    def _i2c_read_reg(self, reg: Rv3082cvReg, size: int) -> int:
+    def _i2c_read_reg(self, reg: Rv3082cvReg) -> int:
 
         if self._mock:
-            result = self._mock_regs[reg:reg + reg.size]
+            result = self._mock_regs[reg.value:reg.value + reg.size]
         else:
-            write = i2c_msg.write(self.ADDR, bytes([reg.value]))
-            read = i2c_msg.read(self.ADDR, size)
+            write = i2c_msg.write(self.ADDR, reg.to_bytes())
+            read = i2c_msg.read(self.ADDR, reg.size)
 
             with SMBus(self._bus_num) as bus:
                 result = bus.i2c_rdwr(write, read)
@@ -90,10 +90,10 @@ class Rv3082cv:
     def _i2c_write_reg(self, reg: Rv3082cvReg, data: int):
 
         if self._mock:
-            self._mock_regs[reg:reg + len(data) - 1] = data
+            self._mock_regs[reg.value:reg.value + len(data) - 1] = data
         else:
-            buf = data.to_bytes(reg.size, 'little')
-            buf += data
+            buf = reg.value
+            buf += data.to_bytes(reg.size, 'little')
             write = i2c_msg.write(self.ADDR, buf)
 
             with SMBus(self._bus_num) as bus:

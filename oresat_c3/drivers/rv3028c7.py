@@ -1,7 +1,7 @@
 '''
-RV-3082-CV RTC driver
+RV-3082-C7 RTC driver
 
-The RV-3082-CV is an extreme low power real-time clock module with I2C-bus interface driver.
+The RV-3082-C7 is an extreme low power real-time clock module with I2C-bus interface driver.
 '''
 
 from enum import IntEnum
@@ -9,7 +9,7 @@ from enum import IntEnum
 from smbus2 import SMBus, i2c_msg
 
 
-class Rv3082cvReg(IntEnum):
+class Rv3082c7Reg(IntEnum):
 
     SECONDS = 0x00
     MINUTES = 0x01
@@ -49,22 +49,21 @@ class Rv3082cvReg(IntEnum):
 
         r = 1
 
-        if self.value in [Rv3082cvReg.USER_RAM, Rv3082cvReg.PASSWORD]:
+        if self.value in [Rv3082c7Reg.USER_RAM, Rv3082c7Reg.PASSWORD]:
             r = 4
-        elif self.value in [Rv3082cvReg.TIMER_VALUE, Rv3082cvReg.TIMER_STATUS,
-                            Rv3082cvReg.CONTROL, Rv3082cvReg.USER_RAM]:
+        elif self.value in [Rv3082c7Reg.TIMER_VALUE, Rv3082c7Reg.TIMER_STATUS,
+                            Rv3082c7Reg.CONTROL, Rv3082c7Reg.USER_RAM]:
             r = 2
 
         return r
 
-    def to_bytes(self) -> bytes:
-        '''bytes: Get the register value as a bytes'''
 
-        return self.value.to_bytes(1, 'little')
+class Rv3082c7Error(Exception):
+    '''Error with `Rv7310C7`'''
 
 
-class Rv3082cv:
-    ''''RV-3082-CV RTC driver'''
+class Rv3082c7:
+    ''''RV-3082-C7 RTC driver'''
 
     ADDR = 0x52
 
@@ -74,38 +73,51 @@ class Rv3082cv:
         self._mock_regs = bytearray([0] * 0x29)
         self._bus_num = bus_num
 
-    def _i2c_read_reg(self, reg: Rv3082cvReg) -> int:
+    def _i2c_read_reg(self, reg: Rv3082c7Reg) -> int:
 
         if self._mock:
-            result = self._mock_regs[reg.value:reg.value + reg.size]
+            raw = self._mock_regs[reg.value:reg.value + reg.size]
         else:
-            write = i2c_msg.write(self.ADDR, reg.to_bytes())
+            write = i2c_msg.write(self.ADDR, [reg.value])
             read = i2c_msg.read(self.ADDR, reg.size)
 
-            with SMBus(self._bus_num) as bus:
-                result = bus.i2c_rdwr(write, read)
+            try:
+                with SMBus(self._bus_num) as bus:
+                    bus.i2c_rdwr(write, read)
+            except OSError:
+                raise Rv3082c7Error(f'failed to read from reg {reg}')
 
-        return int.from_bytes(result, 'little')
+            raw = bytes(read.buf)
 
-    def _i2c_write_reg(self, reg: Rv3082cvReg, data: int):
+        return int.from_bytes(raw, 'little')
 
+    def _i2c_write_reg(self, reg: Rv3082c7Reg, value: int):
+
+        raw = value.to_bytes(reg.size, 'little')
         if self._mock:
-            self._mock_regs[reg.value:reg.value + len(data) - 1] = data
+            self._mock_regs[reg.value:reg.value + reg.size - 1] = raw
         else:
-            buf = reg.value
-            buf += data.to_bytes(reg.size, 'little')
+            buf = reg.value.to_bytes(1, 'little') + raw
             write = i2c_msg.write(self.ADDR, buf)
+            read = i2c_msg.read(self.ADDR, reg.size)
 
-            with SMBus(self._bus_num) as bus:
-                bus.i2c_rdwr(write)
+            try:
+                with SMBus(self._bus_num) as bus:
+                    bus.i2c_rdwr(write, read)
+            except OSError:
+                raise Rv3082c7Error(f'failed to write from reg {reg}')
+
+            if bytes(read) != buf:
+                raise Rv3082c7Error(f'read after write did not match; wrote {buf}, read '
+                                    f'back {bytes(read)}')
 
     @property
     def unix_time(self) -> float:
         '''float: unix time in seconds'''
 
-        return float(self._i2c_read_reg(Rv3082cvReg.UNIX_TIME))
+        return float(self._i2c_read_reg(Rv3082c7Reg.UNIX_TIME))
 
     @unix_time.setter
     def unix_time(self, value: int | float):
 
-        self._i2c_write_reg(Rv3082cvReg.UNIX_TIME, int(value))
+        self._i2c_write_reg(Rv3082c7Reg.UNIX_TIME, int(value))

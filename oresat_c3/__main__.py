@@ -30,7 +30,7 @@ def main():
     mock_opd = 'opd' in mock_args or 'all' in mock_args
 
     rtc = Rtc(mock=mock_rtc)
-    opd = Opd(mock=mock_opd)
+    opd = Opd(20, mock=mock_opd)
 
     app.add_resource(StateResource(rtc))  # add state first
     app.add_resource(BeaconResource())

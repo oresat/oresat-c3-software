@@ -30,12 +30,12 @@ class OpdResource(Resource):
         if subindex == 0x1:
             value = self.opd.is_system_enabled
         elif subindex == 0x2:
-            raw = {node.value: self.opd.node_status(node).enabled for node in list(OpdNode)}
+            raw = {node.value: self.opd.status(node).value for node in list(OpdNode)}
             value = json.dumps(raw)
         elif subindex == 0x3:
             value = self.cur_node.value
         elif subindex == 0x4:
-            value = self.opd.node_status(self.cur_node).enabled
+            value = self.opd.status(self.cur_node).value
 
         return value
 
@@ -49,7 +49,7 @@ class OpdResource(Resource):
         elif subindex == 0x3:
             self.cur_node = OpdNode(value)
         elif subindex == 0x4:
-            if value is True:
+            if value == 1:
                 self.opd.enable(self.cur_node)
-            else:
+            elif value == 0:
                 self.opd.disable(self.cur_node)

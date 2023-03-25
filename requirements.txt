@@ -2,6 +2,7 @@ bitstring
 eds-utils
 flake8
 oresat-olaf
-sphinx
+smbus2
 spacepackets
+sphinx
 sphinx-rtd-theme

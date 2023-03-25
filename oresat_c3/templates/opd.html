@@ -17,7 +17,7 @@
       padding: 8px;
     }
   </style>
-  <b>OPD System:</b>
+  <b>OPD Subsystem:</b>
   <span id='systemStatus'>ENABLED</span>
   <button id='enableSystemButton' onclick='enableSystem()'>Disable System</button>
   <br />
@@ -51,6 +51,12 @@
        0x23: 'Reaction Wheel 3',
     };
 
+    const NODE_STATES = {
+       0x00: 'OFF',
+       0x01: 'ON',
+       0xFF: 'NOT_FOUND',
+    };
+
     let tbodyRef = document.getElementById('opdTable').getElementsByTagName('tbody')[0];
     for (const key in NODES) {
       let newRow = tbodyRef.insertRow();
@@ -75,7 +81,7 @@
 
     async function nodeOnClick(nodeId) {
       await writeValue('0x8001', '0x3', nodeId);
-      const enable = document.getElementById(`node${nodeId}Button`).innerText === 'Enable'
+      const enable = document.getElementById(`node${nodeId}Button`).innerText === 'Enable';
       let data = await writeValue('0x8001', '0x4', enable);
       updateNode(nodeId, data.value);
     }
@@ -83,12 +89,20 @@
     function updateNode(node, value) {
       const span = document.getElementById(`node${node}`);
       const button = document.getElementById(`node${node}Button`);
-      if (value === true) {
-        span.innerText = 'ON';
-        button.innerText = 'Disable';
-      } else {
+
+      console.log(value);
+      if (value === 0) {
         span.innerText = 'OFF';
         button.innerText = 'Enable';
+        button.disable == true;
+      } else if (value === 1) {
+        span.innerText = 'ON';
+        button.innerText = 'Disable';
+        button.disable == true;
+      } else {
+        span.innerText = 'NOT_FOUND';
+        button.innerText = 'Disable';
+        button.disable == false;
       }
     }
 

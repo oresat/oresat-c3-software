@@ -13481,7 +13481,7 @@ DefaultValue=0
 [8001sub4]
 ParameterName=Enable Node
 ObjectType=0x07
-DataType=0x0001
+DataType=0x0005
 AccessType=rw
 DefaultValue=0
 

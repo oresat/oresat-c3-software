@@ -54,3 +54,7 @@ class NodeId(Enum):
     RW_3 = 0x48
     DXWIFI = 0x4C
     CFC = 0x50
+
+    @staticmethod
+    def from_bytes(value: bytes):
+        return NodeId(int.from_bytes(value, 'little'))

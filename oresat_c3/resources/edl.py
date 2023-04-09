@@ -11,7 +11,7 @@ from threading import Thread, Event
 
 from olaf import Resource, logger
 
-from .. import Node
+from .. import NodeId
 from ..protocals.edl import EdlServer, EdlError, EdlCode
 from ..subsystems.opd import Opd, OpdNode, OpdError, Max7310Error
 from ..subsystems.rtc import Rtc
@@ -121,16 +121,17 @@ class EdlResource(Resource):
                 logger.info('EDL resetting I2C')
                 # TODO
             elif code == EdlCode.CO_NODE_ENABLE:
-                node = Node.from_bytes(args[0])
-                logger.info(f'EDL enabling CAMopen node {node}')
+                node = NodeId.from_bytes(args[0])
+                logger.info(f'EDL enabling CAMopen node {node.name}')
                 # TODO
             elif code == EdlCode.CO_NODE_STATUS:
-                node = Node.from_bytes(args[0])
-                logger.info(f'EDL getting CAMopen node {node} status')
+                node = NodeId.from_bytes(args[0])
+                logger.info(f'EDL getting CAMopen node {node.name} status')
                 # TODO
             elif code == EdlCode.CO_SDO_WRITE:
                 fmt = 'I'
-                logger.info(f'EDL SDO write on CAMopen node {node}')
+                node = NodeId.from_bytes(args[0])
+                logger.info(f'EDL SDO write on CAMopen node {node.name}')
                 # TODO
             elif code == EdlCode.CO_SYNC:
                 logger.info('EDL sending CANopen SYNC message')
@@ -145,24 +146,24 @@ class EdlResource(Resource):
                     self._opd.stop()
             elif code == EdlCode.OPD_SCAN:
                 node = OpdNode.from_bytes(args[0])
-                logger.info(f'EDL scaning for OPD node {node}')
+                logger.info(f'EDL scaning for OPD node {node.name}')
                 self._opd.scan(node)
             elif code == EdlCode.OPD_ENABLE:
                 node = OpdNode.from_bytes(args[0])
                 if args[1] == b'\x00':
-                    logger.info(f'EDL disabling OPD node {node}')
+                    logger.info(f'EDL disabling OPD node {node.name}')
                     self._opd.disable_node(node)
                 else:
-                    logger.info(f'EDL enabling OPD node {node}')
+                    logger.info(f'EDL enabling OPD node {node.name}')
                     self._opd.enable_node(node)
                     ret = 1
             elif code == EdlCode.OPD_RESET:
                 node = OpdNode.from_bytes(args[0])
-                logger.info(f'EDL resetting for OPD node {node}')
+                logger.info(f'EDL resetting for OPD node {node.name}')
                 self._opd.reset_node(node)
             elif code == EdlCode.OPD_STATUS:
                 node = OpdNode.from_bytes(args[0])
-                logger.info(f'EDL getting the status for OPD node {node}')
+                logger.info(f'EDL getting the status for OPD node {node.name}')
                 ret = self._opd.node_status(node)
             elif code == EdlCode.RTC_SET_TIME:
                 fmt = 'I'

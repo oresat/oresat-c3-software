@@ -32,6 +32,10 @@ class OpdNode(IntEnum):
     RW_2 = 0x22
     RW_3 = 0x23
 
+    @staticmethod
+    def from_bytes(value: bytes):
+        return OpdNode(int.from_bytes(value, 'little'))
+
 
 class OpdNodeStatus(IntEnum):
     '''OPD node statuses'''

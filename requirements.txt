@@ -1,5 +1,4 @@
 bitstring
-eds-utils
 flake8
 oresat-olaf
 smbus2

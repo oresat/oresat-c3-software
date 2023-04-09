@@ -241,7 +241,7 @@ class Max7310:
 
         try:
             self._i2c_read_reg(Max7310Reg.INPUT_PORT)
-        except OSError:
+        except (Max7310Error, OSError):
             return False
 
         return True

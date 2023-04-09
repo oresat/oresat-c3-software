@@ -66,19 +66,21 @@ class Opd:
     _CR_CONFIG = 1 << OpdPin.SCL.value | 1 << OpdPin.SDA.value | 1 << OpdPin.FAULT.value
     _TIMEOUT_CONFIG = 1
 
-    def __init__(self, enable_pin: int, mock: bool = False):
+    def __init__(self, enable_pin: int, bus: int, mock: bool = False):
         '''
         Parameters
         ----------
         enable_pin: int
             Pin that enable the OPD system.
+        bus: int
+            The I2C bus.
         mock: bol
-            Mock the OPD subsystem
+            Mock the OPD subsystem.
         '''
 
         self._pin = enable_pin
-        self._nodes = {i: Max7310(1, i, mock) for i in list(OpdNode)}
-        self._states = {i: False for i in list(OpdNode)}
+        self._nodes = {i: Max7310(bus, i, mock) for i in list(OpdNode)}
+        self._last_valid = {i: False for i in list(OpdNode)}
         self._enabled = False
 
     def start(self):
@@ -97,7 +99,7 @@ class Opd:
 
         self._enabled = False
 
-        self._states = {i: False for i in list(OpdNode)}
+        self._last_valid = {i: False for i in list(OpdNode)}
 
     @property
     def is_system_enabled(self) -> bool:
@@ -134,26 +136,30 @@ class Opd:
         '''
 
         logger.info(f'probing OPD node {node.name} (0x{node.value:02X})')
-        self._is_valid_and_enabled(node)
 
-        if self._nodes[node.value].is_valid:
-            if not self._states[node.value]:
-                logger.info(f'OPD node {node.name} (0x{node.value:02X}) was found')
-            self._states[node.value] = True
+        try:
+            self._is_valid_and_enabled(node)
+            if self._nodes[node.value].is_valid:
+                if not self._last_valid[node.value]:
+                    logger.info(f'OPD node {node.name} (0x{node.value:02X}) was found')
+                self._last_valid[node.value] = True
 
-            if restart:
+                if restart:
+                    self._nodes[node.value].reset()
+                    self._nodes[node.value].configure(self._OPR_CONFIG, self._PIR_CONFIG,
+                                                      self._CR_CONFIG, self._TIMEOUT_CONFIG)
+            else:
+                if self._last_valid[node.value]:
+                    logger.info(f'OPD node {node.name} (0x{node.value:02X}) was lost')
+                self._last_valid[node.value] = False
+
+                # no response, ensure address is stopped (reset max7310)
                 self._nodes[node.value].reset()
-                self._nodes[node.value].configure(self._OPR_CONFIG, self._PIR_CONFIG,
-                                                  self._CR_CONFIG, self._TIMEOUT_CONFIG)
-        else:
-            if self._states[node.value]:
-                logger.info(f'OPD node {node.name} (0x{node.value:02X}) was lost')
-            self._states[node.value] = False
+        except Max7310Error:
+            logger.debug(f'OPD node {node.name} (0x{node.value:02X}) was not found')
+            self._last_valid[node.value] = False
 
-            # no response, ensure address is stopped (reset max7310)
-            self._nodes[node.value].reset()
-
-        return self._states[node.value]
+        return self._last_valid[node.value]
 
     def scan(self, restart: bool):
         '''

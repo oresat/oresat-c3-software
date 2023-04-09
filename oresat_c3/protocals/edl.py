@@ -40,7 +40,7 @@ class EdlCode(IntEnum):
 
     C3_FACTORYRESET = auto()
     '''
-    Factory reset the C3 (clear FRAM and reboot system).
+    Factory reset the C3 (clear FRAM, reset RTC, and reboot system).
     '''
 
     I2C_RESET = auto()
@@ -173,7 +173,7 @@ class EdlCode(IntEnum):
     Returns
     -------
     int8
-        OPD node status ??? TODO
+        OPD node status
     '''
 
     OPD_STATUS = auto()
@@ -215,6 +215,7 @@ class EdlCode(IntEnum):
     bool
         Time sync was sent.
     '''
+
 
 
 def crc16_bytes(data: bytes) -> bytes:

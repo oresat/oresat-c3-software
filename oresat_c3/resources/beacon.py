@@ -9,7 +9,7 @@ import socket
 from olaf import Resource, logger, TimerLoop
 
 from .. import C3State
-from ..protocals.ax25 import generate_ax25_packet
+from ..protocols.ax25 import generate_ax25_packet
 
 BEACON_FIELDS = [
     # C3

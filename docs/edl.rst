@@ -24,7 +24,7 @@ Packet Stucture
 EDL Codes
 *********
 
-.. autoclass:: oresat_c3.protocals.edl.EdlCode
+.. autoclass:: oresat_c3.protocols.edl.EdlCode
    :members:
    :undoc-members:
    :member-order: bysource
@@ -32,3 +32,10 @@ EDL Codes
 
 File Transfer
 -------------
+
+The EDL uses CCSDS File Delivery Protocol (CFDP) for file transfer.
+
+See `CCSDS 727.0-B-5`_
+
+
+.. _CCSDS 727.0-B-5: https://public.ccsds.org/Pubs/727x0b5.pdf

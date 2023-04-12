@@ -12,7 +12,7 @@ from threading import Thread, Event
 from olaf import Resource, logger
 
 from .. import NodeId
-from ..protocals.edl import EdlServer, EdlError, EdlCode
+from ..protocols.edl import EdlServer, EdlError, EdlCode
 from ..subsystems.opd import Opd, OpdNode, OpdError, Max7310Error
 from ..subsystems.rtc import Rtc
 from . import soft_reset, hard_reset, factory_reset

@@ -2,6 +2,7 @@
 FileName=oresat_c3.dcf
 FileVersion=0
 FileRevision=1
+LastEDS=oresat_c3.eds
 EDSVersion=4.0
 Description=OreSat C3 Node Object Dictionary
 CreationTime=12:18PM
@@ -38,10 +39,10 @@ LSS_Supported=0
 [DeviceComissioning]
 NodeID=0x1
 NodeName=C3
-BaudRate=1000
+Baudrate=1000
 NetNumber=0
 NetworkName=
-CANopenManager=0
+CANopenManager=1
 LSS_SerialNumber=0
 
 [DummyUsage]
@@ -135,7 +136,7 @@ AccessType=ro
 DefaultValue=0x00000000
 
 [OptionalObjects]
-SupportedObjects=183
+SupportedObjects=186
 1=0x1002
 2=0x1003
 3=0x1005
@@ -151,174 +152,177 @@ SupportedObjects=183
 13=0x1016
 14=0x1017
 15=0x1019
-16=0x1028
-17=0x1029
-18=0x1200
-19=0x1280
-20=0x1400
-21=0x1401
-22=0x1402
-23=0x1403
-24=0x1404
-25=0x1405
-26=0x1406
-27=0x1407
-28=0x1408
-29=0x1409
-30=0x140A
-31=0x140B
-32=0x140C
-33=0x140D
-34=0x140E
-35=0x140F
-36=0x1410
-37=0x1411
-38=0x1412
-39=0x1413
-40=0x1414
-41=0x1415
-42=0x1416
-43=0x1417
-44=0x1418
-45=0x1419
-46=0x141A
-47=0x141B
-48=0x141C
-49=0x141D
-50=0x141E
-51=0x141F
-52=0x1420
-53=0x1421
-54=0x1422
-55=0x1423
-56=0x1424
-57=0x1425
-58=0x1426
-59=0x1427
-60=0x1428
-61=0x1429
-62=0x142A
-63=0x142B
-64=0x142C
-65=0x142D
-66=0x142E
-67=0x142F
-68=0x1430
-69=0x1431
-70=0x1600
-71=0x1601
-72=0x1602
-73=0x1603
-74=0x1604
-75=0x1605
-76=0x1606
-77=0x1607
-78=0x1608
-79=0x1609
-80=0x160A
-81=0x160B
-82=0x160C
-83=0x160D
-84=0x160E
-85=0x160F
-86=0x1610
-87=0x1611
-88=0x1612
-89=0x1613
-90=0x1614
-91=0x1615
-92=0x1616
-93=0x1617
-94=0x1618
-95=0x1619
-96=0x161A
-97=0x161B
-98=0x161C
-99=0x161D
-100=0x161E
-101=0x161F
-102=0x1620
-103=0x1621
-104=0x1622
-105=0x1623
-106=0x1624
-107=0x1625
-108=0x1626
-109=0x1627
-110=0x1628
-111=0x1629
-112=0x162A
-113=0x162B
-114=0x162C
-115=0x162D
-116=0x162E
-117=0x162F
-118=0x1630
-119=0x1631
-120=0x1800
-121=0x1801
-122=0x1802
-123=0x1803
-124=0x1804
-125=0x1805
-126=0x1806
-127=0x1807
-128=0x1808
-129=0x1809
-130=0x180A
-131=0x180B
-132=0x180C
-133=0x180D
-134=0x180E
-135=0x180F
-136=0x1A00
-137=0x1A01
-138=0x1A02
-139=0x1A03
-140=0x1A04
-141=0x1A05
-142=0x1A06
-143=0x1A07
-144=0x1A08
-145=0x1A09
-146=0x1A0A
-147=0x1A0B
-148=0x1A0C
-149=0x1A0D
-150=0x1A0E
-151=0x1A0F
-152=0x1F80
-153=0x1F81
-154=0x1F82
-155=0x1F89
-156=0x6000
-157=0x6001
-158=0x6002
-159=0x6003
-160=0x6004
-161=0x6005
-162=0x6006
-163=0x6007
-164=0x7000
-165=0x7001
-166=0x7002
-167=0x7003
-168=0x7004
-169=0x7005
-170=0x7006
-171=0x7007
-172=0x7008
-173=0x7009
-174=0x700A
-175=0x700B
-176=0x700C
-177=0x700D
-178=0x700E
-179=0x700F
-180=0x7013
-181=0x7014
-182=0x8000
-183=0x8001
+16=0x1021
+17=0x1022
+18=0x1023
+19=0x1028
+20=0x1029
+21=0x1200
+22=0x1280
+23=0x1400
+24=0x1401
+25=0x1402
+26=0x1403
+27=0x1404
+28=0x1405
+29=0x1406
+30=0x1407
+31=0x1408
+32=0x1409
+33=0x140A
+34=0x140B
+35=0x140C
+36=0x140D
+37=0x140E
+38=0x140F
+39=0x1410
+40=0x1411
+41=0x1412
+42=0x1413
+43=0x1414
+44=0x1415
+45=0x1416
+46=0x1417
+47=0x1418
+48=0x1419
+49=0x141A
+50=0x141B
+51=0x141C
+52=0x141D
+53=0x141E
+54=0x141F
+55=0x1420
+56=0x1421
+57=0x1422
+58=0x1423
+59=0x1424
+60=0x1425
+61=0x1426
+62=0x1427
+63=0x1428
+64=0x1429
+65=0x142A
+66=0x142B
+67=0x142C
+68=0x142D
+69=0x142E
+70=0x142F
+71=0x1430
+72=0x1431
+73=0x1600
+74=0x1601
+75=0x1602
+76=0x1603
+77=0x1604
+78=0x1605
+79=0x1606
+80=0x1607
+81=0x1608
+82=0x1609
+83=0x160A
+84=0x160B
+85=0x160C
+86=0x160D
+87=0x160E
+88=0x160F
+89=0x1610
+90=0x1611
+91=0x1612
+92=0x1613
+93=0x1614
+94=0x1615
+95=0x1616
+96=0x1617
+97=0x1618
+98=0x1619
+99=0x161A
+100=0x161B
+101=0x161C
+102=0x161D
+103=0x161E
+104=0x161F
+105=0x1620
+106=0x1621
+107=0x1622
+108=0x1623
+109=0x1624
+110=0x1625
+111=0x1626
+112=0x1627
+113=0x1628
+114=0x1629
+115=0x162A
+116=0x162B
+117=0x162C
+118=0x162D
+119=0x162E
+120=0x162F
+121=0x1630
+122=0x1631
+123=0x1800
+124=0x1801
+125=0x1802
+126=0x1803
+127=0x1804
+128=0x1805
+129=0x1806
+130=0x1807
+131=0x1808
+132=0x1809
+133=0x180A
+134=0x180B
+135=0x180C
+136=0x180D
+137=0x180E
+138=0x180F
+139=0x1A00
+140=0x1A01
+141=0x1A02
+142=0x1A03
+143=0x1A04
+144=0x1A05
+145=0x1A06
+146=0x1A07
+147=0x1A08
+148=0x1A09
+149=0x1A0A
+150=0x1A0B
+151=0x1A0C
+152=0x1A0D
+153=0x1A0E
+154=0x1A0F
+155=0x1F80
+156=0x1F81
+157=0x1F82
+158=0x1F89
+159=0x6000
+160=0x6001
+161=0x6002
+162=0x6003
+163=0x6004
+164=0x6005
+165=0x6006
+166=0x6007
+167=0x7000
+168=0x7001
+169=0x7002
+170=0x7003
+171=0x7004
+172=0x7005
+173=0x7006
+174=0x7007
+175=0x7008
+176=0x7009
+177=0x700A
+178=0x700B
+179=0x700C
+180=0x700D
+181=0x700E
+182=0x700F
+183=0x7013
+184=0x7014
+185=0x8000
+186=0x8001
 
 [1002]
 ParameterName=Manufacturer status register
@@ -842,6 +846,55 @@ DataType=0x0005
 AccessType=rw
 DefaultValue=0
 
+;A master node can read this for a copy of the node's EDS file
+[1021]
+ParameterName=Store EDS
+ObjectType=0x07
+DataType=0x000F
+AccessType=ro
+DefaultValue=0
+
+;Indicate the format of the Store EDS
+[1022]
+ParameterName=Store format
+ObjectType=0x07
+DataType=0x0005
+AccessType=ro
+DefaultValue=0
+
+[1023]
+ParameterName=OS command
+ObjectType=0x09
+SubNumber=4
+
+[1023sub0]
+ParameterName=Highest sub-index supported
+ObjectType=0x07
+DataType=0x0005
+AccessType=const
+DefaultValue=0x03
+
+[1023sub1]
+ParameterName=Command
+ObjectType=0x07
+DataType=0x000F
+AccessType=rw
+DefaultValue=0
+
+[1023sub2]
+ParameterName=Status
+ObjectType=0x07
+DataType=0x0005
+AccessType=ro
+DefaultValue=0
+
+[1023sub3]
+ParameterName=Reply
+ObjectType=0x07
+DataType=0x000F
+AccessType=ro
+DefaultValue=0
+
 ;Emergency consumer 1 to 127:
 ;* bit 31: If set, EMCY consumer does NOT exist / is NOT valid
 ;* bit 11-30: set to 0
@@ -1074,7 +1127,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1400sub1]
 ParameterName=COB-ID used by RPDO
@@ -1108,7 +1161,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1401sub1]
 ParameterName=COB-ID used by RPDO
@@ -1142,7 +1195,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1402sub1]
 ParameterName=COB-ID used by RPDO
@@ -1176,7 +1229,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1403sub1]
 ParameterName=COB-ID used by RPDO
@@ -1210,7 +1263,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1404sub1]
 ParameterName=COB-ID used by RPDO
@@ -1244,7 +1297,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1405sub1]
 ParameterName=COB-ID used by RPDO
@@ -1278,7 +1331,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1406sub1]
 ParameterName=COB-ID used by RPDO
@@ -1312,7 +1365,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1407sub1]
 ParameterName=COB-ID used by RPDO
@@ -1346,7 +1399,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1408sub1]
 ParameterName=COB-ID used by RPDO
@@ -1380,7 +1433,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1409sub1]
 ParameterName=COB-ID used by RPDO
@@ -1414,7 +1467,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Asub1]
 ParameterName=COB-ID used by RPDO
@@ -1448,7 +1501,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -1482,7 +1535,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Csub1]
 ParameterName=COB-ID used by RPDO
@@ -1516,7 +1569,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -1550,7 +1603,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Esub1]
 ParameterName=COB-ID used by RPDO
@@ -1584,7 +1637,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -1618,7 +1671,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1410sub1]
 ParameterName=COB-ID used by RPDO
@@ -1652,7 +1705,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1411sub1]
 ParameterName=COB-ID used by RPDO
@@ -1686,7 +1739,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1412sub1]
 ParameterName=COB-ID used by RPDO
@@ -1720,7 +1773,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1413sub1]
 ParameterName=COB-ID used by RPDO
@@ -1754,7 +1807,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1414sub1]
 ParameterName=COB-ID used by RPDO
@@ -1788,7 +1841,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1415sub1]
 ParameterName=COB-ID used by RPDO
@@ -1822,7 +1875,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1416sub1]
 ParameterName=COB-ID used by RPDO
@@ -1856,7 +1909,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1417sub1]
 ParameterName=COB-ID used by RPDO
@@ -1890,7 +1943,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1418sub1]
 ParameterName=COB-ID used by RPDO
@@ -1924,7 +1977,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1419sub1]
 ParameterName=COB-ID used by RPDO
@@ -1958,7 +2011,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Asub1]
 ParameterName=COB-ID used by RPDO
@@ -1992,7 +2045,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -2026,7 +2079,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Csub1]
 ParameterName=COB-ID used by RPDO
@@ -2060,7 +2113,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -2094,7 +2147,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Esub1]
 ParameterName=COB-ID used by RPDO
@@ -2128,7 +2181,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -2162,7 +2215,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1420sub1]
 ParameterName=COB-ID used by RPDO
@@ -2196,7 +2249,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1421sub1]
 ParameterName=COB-ID used by RPDO
@@ -2230,7 +2283,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1422sub1]
 ParameterName=COB-ID used by RPDO
@@ -2264,7 +2317,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1423sub1]
 ParameterName=COB-ID used by RPDO
@@ -2298,7 +2351,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1424sub1]
 ParameterName=COB-ID used by RPDO
@@ -2332,7 +2385,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1425sub1]
 ParameterName=COB-ID used by RPDO
@@ -2366,7 +2419,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1426sub1]
 ParameterName=COB-ID used by RPDO
@@ -2400,7 +2453,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1427sub1]
 ParameterName=COB-ID used by RPDO
@@ -2434,7 +2487,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1428sub1]
 ParameterName=COB-ID used by RPDO
@@ -2468,7 +2521,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1429sub1]
 ParameterName=COB-ID used by RPDO
@@ -2502,7 +2555,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Asub1]
 ParameterName=COB-ID used by RPDO
@@ -2536,7 +2589,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -2570,7 +2623,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Csub1]
 ParameterName=COB-ID used by RPDO
@@ -2604,7 +2657,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -2638,7 +2691,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Esub1]
 ParameterName=COB-ID used by RPDO
@@ -2672,7 +2725,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -2706,7 +2759,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1430sub1]
 ParameterName=COB-ID used by RPDO
@@ -2740,7 +2793,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1431sub1]
 ParameterName=COB-ID used by RPDO
@@ -13478,7 +13531,6 @@ ParameterName=All Node Statuses
 ObjectType=0x07
 DataType=0x0009
 AccessType=ro
-DefaultValue=
 
 [8001sub3]
 ParameterName=Node Id

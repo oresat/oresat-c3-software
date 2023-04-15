@@ -217,7 +217,6 @@ class EdlCode(IntEnum):
     '''
 
 
-
 def crc16_bytes(data: bytes) -> bytes:
     '''Helper function for generating the crc16 of a message as bytes'''
     return binascii.crc_hqx(data, 0).to_bytes(2, 'little')

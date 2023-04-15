@@ -62,7 +62,7 @@ class EdlResource(Resource):
             try:
                 message, sender = self._uplink_socket.recvfrom(self._BUFFER_LEN)
                 logger.info(f'EDL recv: {message.hex(sep=" ")}')
-            except TimeoutError:
+            except (TimeoutError, socket.timeout):
                 continue
 
             if len(message) == 0:
@@ -122,21 +122,28 @@ class EdlResource(Resource):
                 # TODO
             elif code == EdlCode.CO_NODE_ENABLE:
                 node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL enabling CAMopen node {node.name}')
+                logger.info(f'EDL enabling CANopen node {node.name}')
                 # TODO
             elif code == EdlCode.CO_NODE_STATUS:
                 node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL getting CAMopen node {node.name} status')
+                logger.info(f'EDL getting CANopen node {node.name} status')
                 # TODO
             elif code == EdlCode.CO_SDO_WRITE:
                 fmt = 'I'
-                node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL SDO write on CAMopen node {node.name}')
-                # TODO
+                node_id, index, subindex, size = struct.unpack('<2BHI', args[:8])
+                data = args[8:]
+                node = NodeId(node_id)
+                logger.info(f'EDL SDO write on CANopen node {node.name}')
+                if len(data) != size:
+                    logger.error(f'EDL SDO write size did not match data length: {size} vs '
+                                 f'{len(data)}')
+                else:
+                    self.sdo_write(node_id, index, subindex, data)
             elif code == EdlCode.CO_SYNC:
                 logger.info('EDL sending CANopen SYNC message')
-                # TODO
+                self.node.send_sync()
             elif code == EdlCode.OPD_SYSENABLE:
+                fmt = '?'
                 enable = OpdNode.from_bytes(args[0])
                 if enable:
                     logger.info('EDL enabling OPD system')
@@ -144,6 +151,7 @@ class EdlResource(Resource):
                 else:
                     logger.info('EDL disabling OPD system')
                     self._opd.stop()
+                ret = self._opd.is_system_enabled
             elif code == EdlCode.OPD_SCAN:
                 node = OpdNode.from_bytes(args[0])
                 logger.info(f'EDL scaning for OPD node {node.name}')
@@ -156,15 +164,16 @@ class EdlResource(Resource):
                 else:
                     logger.info(f'EDL enabling OPD node {node.name}')
                     self._opd.enable_node(node)
-                    ret = 1
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_RESET:
                 node = OpdNode.from_bytes(args[0])
                 logger.info(f'EDL resetting for OPD node {node.name}')
                 self._opd.reset_node(node)
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_STATUS:
                 node = OpdNode.from_bytes(args[0])
                 logger.info(f'EDL getting the status for OPD node {node.name}')
-                ret = self._opd.node_status(node)
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.RTC_SET_TIME:
                 fmt = 'I'
                 value = struct.unpack(fmt, args)

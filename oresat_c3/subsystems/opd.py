@@ -7,7 +7,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 from enum import IntEnum
 from time import sleep
 
-from olaf import logger
+from olaf import logger, GPIO
 
 from ..drivers.max7310 import Max7310, Max7310Error
 
@@ -82,17 +82,16 @@ class Opd:
             Mock the OPD subsystem.
         '''
 
-        self._pin = enable_pin
+        self._gpio = GPIO(enable_pin, mock)
         self._nodes = {i: Max7310(bus, i, mock) for i in list(OpdNode)}
         self._last_valid = {i: False for i in list(OpdNode)}
-        self._enabled = False
 
     def start(self):
         '''Start the OPD subsystem, will also do a scan.'''
 
         logger.info('starting OPD subsystem')
 
-        self._enabled = True
+        self._gpio.high()
 
         self.scan(True)
 
@@ -101,7 +100,7 @@ class Opd:
 
         logger.info('resetping OPD subsystem')
 
-        self._enabled = False
+        self._gpio.low()
 
         self._last_valid = {i: False for i in list(OpdNode)}
 
@@ -109,7 +108,7 @@ class Opd:
     def is_system_enabled(self) -> bool:
         '''bool: OPD is enabled or not.'''
 
-        return self._enabled
+        return self._gpio.is_high
 
     def _is_valid_and_enabled(self, node):
         '''
@@ -117,7 +116,7 @@ class Opd:
         system is not enabled
         '''
 
-        if not self._enabled:
+        if not self._gpio.is_high:
             raise OpdError('OPD system is not enabled')
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
@@ -225,7 +224,7 @@ class Opd:
         sleep(self._RESET_DELAY_S)
         self._nodes[node.value].clear_pin(OpdPin.CB_RESET)
 
-    def status(self, node: OpdNode) -> bool:
+    def status(self, node: OpdNode) -> OpdNodeStatus:
         '''
         Get the Status of a node.
 
@@ -233,6 +232,11 @@ class Opd:
         ----------
         node: OpdNode
             The OPD node id to enable.
+
+        Returns
+        -------
+        OpdNodeStatus
+            The status of the OPD node.
         '''
 
         try:

@@ -37,8 +37,8 @@ class OpdNode(IntEnum):
         return OpdNode(int.from_bytes(value, 'little'))
 
 
-class OpdNodeStatus(IntEnum):
-    '''OPD node statuses'''
+class OpdNodeState(IntEnum):
+    '''OPD node states'''
 
     OFF = 0
     ON = 1
@@ -65,9 +65,9 @@ class Opd:
     '''OreSat Power Domain.'''
 
     _RESET_DELAY_S = 0.25
-    _OPR_CONFIG = 1 << OpdPin.LINUX_BOOT.value
-    _PIR_CONFIG = 1 << OpdPin.FAULT.value
-    _CR_CONFIG = 1 << OpdPin.SCL.value | 1 << OpdPin.SDA.value | 1 << OpdPin.FAULT.value
+    _OUT_CONFIG = 1 << OpdPin.LINUX_BOOT.value
+    _PI_CONFIG = 1 << OpdPin.FAULT.value
+    _CONF_CONFIG = 1 << OpdPin.SCL.value | 1 << OpdPin.SDA.value | 1 << OpdPin.FAULT.value
     _TIMEOUT_CONFIG = 1
 
     def __init__(self, enable_pin: int, bus: int, mock: bool = False):
@@ -91,7 +91,7 @@ class Opd:
 
         logger.info('starting OPD subsystem')
 
-        self._gpio.high()
+        self._gpio.low()
 
         self.scan(True)
 
@@ -100,7 +100,7 @@ class Opd:
 
         logger.info('resetping OPD subsystem')
 
-        self._gpio.low()
+        self._gpio.high()
 
         self._last_valid = {i: False for i in list(OpdNode)}
 
@@ -108,7 +108,7 @@ class Opd:
     def is_system_enabled(self) -> bool:
         '''bool: OPD is enabled or not.'''
 
-        return self._gpio.is_high
+        return not self._gpio.is_high
 
     def _is_valid_and_enabled(self, node):
         '''
@@ -149,8 +149,8 @@ class Opd:
 
                 if restart:
                     self._nodes[node.value].reset()
-                    self._nodes[node.value].configure(self._OPR_CONFIG, self._PIR_CONFIG,
-                                                      self._CR_CONFIG, self._TIMEOUT_CONFIG)
+                    self._nodes[node.value].configure(self._OUT_CONFIG, self._PI_CONFIG,
+                                                      self._CONF_CONFIG, self._TIMEOUT_CONFIG)
             else:
                 if self._last_valid[node.value]:
                     logger.info(f'OPD node {node.name} (0x{node.value:02X}) was lost')
@@ -224,7 +224,7 @@ class Opd:
         sleep(self._RESET_DELAY_S)
         self._nodes[node.value].clear_pin(OpdPin.CB_RESET)
 
-    def status(self, node: OpdNode) -> OpdNodeStatus:
+    def status(self, node: OpdNode) -> OpdNodeState:
         '''
         Get the Status of a node.
 
@@ -235,13 +235,13 @@ class Opd:
 
         Returns
         -------
-        OpdNodeStatus
+        OpdNodeState
             The status of the OPD node.
         '''
 
         try:
-            value = OpdNodeStatus(int(self._nodes[node.value].pin_status(OpdPin.EN)))
+            value = OpdNodeState(int(self._nodes[node.value].pin_status(OpdPin.EN)))
         except Max7310Error:
-            value = OpdNodeStatus.NOT_FOUND
+            value = OpdNodeState.NOT_FOUND
 
         return value

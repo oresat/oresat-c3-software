@@ -94,15 +94,15 @@
       if (value === 0) {
         span.innerText = 'OFF';
         button.innerText = 'Enable';
-        button.disable == true;
+        button.disabled = false;
       } else if (value === 1) {
         span.innerText = 'ON';
         button.innerText = 'Disable';
-        button.disable == true;
+        button.disabled = false;
       } else {
         span.innerText = 'NOT_FOUND';
         button.innerText = 'Disable';
-        button.disable == false;
+        button.disabled = true;
       }
     }
 

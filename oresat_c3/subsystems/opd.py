@@ -75,7 +75,7 @@ class Opd:
         Parameters
         ----------
         enable_pin: int
-            Pin that enable the OPD system.
+            Pin that enable the OPD subsystem.
         bus: int
             The I2C bus.
         mock: bol
@@ -98,7 +98,7 @@ class Opd:
     def stop(self):
         '''Stop the OPD subsystem.'''
 
-        logger.info('resetping OPD subsystem')
+        logger.info('stopping OPD subsystem')
 
         self._gpio.high()
 
@@ -113,11 +113,11 @@ class Opd:
     def _is_valid_and_enabled(self, node):
         '''
         Quick helper function that will raise an OpdError if the node does not exist or if the OPD
-        system is not enabled
+        subsystem is not enabled
         '''
 
-        if not self._gpio.is_high:
-            raise OpdError('OPD system is not enabled')
+        if self._gpio.is_high:
+            raise OpdError('OPD subsystem is not enabled')
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
 

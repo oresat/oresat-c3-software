@@ -28,29 +28,19 @@ class EdlCode(IntEnum):
         Tx status
     '''
 
-    C3_SOFTRESET = auto()
+    C3_SOFT_RESET = auto()
     '''
     Soft reset the C3 (reboot C3 daemon).
     '''
 
-    C3_HARDRESET = auto()
+    C3_HARD_RESET = auto()
     '''
     Hard reset the C3 (reboot system).
     '''
 
-    C3_FACTORYRESET = auto()
+    C3_FACTORY_RESET = auto()
     '''
     Factory reset the C3 (clear FRAM, reset RTC, and reboot system).
-    '''
-
-    I2C_RESET = auto()
-    '''
-    Reset I2C? OPD? TODO
-
-    Returns
-    -------
-    uint8
-        with value of 0
     '''
 
     CO_NODE_ENABLE = auto()
@@ -79,15 +69,15 @@ class EdlCode(IntEnum):
     node_id: uint8
         Node id of node to get the status for
 
-    Return
-    ------
+    Returns
+    -------
     uint8
         node status
     '''
 
     CO_SDO_WRITE = auto()
     '''
-    Send a CANopen SDO write command over CAN bus.
+    Write a value to a node's OD over the CAN bus using a CANopen SDO message.
 
     Parameters
     ----------
@@ -110,55 +100,69 @@ class EdlCode(IntEnum):
 
     CO_SYNC = auto()
     '''
-    Send a CANopen SYNC command on the CAN bus.
+    Send a CANopen SYNC message on the CAN bus.
 
-    Return
-    ------
+    Returns
+    -------
     bool
-        The CANopen SYNC command was sent successfully.
+        The CANopen SYNC message was sent successfully.
     '''
 
     OPD_SYSENABLE = auto()
     '''
-    Enable the OPD system.
+    Enable the OPD subsystem.
 
     Parameters
     ----------
     enable: bool
         True to enable or False to disable.
 
-    Return
-    ------
+    Returns
+    -------
     bool
-        OPD system status
+        OPD subsystem status.
     '''
 
     OPD_SCAN = auto()
     '''
-    Scan for a node on the OPD.
+    Scan for all nodes on the OPD.
+
+    Returns
+    -------
+    uint8:
+        The number of nodes found.
+    '''
+
+    OPD_PROBE = auto()
+    '''
+    Probe for a node on the OPD.
 
     Parameters
     ----------
-    node_id: int8
-        The id of the OPD node to scan for.
+    node_id: uint8
+        The id of the OPD node to probe for.
 
-    Return
-        int8: OPD node status ??? TODO.
+    Returns
+    -------
+    bool:
+        True if the node was found or False if not.
     '''
 
     OPD_ENABLE = auto()
     '''
-    Enable / Disable a node on the OPD.
+    Enable / disable a node on the OPD.
 
     Parameters
     ----------
-    node_id: int8
+    node_id: uint8
         The id of the OPD node to enable / disable.
     enable: bool
         True to enable or False to disable.
 
-    Return
-        int8: OPD node status ??? TODO.
+    Returns
+    -------
+    uint8:
+        OPD node status. See the OPD page.
     '''
 
     OPD_RESET = auto()
@@ -167,13 +171,13 @@ class EdlCode(IntEnum):
 
     Parameters
     ----------
-    node_id: int8
+    node_id: uint8
         The id of the OPD node to reset.
 
     Returns
     -------
-    int8
-        OPD node status
+    uint8:
+        OPD node status. See the OPD page.
     '''
 
     OPD_STATUS = auto()
@@ -182,13 +186,13 @@ class EdlCode(IntEnum):
 
     Parameters
     ----------
-    node_id: int8
+    node_id: uint8
         The id of the OPD node to get the status of.
 
     Returns
     -------
-    int8
-        OPD node status.
+    uint8:
+        OPD node status. See the OPD page.
     '''
 
     RTC_SET_TIME = auto()
@@ -200,15 +204,16 @@ class EdlCode(IntEnum):
     time: uint32
         The unix time in seconds.
 
-    Return
-    ------
+    Returns
+    -------
     bool
         The RTC time was set successfully.
     '''
 
     TIME_SYNC = auto()
     '''
-    Send OreSat's Time Sync TPDO over the CAN bus.
+    C3 will send OreSat's Time Sync TPDO over the CAN bus (all nodes that are powered on and care
+    about time will sync to it).
 
     Returns
     -------

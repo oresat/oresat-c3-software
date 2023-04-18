@@ -9,6 +9,7 @@ import struct
 from time import time
 from threading import Thread, Event
 
+import canopen
 from olaf import Resource, logger
 
 from .. import NodeId
@@ -117,9 +118,6 @@ class EdlResource(Resource):
             elif code == EdlCode.C3_FACTORYRESET:
                 logger.info('EDL factory reset')
                 factory_reset()
-            elif code == EdlCode.I2C_RESET:
-                logger.info('EDL resetting I2C')
-                # TODO
             elif code == EdlCode.CO_NODE_ENABLE:
                 node = NodeId.from_bytes(args[0])
                 logger.info(f'EDL enabling CANopen node {node.name}')
@@ -127,18 +125,20 @@ class EdlResource(Resource):
             elif code == EdlCode.CO_NODE_STATUS:
                 node = NodeId.from_bytes(args[0])
                 logger.info(f'EDL getting CANopen node {node.name} status')
-                # TODO
+                ret = self.node.node_status[node.value]
             elif code == EdlCode.CO_SDO_WRITE:
                 fmt = 'I'
                 node_id, index, subindex, size = struct.unpack('<2BHI', args[:8])
                 data = args[8:]
                 node = NodeId(node_id)
                 logger.info(f'EDL SDO write on CANopen node {node.name}')
-                if len(data) != size:
-                    logger.error(f'EDL SDO write size did not match data length: {size} vs '
-                                 f'{len(data)}')
-                else:
+                try:
                     self.sdo_write(node_id, index, subindex, data)
+                    ret = 0
+                except canopen.SdoError as e:
+                    logger.error(e)
+                    # last 10 chars are always the sdo error code in hex
+                    ret = int(str(e)[-10:], 16)
             elif code == EdlCode.CO_SYNC:
                 logger.info('EDL sending CANopen SYNC message')
                 self.node.send_sync()
@@ -153,9 +153,13 @@ class EdlResource(Resource):
                     self._opd.stop()
                 ret = self._opd.is_system_enabled
             elif code == EdlCode.OPD_SCAN:
+                logger.info('EDL scaning for all OPD nodes')
+                ret = self._opd.scan()
+            elif code == EdlCode.OPD_PROBE:
+                fmt = '?'
                 node = OpdNode.from_bytes(args[0])
-                logger.info(f'EDL scaning for OPD node {node.name}')
-                self._opd.scan(node)
+                logger.info(f'EDL probing for OPD node {node.name}')
+                ret = self._opd.probe(node)
             elif code == EdlCode.OPD_ENABLE:
                 node = OpdNode.from_bytes(args[0])
                 if args[1] == b'\x00':

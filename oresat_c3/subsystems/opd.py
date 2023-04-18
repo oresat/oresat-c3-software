@@ -140,7 +140,7 @@ class Opd:
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
 
-    def probe_node(self, node: OpdNode, restart: bool) -> bool:
+    def probe_node(self, node: OpdNode, restart: bool = False) -> bool:
         '''
         Probe the OPD for a node (see if it is there). Will automatically call configure the
         MAX7310, if found.
@@ -150,7 +150,7 @@ class Opd:
         node: OpdNode
             The OPD node id to enable.
         restart: bool
-            Reset the MAX7310, if found.
+            Optional flag to reset the MAX7310, if found.
 
         Returns
         -------
@@ -184,14 +184,14 @@ class Opd:
 
         return self._last_valid[node]
 
-    def scan(self, restart: bool):
+    def scan(self, restart: bool = False):
         '''
         Scan / probe for all nodes.
 
         Parameters
         ----------
         restart: bool
-            Restart a node, if found.
+            Optional flag to restart any node that is found.
 
         Returns
         -------

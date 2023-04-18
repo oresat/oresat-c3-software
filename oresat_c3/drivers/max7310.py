@@ -188,7 +188,7 @@ class Max7310:
         Parameters
         ----------
         pin_num: int
-            The pin / port to clear.
+            The pin / port to get the status of.
         '''
 
         result = self._i2c_read_reg(Max7310Reg.OUTPUT_PORT)

@@ -27,6 +27,8 @@ class OpdResource(Resource):
 
     def _on_read(self, index: int, subindex: int):
 
+        value = None
+
         if subindex == 0x1:
             value = self.opd.is_system_enabled
         elif subindex == 0x2:
@@ -53,3 +55,5 @@ class OpdResource(Resource):
                 self.opd.enable(self.cur_node)
             elif value == 0:
                 self.opd.disable(self.cur_node)
+        elif subindex == 0x5:
+            self.opd.scan(False)

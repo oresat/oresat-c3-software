@@ -2,6 +2,7 @@
 FileName=oresat_c3.dcf
 FileVersion=0
 FileRevision=1
+LastEDS=oresat_c3.eds
 EDSVersion=4.0
 Description=OreSat C3 Node Object Dictionary
 CreationTime=12:18PM
@@ -41,7 +42,7 @@ NodeName=C3
 BaudRate=1000
 NetNumber=0
 NetworkName=
-CANopenManager=0
+CANopenManager=1
 LSS_SerialNumber=0
 
 [DummyUsage]
@@ -135,7 +136,7 @@ AccessType=ro
 DefaultValue=0x00000000
 
 [OptionalObjects]
-SupportedObjects=183
+SupportedObjects=186
 1=0x1002
 2=0x1003
 3=0x1005
@@ -151,174 +152,177 @@ SupportedObjects=183
 13=0x1016
 14=0x1017
 15=0x1019
-16=0x1028
-17=0x1029
-18=0x1200
-19=0x1280
-20=0x1400
-21=0x1401
-22=0x1402
-23=0x1403
-24=0x1404
-25=0x1405
-26=0x1406
-27=0x1407
-28=0x1408
-29=0x1409
-30=0x140A
-31=0x140B
-32=0x140C
-33=0x140D
-34=0x140E
-35=0x140F
-36=0x1410
-37=0x1411
-38=0x1412
-39=0x1413
-40=0x1414
-41=0x1415
-42=0x1416
-43=0x1417
-44=0x1418
-45=0x1419
-46=0x141A
-47=0x141B
-48=0x141C
-49=0x141D
-50=0x141E
-51=0x141F
-52=0x1420
-53=0x1421
-54=0x1422
-55=0x1423
-56=0x1424
-57=0x1425
-58=0x1426
-59=0x1427
-60=0x1428
-61=0x1429
-62=0x142A
-63=0x142B
-64=0x142C
-65=0x142D
-66=0x142E
-67=0x142F
-68=0x1430
-69=0x1431
-70=0x1600
-71=0x1601
-72=0x1602
-73=0x1603
-74=0x1604
-75=0x1605
-76=0x1606
-77=0x1607
-78=0x1608
-79=0x1609
-80=0x160A
-81=0x160B
-82=0x160C
-83=0x160D
-84=0x160E
-85=0x160F
-86=0x1610
-87=0x1611
-88=0x1612
-89=0x1613
-90=0x1614
-91=0x1615
-92=0x1616
-93=0x1617
-94=0x1618
-95=0x1619
-96=0x161A
-97=0x161B
-98=0x161C
-99=0x161D
-100=0x161E
-101=0x161F
-102=0x1620
-103=0x1621
-104=0x1622
-105=0x1623
-106=0x1624
-107=0x1625
-108=0x1626
-109=0x1627
-110=0x1628
-111=0x1629
-112=0x162A
-113=0x162B
-114=0x162C
-115=0x162D
-116=0x162E
-117=0x162F
-118=0x1630
-119=0x1631
-120=0x1800
-121=0x1801
-122=0x1802
-123=0x1803
-124=0x1804
-125=0x1805
-126=0x1806
-127=0x1807
-128=0x1808
-129=0x1809
-130=0x180A
-131=0x180B
-132=0x180C
-133=0x180D
-134=0x180E
-135=0x180F
-136=0x1A00
-137=0x1A01
-138=0x1A02
-139=0x1A03
-140=0x1A04
-141=0x1A05
-142=0x1A06
-143=0x1A07
-144=0x1A08
-145=0x1A09
-146=0x1A0A
-147=0x1A0B
-148=0x1A0C
-149=0x1A0D
-150=0x1A0E
-151=0x1A0F
-152=0x1F80
-153=0x1F81
-154=0x1F82
-155=0x1F89
-156=0x6000
-157=0x6001
-158=0x6002
-159=0x6003
-160=0x6004
-161=0x6005
-162=0x6006
-163=0x6007
-164=0x7000
-165=0x7001
-166=0x7002
-167=0x7003
-168=0x7004
-169=0x7005
-170=0x7006
-171=0x7007
-172=0x7008
-173=0x7009
-174=0x700A
-175=0x700B
-176=0x700C
-177=0x700D
-178=0x700E
-179=0x700F
-180=0x7013
-181=0x7014
-182=0x8000
-183=0x8001
+16=0x1021
+17=0x1022
+18=0x1023
+19=0x1028
+20=0x1029
+21=0x1200
+22=0x1280
+23=0x1400
+24=0x1401
+25=0x1402
+26=0x1403
+27=0x1404
+28=0x1405
+29=0x1406
+30=0x1407
+31=0x1408
+32=0x1409
+33=0x140A
+34=0x140B
+35=0x140C
+36=0x140D
+37=0x140E
+38=0x140F
+39=0x1410
+40=0x1411
+41=0x1412
+42=0x1413
+43=0x1414
+44=0x1415
+45=0x1416
+46=0x1417
+47=0x1418
+48=0x1419
+49=0x141A
+50=0x141B
+51=0x141C
+52=0x141D
+53=0x141E
+54=0x141F
+55=0x1420
+56=0x1421
+57=0x1422
+58=0x1423
+59=0x1424
+60=0x1425
+61=0x1426
+62=0x1427
+63=0x1428
+64=0x1429
+65=0x142A
+66=0x142B
+67=0x142C
+68=0x142D
+69=0x142E
+70=0x142F
+71=0x1430
+72=0x1431
+73=0x1600
+74=0x1601
+75=0x1602
+76=0x1603
+77=0x1604
+78=0x1605
+79=0x1606
+80=0x1607
+81=0x1608
+82=0x1609
+83=0x160A
+84=0x160B
+85=0x160C
+86=0x160D
+87=0x160E
+88=0x160F
+89=0x1610
+90=0x1611
+91=0x1612
+92=0x1613
+93=0x1614
+94=0x1615
+95=0x1616
+96=0x1617
+97=0x1618
+98=0x1619
+99=0x161A
+100=0x161B
+101=0x161C
+102=0x161D
+103=0x161E
+104=0x161F
+105=0x1620
+106=0x1621
+107=0x1622
+108=0x1623
+109=0x1624
+110=0x1625
+111=0x1626
+112=0x1627
+113=0x1628
+114=0x1629
+115=0x162A
+116=0x162B
+117=0x162C
+118=0x162D
+119=0x162E
+120=0x162F
+121=0x1630
+122=0x1631
+123=0x1800
+124=0x1801
+125=0x1802
+126=0x1803
+127=0x1804
+128=0x1805
+129=0x1806
+130=0x1807
+131=0x1808
+132=0x1809
+133=0x180A
+134=0x180B
+135=0x180C
+136=0x180D
+137=0x180E
+138=0x180F
+139=0x1A00
+140=0x1A01
+141=0x1A02
+142=0x1A03
+143=0x1A04
+144=0x1A05
+145=0x1A06
+146=0x1A07
+147=0x1A08
+148=0x1A09
+149=0x1A0A
+150=0x1A0B
+151=0x1A0C
+152=0x1A0D
+153=0x1A0E
+154=0x1A0F
+155=0x1F80
+156=0x1F81
+157=0x1F82
+158=0x1F89
+159=0x6000
+160=0x6001
+161=0x6002
+162=0x6003
+163=0x6004
+164=0x6005
+165=0x6006
+166=0x6007
+167=0x7000
+168=0x7001
+169=0x7002
+170=0x7003
+171=0x7004
+172=0x7005
+173=0x7006
+174=0x7007
+175=0x7008
+176=0x7009
+177=0x700A
+178=0x700B
+179=0x700C
+180=0x700D
+181=0x700E
+182=0x700F
+183=0x7013
+184=0x7014
+185=0x8000
+186=0x8001
 
 [1002]
 ParameterName=Manufacturer status register
@@ -842,6 +846,55 @@ DataType=0x0005
 AccessType=rw
 DefaultValue=0
 
+;A master node can read this for a copy of the node's EDS file
+[1021]
+ParameterName=Store EDS
+ObjectType=0x07
+DataType=0x000F
+AccessType=ro
+DefaultValue=0
+
+;Indicate the format of the Store EDS
+[1022]
+ParameterName=Store format
+ObjectType=0x07
+DataType=0x0005
+AccessType=ro
+DefaultValue=0
+
+[1023]
+ParameterName=OS command
+ObjectType=0x09
+SubNumber=4
+
+[1023sub0]
+ParameterName=Highest sub-index supported
+ObjectType=0x07
+DataType=0x0005
+AccessType=const
+DefaultValue=0x03
+
+[1023sub1]
+ParameterName=Command
+ObjectType=0x07
+DataType=0x000F
+AccessType=rw
+DefaultValue=0
+
+[1023sub2]
+ParameterName=Status
+ObjectType=0x07
+DataType=0x0005
+AccessType=ro
+DefaultValue=0
+
+[1023sub3]
+ParameterName=Reply
+ObjectType=0x07
+DataType=0x000F
+AccessType=ro
+DefaultValue=0
+
 ;Emergency consumer 1 to 127:
 ;* bit 31: If set, EMCY consumer does NOT exist / is NOT valid
 ;* bit 11-30: set to 0
@@ -1074,7 +1127,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1400sub1]
 ParameterName=COB-ID used by RPDO
@@ -1108,7 +1161,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1401sub1]
 ParameterName=COB-ID used by RPDO
@@ -1142,7 +1195,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1402sub1]
 ParameterName=COB-ID used by RPDO
@@ -1176,7 +1229,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1403sub1]
 ParameterName=COB-ID used by RPDO
@@ -1210,7 +1263,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1404sub1]
 ParameterName=COB-ID used by RPDO
@@ -1244,7 +1297,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1405sub1]
 ParameterName=COB-ID used by RPDO
@@ -1278,7 +1331,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1406sub1]
 ParameterName=COB-ID used by RPDO
@@ -1312,7 +1365,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1407sub1]
 ParameterName=COB-ID used by RPDO
@@ -1346,7 +1399,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1408sub1]
 ParameterName=COB-ID used by RPDO
@@ -1380,7 +1433,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1409sub1]
 ParameterName=COB-ID used by RPDO
@@ -1414,7 +1467,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Asub1]
 ParameterName=COB-ID used by RPDO
@@ -1448,7 +1501,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -1482,7 +1535,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Csub1]
 ParameterName=COB-ID used by RPDO
@@ -1516,7 +1569,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -1550,7 +1603,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Esub1]
 ParameterName=COB-ID used by RPDO
@@ -1584,7 +1637,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [140Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -1618,7 +1671,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1410sub1]
 ParameterName=COB-ID used by RPDO
@@ -1652,7 +1705,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1411sub1]
 ParameterName=COB-ID used by RPDO
@@ -1686,7 +1739,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1412sub1]
 ParameterName=COB-ID used by RPDO
@@ -1720,7 +1773,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1413sub1]
 ParameterName=COB-ID used by RPDO
@@ -1754,7 +1807,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1414sub1]
 ParameterName=COB-ID used by RPDO
@@ -1788,7 +1841,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1415sub1]
 ParameterName=COB-ID used by RPDO
@@ -1822,7 +1875,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1416sub1]
 ParameterName=COB-ID used by RPDO
@@ -1856,7 +1909,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1417sub1]
 ParameterName=COB-ID used by RPDO
@@ -1890,7 +1943,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1418sub1]
 ParameterName=COB-ID used by RPDO
@@ -1924,7 +1977,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1419sub1]
 ParameterName=COB-ID used by RPDO
@@ -1958,7 +2011,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Asub1]
 ParameterName=COB-ID used by RPDO
@@ -1992,7 +2045,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -2026,7 +2079,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Csub1]
 ParameterName=COB-ID used by RPDO
@@ -2060,7 +2113,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -2094,7 +2147,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Esub1]
 ParameterName=COB-ID used by RPDO
@@ -2128,7 +2181,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [141Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -2162,7 +2215,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1420sub1]
 ParameterName=COB-ID used by RPDO
@@ -2196,7 +2249,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1421sub1]
 ParameterName=COB-ID used by RPDO
@@ -2230,7 +2283,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1422sub1]
 ParameterName=COB-ID used by RPDO
@@ -2264,7 +2317,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1423sub1]
 ParameterName=COB-ID used by RPDO
@@ -2298,7 +2351,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1424sub1]
 ParameterName=COB-ID used by RPDO
@@ -2332,7 +2385,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1425sub1]
 ParameterName=COB-ID used by RPDO
@@ -2366,7 +2419,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1426sub1]
 ParameterName=COB-ID used by RPDO
@@ -2400,7 +2453,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1427sub1]
 ParameterName=COB-ID used by RPDO
@@ -2434,7 +2487,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1428sub1]
 ParameterName=COB-ID used by RPDO
@@ -2468,7 +2521,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1429sub1]
 ParameterName=COB-ID used by RPDO
@@ -2502,7 +2555,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Asub1]
 ParameterName=COB-ID used by RPDO
@@ -2536,7 +2589,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Bsub1]
 ParameterName=COB-ID used by RPDO
@@ -2570,7 +2623,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Csub1]
 ParameterName=COB-ID used by RPDO
@@ -2604,7 +2657,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Dsub1]
 ParameterName=COB-ID used by RPDO
@@ -2638,7 +2691,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Esub1]
 ParameterName=COB-ID used by RPDO
@@ -2672,7 +2725,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [142Fsub1]
 ParameterName=COB-ID used by RPDO
@@ -2706,7 +2759,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1430sub1]
 ParameterName=COB-ID used by RPDO
@@ -2740,7 +2793,7 @@ ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x03
+DefaultValue=0x05
 
 [1431sub1]
 ParameterName=COB-ID used by RPDO
@@ -10685,6 +10738,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x01
 
+;he ID used in the USLP header packets
 [6006sub1]
 ParameterName=Spacecraft ID
 ObjectType=0x07
@@ -10704,6 +10758,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x06
 
+;AX.25 destination callsign
 [6007sub1]
 ParameterName=Dest Callsign
 ObjectType=0x07
@@ -10711,6 +10766,7 @@ DataType=0x0009
 AccessType=const
 DefaultValue=SPACE
 
+;AX.25 source callsign
 [6007sub2]
 ParameterName=Src Callsign
 ObjectType=0x07
@@ -10718,6 +10774,11 @@ DataType=0x0009
 AccessType=const
 DefaultValue=KJ7SAT
 
+;Unique Satellite IDs for OreSats
+;
+; - ORESAT0: 1
+; - ORESAT0.5: 2
+; - ORESAT: 3
 [6007sub3]
 ParameterName=Satellite ID
 ObjectType=0x07
@@ -10725,7 +10786,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x00
 
-;APRS start bytes
+;APRS start chars. Always {{z
 [6007sub4]
 ParameterName=Start Chars
 ObjectType=0x07
@@ -10777,7 +10838,7 @@ DataType=0x0005
 AccessType=ro
 DefaultValue=0
 
-;eMMC utilization in %
+;Temperature in C
 [7000sub3]
 ParameterName=UHF Temperature
 ObjectType=0x07
@@ -10809,6 +10870,7 @@ DataType=0x0005
 AccessType=ro
 DefaultValue=0
 
+;LBand RSSI f last packet received after LNA, filters, and digital channel filter in dB
 [7000sub7]
 ParameterName=LBand RSSI
 ObjectType=0x07
@@ -10816,6 +10878,7 @@ DataType=0x0002
 AccessType=ro
 DefaultValue=0
 
+;UHF RSSI f last packet received after LNA, filters, and digital channel filter in dB
 [7000sub8]
 ParameterName=UHF RSSI
 ObjectType=0x07
@@ -10823,6 +10886,8 @@ DataType=0x0002
 AccessType=ro
 DefaultValue=0
 
+;Bit 0 = Current Bank
+;Bit 1 = Next Bank
 [7000sub9]
 ParameterName=Bank State
 ObjectType=0x07
@@ -10842,6 +10907,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x2C
 
+;Total battery pack 1 voltage
 [7001sub1]
 ParameterName=VBatt BP1
 ObjectType=0x07
@@ -10850,6 +10916,7 @@ AccessType=rwr
 DefaultValue=7200
 PDOMapping=1
 
+;Total battery pack 2 voltage
 [7001sub2]
 ParameterName=VBatt BP2
 ObjectType=0x07
@@ -10858,6 +10925,7 @@ AccessType=rwr
 DefaultValue=7200
 PDOMapping=1
 
+;Lowest cell in pack 1: maximum voltage (since ... last charge?)
 [7001sub3]
 ParameterName=VCell max BP1
 ObjectType=0x07
@@ -10866,6 +10934,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 2: maximum voltage (since ... last charge?)
 [7001sub4]
 ParameterName=VCell max BP2
 ObjectType=0x07
@@ -10874,6 +10943,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 1: minimum voltage (since ... last charge?)
 [7001sub5]
 ParameterName=VCell min BP1
 ObjectType=0x07
@@ -10882,6 +10952,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 2: minimum voltage (since ... last charge?)
 [7001sub6]
 ParameterName=VCell min BP2
 ObjectType=0x07
@@ -10890,6 +10961,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 1: voltage
 [7001sub7]
 ParameterName=VCell BP1
 ObjectType=0x07
@@ -10898,6 +10970,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in the pack 2: voltage
 [7001sub8]
 ParameterName=VCell BP2
 ObjectType=0x07
@@ -10906,6 +10979,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 1 voltage in pack 1
 [7001sub9]
 ParameterName=VCell1 BP1
 ObjectType=0x07
@@ -10914,6 +10988,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 1 voltage in pack 2
 [7001subA]
 ParameterName=VCell1 BP2
 ObjectType=0x07
@@ -10922,6 +10997,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 2 voltage in pack 1
 [7001subB]
 ParameterName=VCell2 BP1
 ObjectType=0x07
@@ -10930,6 +11006,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 2 voltage in pack 2
 [7001subC]
 ParameterName=VCell2 BP2
 ObjectType=0x07
@@ -10938,6 +11015,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell the pack 1: average voltage (since ... last charge?)
 [7001subD]
 ParameterName=VCell avg BP1
 ObjectType=0x07
@@ -10946,6 +11024,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell the pack 2: average voltage (since ... last charge?)
 [7001subE]
 ParameterName=VCell avg BP2
 ObjectType=0x07
@@ -10954,6 +11033,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Instantaneous current in pack 1
 [7001subF]
 ParameterName=Current BP1
 ObjectType=0x07
@@ -10962,6 +11042,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Instantaneous current in pack 2
 [7001sub10]
 ParameterName=Current BP2
 ObjectType=0x07
@@ -10970,6 +11051,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average current in pack 1
 [7001sub11]
 ParameterName=Current avg BP1
 ObjectType=0x07
@@ -10978,6 +11060,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average current in pack 2
 [7001sub12]
 ParameterName=Current avg BP2
 ObjectType=0x07
@@ -10986,6 +11069,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Max current in pack 1
 [7001sub13]
 ParameterName=Current max BP1
 ObjectType=0x07
@@ -10994,6 +11078,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Max current in pack 2
 [7001sub14]
 ParameterName=Current max BP2
 ObjectType=0x07
@@ -11002,6 +11087,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Min current in pack 1
 [7001sub15]
 ParameterName=Current min BP1
 ObjectType=0x07
@@ -11010,6 +11096,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Min current in pack 2
 [7001sub16]
 ParameterName=Current min BP2
 ObjectType=0x07
@@ -11018,6 +11105,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the total storage capacity of pack 1
 [7001sub17]
 ParameterName=Full Capacity BP1
 ObjectType=0x07
@@ -11026,6 +11114,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the total storage capacity of pack 2
 [7001sub18]
 ParameterName=Full Capacity BP2
 ObjectType=0x07
@@ -11034,6 +11123,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the current capacity of pack 1
 [7001sub19]
 ParameterName=Reported Capacity BP1
 ObjectType=0x07
@@ -11042,6 +11132,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the current capacity of pack 2
 [7001sub1A]
 ParameterName=Reported Capacity BP2
 ObjectType=0x07
@@ -11050,6 +11141,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 1 is empty
 [7001sub1B]
 ParameterName=Time To Empty BP1
 ObjectType=0x07
@@ -11058,6 +11150,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 2 is empty
 [7001sub1C]
 ParameterName=Time To Empty BP2
 ObjectType=0x07
@@ -11066,6 +11159,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 1 is full
 [7001sub1D]
 ParameterName=Time To Full BP1
 ObjectType=0x07
@@ -11074,6 +11168,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 2 is full
 [7001sub1E]
 ParameterName=Time To Full BP2
 ObjectType=0x07
@@ -11082,6 +11177,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Power cycles of pack 1
 [7001sub1F]
 ParameterName=Cycles BP1
 ObjectType=0x07
@@ -11090,6 +11186,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Power cycles of pack 2
 [7001sub20]
 ParameterName=Cycles BP2
 ObjectType=0x07
@@ -11098,6 +11195,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;State of Charge (%) of pack 1 (reported capacity / full capacity)
 [7001sub21]
 ParameterName=Reported State of Charge BP1
 ObjectType=0x07
@@ -11106,6 +11204,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;State of Charge (%) of pack 2 (reported capacity / full capacity)
 [7001sub22]
 ParameterName=Reported State of Charge BP2
 ObjectType=0x07
@@ -11114,6 +11213,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The temperature of pack 1 in C
 [7001sub23]
 ParameterName=Temperature BP1
 ObjectType=0x07
@@ -11122,6 +11222,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The temperature of pack 2 in C
 [7001sub24]
 ParameterName=Temperature BP2
 ObjectType=0x07
@@ -11130,6 +11231,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The average temperature of pack 1 in C since power
 [7001sub25]
 ParameterName=Temperature avg BP1
 ObjectType=0x07
@@ -11138,6 +11240,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The average temperature of pack 2 in C since power
 [7001sub26]
 ParameterName=Temperature avg BP2
 ObjectType=0x07
@@ -11146,6 +11249,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The maximum temperature of pack 1 in C since power
 [7001sub27]
 ParameterName=Temperature max BP1
 ObjectType=0x07
@@ -11154,6 +11258,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The maximum temperature of pack 2 in C since power
 [7001sub28]
 ParameterName=Temperature max BP2
 ObjectType=0x07
@@ -11162,6 +11267,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The minimum temperature of pack 1 in C since power
 [7001sub29]
 ParameterName=Temperature min BP1
 ObjectType=0x07
@@ -11170,6 +11276,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The minimum temperature of pack 2 in since power
 [7001sub2A]
 ParameterName=Temperature min BP2
 ObjectType=0x07
@@ -11178,6 +11285,13 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Bitfield
+;
+;- Bit 0: heater on/off
+;- B1: discharge disabled
+;- B2: charge disabled
+;- B3: discharge status
+;- B4: charge status
 [7001sub2B]
 ParameterName=State BP1
 ObjectType=0x07
@@ -11186,6 +11300,13 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Bitfield
+;
+;- Bit 0: heater on/off
+;- B1: discharge disabled
+;- B2: charge disabled
+;- B3: discharge status
+;- B4: charge status
 [7001sub2C]
 ParameterName=State BP2
 ObjectType=0x07
@@ -11206,6 +11327,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x2C
 
+;Total battery pack 1 voltage
 [7002sub1]
 ParameterName=VBatt BP1
 ObjectType=0x07
@@ -11214,6 +11336,7 @@ AccessType=rwr
 DefaultValue=7200
 PDOMapping=1
 
+;Total battery pack 2 voltage
 [7002sub2]
 ParameterName=VBatt BP2
 ObjectType=0x07
@@ -11222,6 +11345,7 @@ AccessType=rwr
 DefaultValue=7200
 PDOMapping=1
 
+;Lowest cell in pack 1: maximum voltage (since ... last charge?)
 [7002sub3]
 ParameterName=VCell max BP1
 ObjectType=0x07
@@ -11230,6 +11354,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 2: maximum voltage (since ... last charge?)
 [7002sub4]
 ParameterName=VCell max BP2
 ObjectType=0x07
@@ -11238,6 +11363,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 1: minimum voltage (since ... last charge?)
 [7002sub5]
 ParameterName=VCell min BP1
 ObjectType=0x07
@@ -11246,6 +11372,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 2: minimum voltage (since ... last charge?)
 [7002sub6]
 ParameterName=VCell min BP2
 ObjectType=0x07
@@ -11254,6 +11381,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in pack 1: voltage
 [7002sub7]
 ParameterName=VCell BP1
 ObjectType=0x07
@@ -11262,6 +11390,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell in the pack 2: voltage
 [7002sub8]
 ParameterName=VCell BP2
 ObjectType=0x07
@@ -11270,6 +11399,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 1 voltage in pack 1
 [7002sub9]
 ParameterName=VCell1 BP1
 ObjectType=0x07
@@ -11278,6 +11408,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 1 voltage in pack 2
 [7002subA]
 ParameterName=VCell1 BP2
 ObjectType=0x07
@@ -11286,6 +11417,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 2 voltage in pack 1
 [7002subB]
 ParameterName=VCell2 BP1
 ObjectType=0x07
@@ -11294,6 +11426,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Cell 2 voltage in pack 2
 [7002subC]
 ParameterName=VCell2 BP2
 ObjectType=0x07
@@ -11302,6 +11435,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell the pack 1: average voltage (since ... last charge?)
 [7002subD]
 ParameterName=VCell avg BP1
 ObjectType=0x07
@@ -11310,6 +11444,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Lowest cell the pack 2: average voltage (since ... last charge?)
 [7002subE]
 ParameterName=VCell avg BP2
 ObjectType=0x07
@@ -11318,6 +11453,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Instantaneous current in pack 1
 [7002subF]
 ParameterName=Current BP1
 ObjectType=0x07
@@ -11326,6 +11462,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Instantaneous current in pack 2
 [7002sub10]
 ParameterName=Current BP2
 ObjectType=0x07
@@ -11334,6 +11471,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average current in pack 1
 [7002sub11]
 ParameterName=Current avg BP1
 ObjectType=0x07
@@ -11342,6 +11480,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average current in pack 2
 [7002sub12]
 ParameterName=Current avg BP2
 ObjectType=0x07
@@ -11350,6 +11489,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Max current in pack 1
 [7002sub13]
 ParameterName=Current max BP1
 ObjectType=0x07
@@ -11358,6 +11498,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Max current in pack 2
 [7002sub14]
 ParameterName=Current max BP2
 ObjectType=0x07
@@ -11366,6 +11507,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Min current in pack 1
 [7002sub15]
 ParameterName=Current min BP1
 ObjectType=0x07
@@ -11374,6 +11516,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Min current in pack 2
 [7002sub16]
 ParameterName=Current min BP2
 ObjectType=0x07
@@ -11382,6 +11525,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the total storage capacity of pack 1
 [7002sub17]
 ParameterName=Full Capacity BP1
 ObjectType=0x07
@@ -11390,6 +11534,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the total storage capacity of pack 2
 [7002sub18]
 ParameterName=Full Capacity BP2
 ObjectType=0x07
@@ -11398,6 +11543,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the current capacity of pack 1
 [7002sub19]
 ParameterName=Reported Capacity BP1
 ObjectType=0x07
@@ -11406,6 +11552,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Best guess at the current capacity of pack 2
 [7002sub1A]
 ParameterName=Reported Capacity BP2
 ObjectType=0x07
@@ -11414,6 +11561,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 1 is empty
 [7002sub1B]
 ParameterName=Time To Empty BP1
 ObjectType=0x07
@@ -11422,6 +11570,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 2 is empty
 [7002sub1C]
 ParameterName=Time To Empty BP2
 ObjectType=0x07
@@ -11430,6 +11579,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 1 is full
 [7002sub1D]
 ParameterName=Time To Full BP1
 ObjectType=0x07
@@ -11438,6 +11588,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;How many second until pack 2 is full
 [7002sub1E]
 ParameterName=Time To Full BP2
 ObjectType=0x07
@@ -11446,6 +11597,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Power cycles of pack 1
 [7002sub1F]
 ParameterName=Cycles BP1
 ObjectType=0x07
@@ -11454,6 +11606,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Power cycles of pack 2
 [7002sub20]
 ParameterName=Cycles BP2
 ObjectType=0x07
@@ -11462,6 +11615,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;State of Charge (%) of pack 1 (reported capacity / full capacity)
 [7002sub21]
 ParameterName=Reported State of Charge BP1
 ObjectType=0x07
@@ -11470,6 +11624,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;State of Charge (%) of pack 2 (reported capacity / full capacity)
 [7002sub22]
 ParameterName=Reported State of Charge BP2
 ObjectType=0x07
@@ -11478,6 +11633,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The temperature of pack 1
 [7002sub23]
 ParameterName=Temperature BP1
 ObjectType=0x07
@@ -11486,6 +11642,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The  temperature of pack 2
 [7002sub24]
 ParameterName=Temperature BP2
 ObjectType=0x07
@@ -11494,6 +11651,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The average temperature of pack 1 in C since power
 [7002sub25]
 ParameterName=Temperature avg BP1
 ObjectType=0x07
@@ -11502,6 +11660,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The average temperature of pack 2 in C since power
 [7002sub26]
 ParameterName=Temperature avg BP2
 ObjectType=0x07
@@ -11510,6 +11669,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The maximum temperature of pack 1 in C since power
 [7002sub27]
 ParameterName=Temperature max BP1
 ObjectType=0x07
@@ -11518,6 +11678,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The maximum temperature of pack 2 in C since power
 [7002sub28]
 ParameterName=Temperature max BP2
 ObjectType=0x07
@@ -11526,6 +11687,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The minimum temperature of pack 1 in C since power
 [7002sub29]
 ParameterName=Temperature min BP1
 ObjectType=0x07
@@ -11534,6 +11696,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The minimum temperature of pack 2 in C since power
 [7002sub2A]
 ParameterName=Temperature min BP2
 ObjectType=0x07
@@ -11542,6 +11705,13 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Bitfield
+;
+;- Bit 0: heater on/off
+;- B1: discharge disabled
+;- B2: charge disabled
+;- B3: discharge status
+;- B4: charge status
 [7002sub2B]
 ParameterName=State BP1
 ObjectType=0x07
@@ -11550,6 +11720,13 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Bitfield
+;
+;- Bit 0: heater on/off
+;- B1: discharge disabled
+;- B2: charge disabled
+;- B3: discharge status
+;- B4: charge status
 [7002sub2C]
 ParameterName=State BP2
 ObjectType=0x07
@@ -11570,6 +11747,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7003sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -11578,6 +11756,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7003sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -11586,6 +11765,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7003sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -11594,6 +11774,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7003sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -11602,6 +11783,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7003sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -11610,6 +11792,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7003sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -11618,6 +11801,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7003sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -11626,6 +11810,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7003sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -11634,6 +11819,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7003sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -11642,6 +11828,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7003subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -11650,6 +11837,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7003subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -11658,6 +11846,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7003subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -11666,6 +11855,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7003subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -11674,6 +11864,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7003subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -11682,6 +11873,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7003subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -11690,6 +11882,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7003sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -11710,6 +11903,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7004sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -11718,6 +11912,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7004sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -11726,6 +11921,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7004sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -11734,6 +11930,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7004sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -11742,6 +11939,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7004sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -11750,6 +11948,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7004sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -11758,6 +11957,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7004sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -11766,6 +11966,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7004sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -11774,6 +11975,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7004sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -11782,6 +11984,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7004subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -11790,6 +11993,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7004subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -11798,6 +12002,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7004subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -11806,6 +12011,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7004subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -11814,6 +12020,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7004subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -11822,6 +12029,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7004subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -11830,6 +12038,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7004sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -11850,6 +12059,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7005sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -11858,6 +12068,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7005sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -11866,6 +12077,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7005sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -11874,6 +12086,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7005sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -11882,6 +12095,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7005sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -11890,6 +12104,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7005sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -11898,6 +12113,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7005sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -11906,6 +12122,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7005sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -11914,6 +12131,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7005sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -11922,6 +12140,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7005subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -11930,6 +12149,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7005subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -11938,6 +12158,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7005subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -11946,6 +12167,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7005subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -11954,6 +12176,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7005subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -11962,6 +12185,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7005subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -11970,6 +12194,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7005sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -11990,6 +12215,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7006sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -11998,6 +12224,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7006sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -12006,6 +12233,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7006sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -12014,6 +12242,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7006sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -12022,6 +12251,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7006sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -12030,6 +12260,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7006sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -12038,6 +12269,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7006sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -12046,6 +12278,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7006sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -12054,6 +12287,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7006sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -12062,6 +12296,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7006subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -12070,6 +12305,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7006subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -12078,6 +12314,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7006subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -12086,6 +12323,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7006subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -12094,6 +12332,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7006subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -12102,6 +12341,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7006subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -12110,6 +12350,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7006sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -12130,6 +12371,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7007sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -12138,6 +12380,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7007sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -12146,6 +12389,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7007sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -12154,6 +12398,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7007sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -12162,6 +12407,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7007sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -12170,6 +12416,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7007sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -12178,6 +12425,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7007sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -12186,6 +12434,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7007sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -12194,6 +12443,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7007sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -12202,6 +12452,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7007subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -12210,6 +12461,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7007subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -12218,6 +12470,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7007subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -12226,6 +12479,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7007subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -12234,6 +12488,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7007subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -12242,6 +12497,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7007subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -12250,6 +12506,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7007sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -12270,6 +12527,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7008sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -12278,6 +12536,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7008sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -12286,6 +12545,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7008sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -12294,6 +12554,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7008sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -12302,6 +12563,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7008sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -12310,6 +12572,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7008sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -12318,6 +12581,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7008sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -12326,6 +12590,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7008sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -12334,6 +12599,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7008sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -12342,6 +12608,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7008subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -12350,6 +12617,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7008subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -12358,6 +12626,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7008subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -12366,6 +12635,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7008subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -12374,6 +12644,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7008subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -12382,6 +12653,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7008subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -12390,6 +12662,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7008sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -12410,6 +12683,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [7009sub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -12418,6 +12692,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [7009sub2]
 ParameterName=Current
 ObjectType=0x07
@@ -12426,6 +12701,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [7009sub3]
 ParameterName=Power
 ObjectType=0x07
@@ -12434,6 +12710,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [7009sub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -12442,6 +12719,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [7009sub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -12450,6 +12728,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [7009sub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -12458,6 +12737,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [7009sub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -12466,6 +12746,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [7009sub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -12474,6 +12755,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [7009sub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -12482,6 +12764,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [7009subA]
 ParameterName=Energy
 ObjectType=0x07
@@ -12490,6 +12773,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [7009subB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -12498,6 +12782,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [7009subC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -12506,6 +12791,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [7009subD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -12514,6 +12800,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [7009subE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -12522,6 +12809,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [7009subF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -12530,6 +12818,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [7009sub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -12550,6 +12839,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x10
 
+;The solar array voltage in mV output in mV
 [700Asub1]
 ParameterName=Voltage
 ObjectType=0x07
@@ -12558,6 +12848,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array current in mA output in mA
 [700Asub2]
 ParameterName=Current
 ObjectType=0x07
@@ -12566,6 +12857,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The solar array power output in mW
 [700Asub3]
 ParameterName=Power
 ObjectType=0x07
@@ -12574,6 +12866,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array voltage in mV since power up
 [700Asub4]
 ParameterName=Voltage Avg
 ObjectType=0x07
@@ -12582,6 +12875,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array current in mA since power up
 [700Asub5]
 ParameterName=Current Avg
 ObjectType=0x07
@@ -12590,6 +12884,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Average of the solar array power output in mW since power up
 [700Asub6]
 ParameterName=Power Avg
 ObjectType=0x07
@@ -12598,6 +12893,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array voltage in mV since power up
 [700Asub7]
 ParameterName=Voltage Max
 ObjectType=0x07
@@ -12606,6 +12902,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array current in mA since power up
 [700Asub8]
 ParameterName=Current Max
 ObjectType=0x07
@@ -12614,6 +12911,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Maximum of the solar array power output in mW since power up
 [700Asub9]
 ParameterName=Power Max
 ObjectType=0x07
@@ -12622,6 +12920,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Total energy (power over time) output in J of the solar array since power up
 [700AsubA]
 ParameterName=Energy
 ObjectType=0x07
@@ -12630,6 +12929,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 1
 [700AsubB]
 ParameterName=Cell 1 Temp
 ObjectType=0x07
@@ -12638,6 +12938,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of Cell 2
 [700AsubC]
 ParameterName=Cell 2 Temp
 ObjectType=0x07
@@ -12646,6 +12947,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Minimum temperature of Cell 1 in C since power up
 [700AsubD]
 ParameterName=Cell 1 Temp Min
 ObjectType=0x07
@@ -12654,6 +12956,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Minimum temperature of Cell 2 in C since power up
 [700AsubE]
 ParameterName=Cell 2 Temp Min
 ObjectType=0x07
@@ -12662,6 +12965,7 @@ AccessType=rwr
 DefaultValue=127
 PDOMapping=1
 
+;Maximum temperature of Cell 1 in C since power up
 [700AsubF]
 ParameterName=Cell 1 Temp Max
 ObjectType=0x07
@@ -12670,6 +12974,7 @@ AccessType=rwr
 DefaultValue=-128
 PDOMapping=1
 
+;Maximum temperature of Cell 2 in C since power up
 [700Asub10]
 ParameterName=Cell 2 Temp Max
 ObjectType=0x07
@@ -12690,6 +12995,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x0D
 
+;The percent of the root partition being used. 0-100%
 [700Bsub1]
 ParameterName=Root Partition Percent
 ObjectType=0x07
@@ -12698,6 +13004,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The percent of RAM being used. 0-100%
 [700Bsub2]
 ParameterName=RAM Percent
 ObjectType=0x07
@@ -12706,6 +13013,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fread cache (files that can be read from the card)
 [700Bsub3]
 ParameterName=Fread cache length
 ObjectType=0x07
@@ -12714,6 +13022,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fwrite cache (files that were written to the card)
 [700Bsub4]
 ParameterName=Fwrite cache length
 ObjectType=0x07
@@ -12722,6 +13031,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Bsub5]
 ParameterName=Active apps
 ObjectType=0x07
@@ -12730,6 +13040,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Bsub6]
 ParameterName=Failed apps
 ObjectType=0x07
@@ -12738,6 +13049,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+; * update-succesful: 0x00
+; * pre-update-failed: 0x01
+; * update-failed: 0x02
+; * updating: 0xFF
 [700Bsub7]
 ParameterName=Updater Status
 ObjectType=0x07
@@ -12746,6 +13062,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of updates cached
 [700Bsub8]
 ParameterName=Updates available
 ObjectType=0x07
@@ -12754,6 +13071,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The right ascension (in deg?) calculated by last solve
 [700Bsub9]
 ParameterName=Right Ascension
 ObjectType=0x07
@@ -12762,6 +13080,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The declination (in deg?) calculated by last solve
 [700BsubA]
 ParameterName=Declination
 ObjectType=0x07
@@ -12770,6 +13089,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The roll (in deg?) calculated by last solve
 [700BsubB]
 ParameterName=Roll
 ObjectType=0x07
@@ -12778,6 +13098,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The SCET value for the last capture that was solved
 [700BsubC]
 ParameterName=Timestamp
 ObjectType=0x07
@@ -12786,6 +13107,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ms since might
 [700BsubD]
 ParameterName=Timestamp Short
 ObjectType=0x07
@@ -12797,15 +13119,16 @@ PDOMapping=1
 [700C]
 ParameterName=Star Tracker 1
 ObjectType=0x09
-SubNumber=13
+SubNumber=14
 
 [700Csub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x0C
+DefaultValue=0x0D
 
+;The percent of the root partition being used. 0-100%
 [700Csub1]
 ParameterName=Root Partition Percent
 ObjectType=0x07
@@ -12814,6 +13137,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The percent of RAM being used. 0-100%
 [700Csub2]
 ParameterName=RAM Percent
 ObjectType=0x07
@@ -12822,6 +13146,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fread cache (files that can be read from the card)
 [700Csub3]
 ParameterName=Fread cache length
 ObjectType=0x07
@@ -12830,6 +13155,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fwrite cache (files that were written to the card)
 [700Csub4]
 ParameterName=Fwrite cache length
 ObjectType=0x07
@@ -12838,6 +13164,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Csub5]
 ParameterName=Active apps
 ObjectType=0x07
@@ -12846,6 +13173,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Csub6]
 ParameterName=Failed apps
 ObjectType=0x07
@@ -12854,6 +13182,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+; * update-succesful: 0x00
+; * pre-update-failed: 0x01
+; * update-failed: 0x02
+; * updating: 0xFF
 [700Csub7]
 ParameterName=Updater Status
 ObjectType=0x07
@@ -12862,6 +13195,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of updates cached
 [700Csub8]
 ParameterName=Updates available
 ObjectType=0x07
@@ -12870,6 +13204,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The right ascension (in deg?) calculated by last solve
 [700Csub9]
 ParameterName=Right Ascension
 ObjectType=0x07
@@ -12878,6 +13213,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The declination (in deg?) calculated by last solve
 [700CsubA]
 ParameterName=Declination
 ObjectType=0x07
@@ -12886,6 +13222,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The roll (in deg?) calculated by last solve
 [700CsubB]
 ParameterName=Roll
 ObjectType=0x07
@@ -12894,11 +13231,21 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The SCET value for the last capture that was solved
 [700CsubC]
 ParameterName=Timestamp
 ObjectType=0x07
 DataType=0x001B
 AccessType=rwr
+DefaultValue=0
+PDOMapping=1
+
+;ms since might
+[700CsubD]
+ParameterName=Timestamp Short
+ObjectType=0x07
+DataType=0x0004
+AccessType=ro
 DefaultValue=0
 PDOMapping=1
 
@@ -12914,6 +13261,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x12
 
+;The percent of the root partition being used. 0-100%
 [700Dsub1]
 ParameterName=Root Partition Percent
 ObjectType=0x07
@@ -12922,6 +13270,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The percent of RAM being used. 0-100%
 [700Dsub2]
 ParameterName=RAM Percent
 ObjectType=0x07
@@ -12930,6 +13279,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fread cache (files that can be read from the card)
 [700Dsub3]
 ParameterName=Fread cache length
 ObjectType=0x07
@@ -12938,6 +13288,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fwrite cache (files that were written to the card)
 [700Dsub4]
 ParameterName=Fwrite cache length
 ObjectType=0x07
@@ -12946,6 +13297,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Dsub5]
 ParameterName=Active apps
 ObjectType=0x07
@@ -12954,6 +13306,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [700Dsub6]
 ParameterName=Failed apps
 ObjectType=0x07
@@ -12962,6 +13315,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+; * update-succesful: 0x00
+; * pre-update-failed: 0x01
+; * update-failed: 0x02
+; * updating: 0xFF
 [700Dsub7]
 ParameterName=Updater Status
 ObjectType=0x07
@@ -12970,6 +13328,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of updates cached
 [700Dsub8]
 ParameterName=Updates available
 ObjectType=0x07
@@ -12978,6 +13337,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+;  * off: 0x00
+;  * searching for satellites: 0x01
+;  * locked on >= 4 satellites: 0x02
+;  * failed: 0xFF
 [700Dsub9]
 ParameterName=GPS Status
 ObjectType=0x07
@@ -12986,6 +13350,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;number of gps satellite lock onto in fix. max 12
 [700DsubA]
 ParameterName=Satellites Locked
 ObjectType=0x07
@@ -12994,6 +13359,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;SCET timestamp of last GPS packet
 [700DsubB]
 ParameterName=Timestamp
 ObjectType=0x07
@@ -13002,6 +13368,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF x coordinate in cm
 [700DsubC]
 ParameterName=Position X
 ObjectType=0x07
@@ -13010,6 +13377,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF y coordinate in cm
 [700DsubD]
 ParameterName=Position Y
 ObjectType=0x07
@@ -13018,6 +13386,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF z coordinate in cm
 [700DsubE]
 ParameterName=Position Z
 ObjectType=0x07
@@ -13026,6 +13395,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF x velocity in cm/s
 [700DsubF]
 ParameterName=Velocity X
 ObjectType=0x07
@@ -13034,6 +13404,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF y velocity in cm/s
 [700Dsub10]
 ParameterName=Velocity Y
 ObjectType=0x07
@@ -13042,6 +13413,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ECEF z velocity in cm/s
 [700Dsub11]
 ParameterName=Velocity Z
 ObjectType=0x07
@@ -13050,6 +13422,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;ms since might
 [700Dsub12]
 ParameterName=Timestamp Short
 ObjectType=0x07
@@ -13070,6 +13443,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x13
 
+;in deg / s
 [700Esub1]
 ParameterName=Gyro pitch
 ObjectType=0x07
@@ -13078,6 +13452,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;in deg / s
 [700Esub2]
 ParameterName=Gyro yaw
 ObjectType=0x07
@@ -13086,6 +13461,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;in deg / s
 [700Esub3]
 ParameterName=Gyro roll
 ObjectType=0x07
@@ -13118,6 +13494,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Temperature of the IMU in C
 [700Esub7]
 ParameterName=IMU temp
 ObjectType=0x07
@@ -13254,6 +13631,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x09
 
+;The percent of the root partition being used. 0-100%
 [7013sub1]
 ParameterName=Root Partition Percent
 ObjectType=0x07
@@ -13262,6 +13640,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The percent of RAM being used. 0-100%
 [7013sub2]
 ParameterName=RAM Percent
 ObjectType=0x07
@@ -13270,6 +13649,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fread cache (files that can be read from the card)
 [7013sub3]
 ParameterName=Fread cache length
 ObjectType=0x07
@@ -13278,6 +13658,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fwrite cache (files that were written to the card)
 [7013sub4]
 ParameterName=Fwrite cache length
 ObjectType=0x07
@@ -13286,6 +13667,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [7013sub5]
 ParameterName=Active apps
 ObjectType=0x07
@@ -13294,6 +13676,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [7013sub6]
 ParameterName=Failed apps
 ObjectType=0x07
@@ -13302,6 +13685,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+; * update-succesful: 0x00
+; * pre-update-failed: 0x01
+; * update-failed: 0x02
+; * updating: 0xFF
 [7013sub7]
 ParameterName=Updater Status
 ObjectType=0x07
@@ -13310,6 +13698,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of updates cached
 [7013sub8]
 ParameterName=Updates available
 ObjectType=0x07
@@ -13318,6 +13707,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The DxWiFi card is transmitting
 [7013sub9]
 ParameterName=Transmitting
 ObjectType=0x07
@@ -13338,6 +13728,7 @@ DataType=0x0005
 AccessType=const
 DefaultValue=0x0C
 
+;The percent of the root partition being used. 0-100%
 [7014sub1]
 ParameterName=Root Partition Percent
 ObjectType=0x07
@@ -13346,6 +13737,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The percent of RAM being used. 0-100%
 [7014sub2]
 ParameterName=RAM Percent
 ObjectType=0x07
@@ -13354,6 +13746,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fread cache (files that can be read from the card)
 [7014sub3]
 ParameterName=Fread cache length
 ObjectType=0x07
@@ -13362,6 +13755,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of files in fwrite cache (files that were written to the card)
 [7014sub4]
 ParameterName=Fwrite cache length
 ObjectType=0x07
@@ -13370,6 +13764,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [7014sub5]
 ParameterName=Active apps
 ObjectType=0x07
@@ -13378,6 +13773,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Deprecated
 [7014sub6]
 ParameterName=Failed apps
 ObjectType=0x07
@@ -13386,6 +13782,11 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;States:
+; * update-succesful: 0x00
+; * pre-update-failed: 0x01
+; * update-failed: 0x02
+; * updating: 0xFF
 [7014sub7]
 ParameterName=Updater Status
 ObjectType=0x07
@@ -13394,6 +13795,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of updates cached
 [7014sub8]
 ParameterName=Updates available
 ObjectType=0x07
@@ -13402,6 +13804,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The TEC is enabled
 [7014sub9]
 ParameterName=TEC Enable
 ObjectType=0x07
@@ -13410,6 +13813,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The TEC is saturated
 [7014subA]
 ParameterName=TEC Saturated
 ObjectType=0x07
@@ -13418,6 +13822,7 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;The TEC's temperature
 [7014subB]
 ParameterName=TEC Temperature
 ObjectType=0x07
@@ -13426,8 +13831,9 @@ AccessType=rwr
 DefaultValue=0
 PDOMapping=1
 
+;Number of CFC capture
 [7014subC]
-ParameterName=TEC Captures
+ParameterName=CFC Captures
 ObjectType=0x07
 DataType=0x0007
 AccessType=rwr
@@ -13456,14 +13862,14 @@ DefaultValue=0
 [8001]
 ParameterName=Test OPD
 ObjectType=0x09
-SubNumber=5
+SubNumber=6
 
 [8001sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x04
+DefaultValue=0x05
 
 [8001sub1]
 ParameterName=Enable System
@@ -13478,7 +13884,6 @@ ParameterName=All Node Statuses
 ObjectType=0x07
 DataType=0x0009
 AccessType=ro
-DefaultValue=
 
 [8001sub3]
 ParameterName=Node Id
@@ -13492,6 +13897,14 @@ ParameterName=Enable Node
 ObjectType=0x07
 DataType=0x0005
 AccessType=rw
+DefaultValue=0
+
+;Scan / Probe for all OPD nodes
+[8001sub5]
+ParameterName=Scan Nodes
+ObjectType=0x07
+DataType=0x0001
+AccessType=wo
 DefaultValue=0
 
 [ManufacturerObjects]
@@ -13805,48 +14218,36 @@ AccessType=ro
 DefaultValue=00 00 00 00 00 00 00 00 00 00
 
 [3000]
-ParameterName=OLAF app control
+ParameterName=Power control
 ObjectType=0x09
-SubNumber=5
+SubNumber=3
 
 [3000sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x04
+DefaultValue=0x02
 
-;Write true to restart the board
+;Write true to poweroff the system
 [3000sub1]
-ParameterName=Reboot Board
+ParameterName=Poweroff
 ObjectType=0x07
 DataType=0x0001
 AccessType=wo
 DefaultValue=0
 
-;Write true to poweroff the board
+;1 for a soft reset (restart daemon)
+;2 for hard reset (reboot the board)
+;3 to do a factory reset (clear all caches and reboot)
 [3000sub2]
-ParameterName=Poweroff Board
+ParameterName=Reset
 ObjectType=0x07
-DataType=0x0001
+DataType=0x0005
 AccessType=wo
 DefaultValue=0
-
-;Write true to have the OLAF app exit
-[3000sub3]
-ParameterName=Quit
-ObjectType=0x07
-DataType=0x0001
-AccessType=wo
-DefaultValue=0
-
-;Allow OLAF to control the board CPU frequency
-[3000sub4]
-ParameterName=CPU frequency
-ObjectType=0x07
-DataType=0x0001
-AccessType=rw
-DefaultValue=0
+LowLimit=0
+HighLimit=3
 
 [3001]
 ParameterName=System info
@@ -14307,13 +14708,32 @@ DataType=0x0005
 AccessType=rw
 DefaultValue=0
 
-;Write any non-zero number to get system logs. Log will be place in fread cache.
 [3006]
-ParameterName=Get log
+ParameterName=New Record
+ObjectType=0x09
+SubNumber=3
+
+[3006sub0]
+ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
-AccessType=rw
+AccessType=const
+DefaultValue=0x02
+
+;This will make a compress tar archive of the full system logs. It will be add to the cache.
+[3006sub1]
+ParameterName=Make logs file
+ObjectType=0x07
+DataType=0x0001
+AccessType=wo
 DefaultValue=0
+
+;Get the logs since boot as a string.
+[3006sub2]
+ParameterName=Get logs
+ObjectType=0x07
+DataType=0x0009
+AccessType=ro
 
 [3100]
 ParameterName=Updater

@@ -21,7 +21,8 @@ def gen_beacon_rst():
     eds, _ = read_eds(_FILE_PATH + '/oresat_c3/data/oresat_c3.eds')
 
     data = []
-    data.append((0, 'APRS: Header', DataType.OCTET_STRING.name, 16, ''))
+    data.append((0, 'APRS: Header', DataType.OCTET_STRING.name, 16,
+                 'See the bitshifted header definition above'))
     offset = 16
 
     for field in BEACON_FIELDS:
@@ -55,14 +56,51 @@ def gen_beacon_rst():
                     break
             break
 
-    data.append((offset, 'APRS: CRC32', DataType.UNSIGNED32.name, 4, ''))
+    data.append((offset, 'APRS: CRC32', DataType.UNSIGNED32.name, 4, 'packet checksum'))
     offset += 4
 
     lines = []
     lines.append('Beacon\n')
     lines.append('======\n')
     lines.append('\n')
-    lines.append(f'Beacon total length: {offset}\n')
+    lines.append('OreSat use AX.25 V2 frame for it\'s beacon format.\n')
+    lines.append('\n')
+    lines.append('A great reference for AX.25 is at '
+                 'https://notblackmagic.com/bitsnpieces/ax.25/\n')
+    lines.append('\n')
+    lines.append('Beacon AX.25 Header Definition\n')
+    lines.append('------------------------------\n')
+    lines.append('\n')
+    lines.append('.. note:: The AX.25 header is bitshifted to the left by one bit.\n')
+    lines.append('\n')
+    lines.append('+------------------+-----------------------------------+----------+-------------'
+                 '----------------------+-----------+---------+-----+\n')
+    lines.append('|                  | Src Callsign                      | Src SSID | Dest Callsig'
+                 'n                     | Dest SSID | Control | PID |\n')
+    lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
+                 '----+-----+-----+-----+-----------+---------+-----+\n')
+    lines.append('| Value            | "O" | "R" | "E" | "S" | "A" | "T" | 0        | "S" | "P" | '
+                 '"A" | "C" | "E" | " " | 0         | 0       | 0   |\n')
+    lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
+                 '----+-----+-----+-----+-----------+---------+-----+\n')
+    lines.append('| Hex              | 4F  | 52  | 45  | 53  | 41  | 54  | 00       | 53  | 50  | '
+                 '41  | 43  | 45  | 20  | 00        | 00      | 00  |\n')
+    lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
+                 '----+-----+-----+-----+-----------+---------+-----+\n')
+    lines.append('| Hex (bitshifted) | 9E  |68   | 5A  | 6A  | 52  | 6C  | 00       | 6A  | 64  | '
+                 '52  | 56  | 5A  | 28  | 00        | 00      | 00  |\n')
+    lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
+                 '----+-----+-----+-----+-----------+---------+-----+\n')
+    lines.append('| Octet Offset     | 0   | 1   | 2   | 3   | 4   | 5   | 6        | 7   | 8   | '
+                 '9   | 10  | 11  | 12  | 13        | 14      | 15  |\n')
+    lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
+                 '----+-----+-----+-----+-----------+---------+-----+\n')
+    lines.append('\n')
+    lines.append('\n')
+    lines.append('Beacon Definition\n')
+    lines.append('-----------------\n')
+    lines.append('\n')
+    lines.append(f'Beacon total length: {offset} octets\n')
     lines.append('\n')
     lines.append('.. csv-table::\n')
     lines.append('    :header: "Offset", "Name", "Data Type", "Octets", "Comments"\n')

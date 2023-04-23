@@ -29,8 +29,12 @@ def main():
     mock_rtc = 'rtc' in mock_args or 'all' in mock_args
     mock_opd = 'opd' in mock_args or 'all' in mock_args
 
-    rtc = Rtc(mock=mock_rtc)
-    opd = Opd(20, 2, mock=mock_opd)
+    # TODO get from OD
+    i2c_bus_num = 2
+    opd_enable_pin = 20
+
+    rtc = Rtc(i2c_bus_num, mock=mock_rtc)
+    opd = Opd(opd_enable_pin, i2c_bus_num, mock=mock_opd)
 
     app.add_resource(StateResource(rtc))  # add state first
     app.add_resource(BeaconResource())

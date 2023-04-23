@@ -1,7 +1,7 @@
 '''
 RV-3082-C7 RTC driver
 
-The RV-3082-C7 is an extreme low power real-time clock module with I2C-bus interface driver.
+The RV-3082-C7 is an extreme low power real-time clock module with I2C-bus interface.
 '''
 
 from enum import IntEnum
@@ -118,6 +118,6 @@ class Rv3082c7:
         return float(self._i2c_read_reg(Rv3082c7Reg.UNIX_TIME))
 
     @unix_time.setter
-    def unix_time(self, value: int | float):
+    def unix_time(self, value: int or float):
 
         self._i2c_write_reg(Rv3082c7Reg.UNIX_TIME, int(value))

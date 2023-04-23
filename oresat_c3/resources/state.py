@@ -9,7 +9,6 @@ from threading import Thread, Event
 from olaf import Resource, logger
 
 from .. import C3State
-from ..subsystems.burnwire import deploy_helical, deploy_turnstile
 from ..subsystems.rtc import Rtc
 from . import hard_reset
 
@@ -62,8 +61,7 @@ class StateResource(Resource):
         if not self._deploy_obj.value and self._attempts < self._attempts_obj.value \
                 and self._bat_good:
             logger.info(f'deploying antennas, attempt {self._attempts}')
-            deploy_helical()
-            deploy_turnstile()
+            # TODO deploy here
             self._attempts += 1
         else:
             self._c3_state_obj.value = C3State.STANDBY.value

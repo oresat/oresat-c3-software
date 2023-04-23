@@ -102,17 +102,12 @@ class Max7310:
         else:
             buf = [reg.value, data]
             write = i2c_msg.write(self._addr, buf)
-            read = i2c_msg.read(self._addr, 2)
 
             try:
                 with SMBus(self._bus_num) as bus:
-                    bus.i2c_rdwr(write, read)
+                    bus.i2c_rdwr(write)
             except OSError:
                 raise Max7310Error(f'MAX7310 at address 0x{self._addr:02X} does not exist')
-
-            if list(read) != buf:
-                raise Max7310Error(f'read after write did not match; wrote {buf}, read '
-                                   f'back {list(read)}')
 
     def _valid_pin(self, pin_num: int):
 
@@ -193,7 +188,7 @@ class Max7310:
         Parameters
         ----------
         pin_num: int
-            The pin / port to clear.
+            The pin / port to get the status of.
         '''
 
         result = self._i2c_read_reg(Max7310Reg.OUTPUT_PORT)

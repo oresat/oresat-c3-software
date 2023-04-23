@@ -9,6 +9,7 @@ import struct
 from time import time
 from threading import Thread, Event
 
+import canopen
 from olaf import Resource, logger
 
 from .. import NodeId
@@ -62,7 +63,7 @@ class EdlResource(Resource):
             try:
                 message, sender = self._uplink_socket.recvfrom(self._BUFFER_LEN)
                 logger.info(f'EDL recv: {message.hex(sep=" ")}')
-            except TimeoutError:
+            except (TimeoutError, socket.timeout):
                 continue
 
             if len(message) == 0:
@@ -117,26 +118,32 @@ class EdlResource(Resource):
             elif code == EdlCode.C3_FACTORYRESET:
                 logger.info('EDL factory reset')
                 factory_reset()
-            elif code == EdlCode.I2C_RESET:
-                logger.info('EDL resetting I2C')
-                # TODO
             elif code == EdlCode.CO_NODE_ENABLE:
                 node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL enabling CAMopen node {node.name}')
+                logger.info(f'EDL enabling CANopen node {node.name}')
                 # TODO
             elif code == EdlCode.CO_NODE_STATUS:
                 node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL getting CAMopen node {node.name} status')
-                # TODO
+                logger.info(f'EDL getting CANopen node {node.name} status')
+                ret = self.node.node_status[node.value]
             elif code == EdlCode.CO_SDO_WRITE:
                 fmt = 'I'
-                node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL SDO write on CAMopen node {node.name}')
-                # TODO
+                node_id, index, subindex, size = struct.unpack('<2BHI', args[:8])
+                data = args[8:]
+                node = NodeId(node_id)
+                logger.info(f'EDL SDO write on CANopen node {node.name}')
+                try:
+                    self.sdo_write(node_id, index, subindex, data)
+                    ret = 0
+                except canopen.SdoError as e:
+                    logger.error(e)
+                    # last 10 chars are always the sdo error code in hex
+                    ret = int(str(e)[-10:], 16)
             elif code == EdlCode.CO_SYNC:
                 logger.info('EDL sending CANopen SYNC message')
-                # TODO
+                self.node.send_sync()
             elif code == EdlCode.OPD_SYSENABLE:
+                fmt = '?'
                 enable = OpdNode.from_bytes(args[0])
                 if enable:
                     logger.info('EDL enabling OPD system')
@@ -144,10 +151,15 @@ class EdlResource(Resource):
                 else:
                     logger.info('EDL disabling OPD system')
                     self._opd.stop()
+                ret = self._opd.is_system_enabled
             elif code == EdlCode.OPD_SCAN:
+                logger.info('EDL scaning for all OPD nodes')
+                ret = self._opd.scan()
+            elif code == EdlCode.OPD_PROBE:
+                fmt = '?'
                 node = OpdNode.from_bytes(args[0])
-                logger.info(f'EDL scaning for OPD node {node.name}')
-                self._opd.scan(node)
+                logger.info(f'EDL probing for OPD node {node.name}')
+                ret = self._opd.probe(node)
             elif code == EdlCode.OPD_ENABLE:
                 node = OpdNode.from_bytes(args[0])
                 if args[1] == b'\x00':
@@ -156,15 +168,16 @@ class EdlResource(Resource):
                 else:
                     logger.info(f'EDL enabling OPD node {node.name}')
                     self._opd.enable_node(node)
-                    ret = 1
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_RESET:
                 node = OpdNode.from_bytes(args[0])
                 logger.info(f'EDL resetting for OPD node {node.name}')
                 self._opd.reset_node(node)
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_STATUS:
                 node = OpdNode.from_bytes(args[0])
                 logger.info(f'EDL getting the status for OPD node {node.name}')
-                ret = self._opd.node_status(node)
+                ret = self._opd.node_status(node).value
             elif code == EdlCode.RTC_SET_TIME:
                 fmt = 'I'
                 value = struct.unpack(fmt, args)

@@ -1,8 +1,11 @@
 bitstring
+build
 eds-utils
 flake8
 oresat-olaf
+setuptools
 smbus2
 spacepackets
 sphinx
 sphinx-rtd-theme
+wheel

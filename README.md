@@ -32,7 +32,7 @@ Can mock hardware by using the `-m HARDWARE` flag.
 
 - The`-m all` flag can be used to mock all hardware (CAN bus is always
 required).
-- The `-m rtc` flag would only mock the RTC and expect all other hardware
+- The `-m opd` flag would only mock the OPD and expect all other hardware
 to exist.
 
 See other options with `-h` flag.

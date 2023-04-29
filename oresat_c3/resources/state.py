@@ -4,12 +4,12 @@ State Resource
 This handles the main C3 state machine.
 '''
 
+from time import time
 from threading import Thread, Event
 
 from olaf import Resource, logger
 
 from .. import C3State
-from ..subsystems.rtc import Rtc
 from . import hard_reset
 
 
@@ -18,13 +18,12 @@ class StateResource(Resource):
     BAT_LEVEL_HIGH = 7_000
     BAT_LEVEL_LOW = 6_500
 
-    def __init__(self, rtc: Rtc):
+    def __init__(self):
         super().__init__()
 
-        self.rtc = rtc
         self._attempts = 0
 
-        self._boot_time = self.rtc.get_time()
+        self._boot_time = time()
 
         self._event = Event()
         self._thread = Thread(target=self._send_beacon_thread)
@@ -50,7 +49,7 @@ class StateResource(Resource):
 
     def _pre_deploy(self):
 
-        if self._boot_time + self._pre_deply_timeout_obj.value + self.rtc.get_time():
+        if self._boot_time + self._pre_deply_timeout_obj.value + time():
             self._tx_enabled_obj.value = True
         else:
             logger.info('pre-deploy timeout reached')
@@ -124,7 +123,7 @@ class StateResource(Resource):
     def _tigger_reset(self) -> bool:
         '''bool: Helper property to check if the reset timeout has been reached'''
 
-        return self.rtc.get_time() - self._boot_time >= self._p_state_rec['Reset Timeout']
+        return time() - self._boot_time >= self._p_state_rec['Reset Timeout']
 
     def _store_state(self) -> bool:
 

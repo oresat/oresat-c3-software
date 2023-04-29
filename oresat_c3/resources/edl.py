@@ -15,7 +15,6 @@ from olaf import Resource, logger
 from .. import NodeId
 from ..protocols.edl import EdlServer, EdlError, EdlCode
 from ..subsystems.opd import Opd, OpdNode, OpdError, Max7310Error
-from ..subsystems.rtc import Rtc
 from . import soft_reset, hard_reset, factory_reset
 
 
@@ -25,11 +24,10 @@ class EdlResource(Resource):
     _DOWNLINK_ADDR = ('localhost', 10016)
     _BUFFER_LEN = 1024
 
-    def __init__(self, opd: Opd, rtc: Rtc):
+    def __init__(self, opd: Opd):
         super().__init__()
 
         self.opd = opd
-        self.rtc = rtc
 
         logger.info(f'EDL uplink socket: {self._UPLINK_ADDR}')
         self._uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -182,7 +180,7 @@ class EdlResource(Resource):
                 fmt = 'I'
                 value = struct.unpack(fmt, args)
                 logger.info(f'EDL setting the RTC {value}')
-                self.rtc.set_time(value)
+                # TODO
             elif code == EdlCode.TIME_SYNC:
                 logger.info('EDL sending time sync TPDO')
                 self.node.send_tpdo(0)

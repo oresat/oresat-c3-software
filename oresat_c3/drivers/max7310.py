@@ -63,6 +63,14 @@ class Max7310:
     ADDRESSES = list(range(ADDR_MIN, ADDR_MAX + 1))
 
     def __init__(self, bus_num: int, addr: int, mock: bool = False):
+        '''
+        Parameters
+        ----------
+        bus: int
+            The I2C bus.
+        mock: bool
+            Mock the MAX7310.
+        '''
 
         if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
             raise Max7310Error(f'self._addr 0x{self._addr:X} is not between 0x{self.ADDR_MIN:X} '

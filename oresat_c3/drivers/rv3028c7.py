@@ -68,6 +68,14 @@ class Rv3082c7:
     ADDR = 0x52
 
     def __init__(self, bus_num: int, mock: bool = False):
+        '''
+        Parameters
+        ----------
+        bus: int
+            The I2C bus.
+        mock: bol
+            Mock the RV-3082-C7.
+        '''
 
         self._mock = mock
         self._mock_regs = bytearray([0] * 0x29)
@@ -94,22 +102,23 @@ class Rv3082c7:
     def _i2c_write_reg(self, reg: Rv3082c7Reg, value: int):
 
         raw = value.to_bytes(reg.size, 'little')
+
         if self._mock:
             self._mock_regs[reg.value:reg.value + reg.size - 1] = raw
         else:
             buf = reg.value.to_bytes(1, 'little') + raw
             write = i2c_msg.write(self.ADDR, buf)
-            read = i2c_msg.read(self.ADDR, reg.size)
 
             try:
                 with SMBus(self._bus_num) as bus:
-                    bus.i2c_rdwr(write, read)
+                    bus.i2c_rdwr(write)
             except OSError:
-                raise Rv3082c7Error(f'failed to write from reg {reg}')
+                raise Rv3082c7Error(f'failed to write value 0x{value:X} to reg {reg}')
 
-            if bytes(read) != buf:
-                raise Rv3082c7Error(f'read after write did not match; wrote {buf}, read '
-                                    f'back {bytes(read)}')
+            read = self._i2c_read_reg(reg)
+            if read != value:
+                raise Rv3082c7Error(f'read after write did not match; wrote 0x{value:X}, read '
+                                    f'back 0x{read:X}')
 
     @property
     def unix_time(self) -> float:

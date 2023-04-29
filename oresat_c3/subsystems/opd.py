@@ -97,7 +97,7 @@ class Opd:
             Pin that enable the OPD subsystem.
         bus: int
             The I2C bus.
-        mock: bol
+        mock: bool
             Mock the OPD subsystem.
         '''
 

@@ -4,5 +4,5 @@ build-backend = "setuptools.build_meta"
 [pytest.ini_options]
 filterwarnings = [
     #Specifically creating a bad packet for unit test, ignore pytest warning on this specific test
-    "ignore::DeprecationWarning:test_edl.TestEdl.test_parse_packet_invalid_fecf"
+    "ignore::DeprecationWarning:protocols_tests.test_edl.TestEdl.test_parse_packet_invalid_fecf"
 ]

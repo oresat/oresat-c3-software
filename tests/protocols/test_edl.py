@@ -1,8 +1,9 @@
 import unittest
 import unittest.mock as um
 
-from oresat_c3.protocols.edl import EdlServer, EdlClient, EdlError, crc16_bytes
 from spacepackets.uslp.frame import TransferFrame, FrameType
+
+from oresat_c3.protocols.edl import EdlServer, EdlClient, EdlError, crc16_bytes
 
 class TestEdl(unittest.TestCase):
 

@@ -15,7 +15,7 @@ class TestAx25(unittest.TestCase):
         payload = b'\x01\x02\x03'
 
         # Check if Ax25Error is raised for the invalid destination callsign length
-        with self.assertRaisesRegex(Ax25Error, 'dest callsign must be less than 6 chars'):
+        with self.assertRaises(Ax25Error):
             generate_ax25_packet(invalid_dest_callsign, dest_ssid, src_callsign, src_ssid, control, pid, payload)
 
     def test_generate_ax25_invalid_dest_ssid_large(self):

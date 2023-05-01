@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch
+import unittest.mock as um
+
 from oresat_c3.protocols.edl import EdlServer, EdlClient, EdlError, crc16_bytes
 from spacepackets.uslp.frame import TransferFrame, FrameType
 
@@ -50,7 +51,7 @@ class TestEdl(unittest.TestCase):
        req_packet = client.generate_request(payload)
 
        #Modifying FECF so that it is Invalid
-       invalid_fecf_packet = req_packet[:-2] + b'\xFF\XFF'
+       invalid_fecf_packet = req_packet[:-2] + b'\xFF\xFF'
 
        #Checking if EdlError exception is raised for the invalid FECF
        crc16_raw = invalid_fecf_packet[-2:]
@@ -77,10 +78,10 @@ class TestEdl(unittest.TestCase):
 
        #Checking if EdlError is raised for invalid packet or fram length
        #Use patch as a context manager
-       with patch("oresat_c3.protocols.edl.crc16_bytes") as mock_crc16_bytes:
-           mock_crc16_bytes.return_value = invalid_packet[-2:]
-           with self.assertRaisesRegex(EdlError, 'USLP invalid packet or frame length'):
-              server._parse_packet(invalid_packet, src_dest = 0)
+       #with um.patch("oresat_c3.protocols.edl.crc16_bytes") as mock_crc16_bytes:
+        #   mock_crc16_bytes.return_value = invalid_packet[-2:]##
+       with self.assertRaisesRegex(EdlError, 'USLP invalid packet or frame length'):
+        server._parse_packet(invalid_packet, src_dest = 0)
 
     def test_parse_packet_invalid_sequence_number(self):
         hmac_key = b'\x00' * 128
@@ -95,7 +96,7 @@ class TestEdl(unittest.TestCase):
         req_packet = client.generate_request(payload)
 
         #Use patch as a context manager
-        with patch("oresat_c3.protocols.edl.TransferFrame.unpack") as mock_unpack:
+        with um.patch("oresat_c3.protocols.edl.TransferFrame.unpack") as mock_unpack:
             #Create a mock frame with an invalid insert_zone value
             mock_frame = TransferFrame(req_packet, FrameType.VARIABLE)
             mock_frame.insert_zone = server.sequence_number_bytes + bytes(1)
@@ -120,7 +121,7 @@ class TestEdl(unittest.TestCase):
         req_packet = client.generate_request(payload)
 
         #Use patch as a context manager
-        with patch("oresat_c3.protocols.edl.TransferFrame.unpack") as mock_unpack:
+        with um.patch("oresat_c3.protocols.edl.TransferFrame.unpack") as mock_unpack:
             #Create a mock frame with a valid insert_zone value and an invalid HMAC
             mock_frame = TransferFrame(req_packet, FrameType.VARIABLE)
             mock_frame.insert_zone = server.sequence_number_bytes

@@ -12,7 +12,7 @@ class Fm24cl64bError(Exception):
 
 
 class Fm24cl64b:
-    ''''FM24CL64B GPIO Expander driver'''
+    ''''FM24CL64B F-RAM driver'''
 
     ADDR_MIN = 0x50
     ADDR_MAX = 0x5F

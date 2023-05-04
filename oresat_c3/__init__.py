@@ -4,9 +4,10 @@ __version__ = '0.1.0'
 
 
 class C3State(Enum):
+    '''All valid C3 states'''
 
     OFFLINE = ord('A')
-    '''This state is never actually reachable by the device. Reset vector is 'B'.'''
+    '''This state is never actually reachable by the device. Reset vector is ``PRE_DEPLOY``.'''
     PRE_DEPLOY = ord('B')
     '''Holding state after deployment of satellite but before deployment of antennas. Ensures a
     minimum amount of time passes before attempting to deploy antennas and going active.'''
@@ -14,8 +15,7 @@ class C3State(Enum):
     '''Antenna deployment state. Attempts to deploy antennas several times before moving to
     Standby.'''
     STANDBY = ord('D')
-    '''Satellite is functional but in standby state. Waits for batteries to be good and enabling of
-    transmissions, or an EDL packet.'''
+    '''Satellite is functional but in standby state. Battery level is too low or tx is disabled.'''
     BEACON = ord('E')
     '''Active beaconing state. Broadcasts telemetry packets via radio periodically.'''
     EDL = ord('F')

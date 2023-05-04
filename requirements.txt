@@ -8,4 +8,5 @@ smbus2
 spacepackets
 sphinx
 sphinx-rtd-theme
+sphinxcontrib-mermaid
 wheel

@@ -34,8 +34,10 @@ class StateResource(Resource):
         self._attempts_obj = self.node.od['Deployment Control']['Attempts']
         persist_state_rec = self.node.od['Persistent State']
         self._deployed_obj = persist_state_rec['Deployed']
+        self._last_edl = persist_state_rec['Last EDL']
         self._c3_state_obj = self.node.od['C3 State']
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+        self._edl_timeout_obj = self.node.od['State Control']['EDL Timeout']
         self._pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
         self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP1']
         self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP2']
@@ -47,7 +49,7 @@ class StateResource(Resource):
             FramKey.ALARM_B: persist_state_rec['Alarm B'],
             FramKey.WAKEUP: persist_state_rec['Wakeup'],
             FramKey.LAST_TX_ENABLE: persist_state_rec['Last TX Enable'],
-            FramKey.LAST_EDL: persist_state_rec['Last EDL'],
+            FramKey.LAST_EDL: self._last_edl,
             FramKey.DEPLOYED: self._deployed_obj,
             FramKey.POWER_CYCLES: persist_state_rec['Power Cycles'],
             FramKey.LBAND_RX_BYTES: persist_state_rec['LBand RX Bytes'],
@@ -61,6 +63,8 @@ class StateResource(Resource):
 
         self._restore_state()
 
+        self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
+
         self._thread.start()
 
     def on_end(self):
@@ -69,6 +73,13 @@ class StateResource(Resource):
 
         self._event.set()
         self._thread.join()
+
+    def _on_cryto_key_write(self, index: int, subindex: int, data):
+        '''On SDO write set the crypto key in OD and F-RAM'''
+
+        if len(data) == 128:
+            self._cryto_key_obj.value = data
+            self._fram[FramKey.CRYTO_KEY] = data
 
     def _pre_deploy(self):
 
@@ -96,7 +107,7 @@ class StateResource(Resource):
 
     def _standby(self):
 
-        if self._edl.is_enabled:
+        if self._is_edl_enabled:
             self._c3_state_obj.value = C3State.EDL.value
         elif self._trigger_reset:
             self.node.stop(NodeStop.HARD_RESET)
@@ -105,7 +116,7 @@ class StateResource(Resource):
 
     def _beacon(self):
 
-        if self._edl.is_enabled:
+        if self._is_edl_enabled:
             self._c3_state_obj.value = C3State.EDL.value
         elif self._trigger_reset:
             self.node.stop(NodeStop.HARD_RESET)
@@ -114,7 +125,7 @@ class StateResource(Resource):
 
     def _edl(self):
 
-        if not self._edl.is_enabled:
+        if not self._is_edl_enabled:
             if self._tx_enabled_obj.value and self._bat_good:
                 self._c3_state_obj.value = C3State.BEACON.value
             else:
@@ -143,6 +154,12 @@ class StateResource(Resource):
                 self._store_state()
 
             self._event.wait(0.1)
+
+    @property
+    def _is_edl_enabled(self) -> bool:
+        '''bool: Helper property to check if the edl timeout has been reached.'''
+
+        return time() - self._last_edl.value < self._edl_timeout_obj.value
 
     @property
     def _bat_good(self) -> bool:

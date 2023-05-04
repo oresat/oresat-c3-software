@@ -64,38 +64,38 @@ class EdlResource(Resource):
         while not self._event.is_set():
             try:
                 message, sender = self._uplink_socket.recvfrom(self._BUFFER_LEN)
-                logger.info(f'EDL recv: {message.hex(sep=" ")}')
+                logger.info(f'EDL request packet: {message.hex(sep=" ")}')
             except socket.timeout:
                 continue
 
             if len(message) == 0:
                 continue  # Skip empty packets
 
-            self._last_edl_obj.value = int(time())
-            self._edl_sequence_count_obj.value += 1
-
             try:
                 payload = self._edl_server.parse_request(message)
                 code = EdlCode.from_bytes(payload[0])
             except EdlError as e:
                 self._edl_rejected_count_obj.value += 1
-                logger.error(e)
+                logger.error(f'Invalid EDL request packet: {e}')
                 continue
+
+            self._last_edl_obj.value = int(time())
+            self._edl_sequence_count_obj.value += 1
 
             try:
                 self._run_cmd(code, payload[1:])
             except Exception as e:
-                logger.error(f'EDL command {code} raised: {e}')
+                logger.error(f'EDL command {code.name} raised: {e}')
                 continue
 
             try:
                 response = self._edl_server.generate_response(payload)
             except EdlError as e:
-                logger.error(e)
+                logger.error(f'EDL response generation raised: {e}')
                 continue
 
             self._downlink_socket.sendto(response, self._DOWNLINK_ADDR)
-            logger.info(f'EDL sent: {response.hex(sep=" ")}')
+            logger.info(f'EDL response packet: {response.hex(sep=" ")}')
 
     def _run_cmd(self, code: EdlCode, args: bytes) -> bytes:
 

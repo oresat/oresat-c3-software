@@ -8,6 +8,7 @@ Welcome to OreSat C3's documentation!
    co_nodes
    edl
    beacon
+   state
 
 
 

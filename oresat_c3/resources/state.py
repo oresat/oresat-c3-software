@@ -67,6 +67,7 @@ class StateResource(Resource):
         self._restore_state()
 
         self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
+        self.node.add_sdo_read_callback(0x7000, self._on_c3_telemetery_read)
 
         self._thread.start()
 
@@ -198,3 +199,10 @@ class StateResource(Resource):
         values = self._fram.get_all()
         for key in list(FramKey):
             self._fram_entry_co_objs[key].value = values[key]
+
+    def _on_c3_telemetery_read(self, index: int, subindex: int):
+
+        if subindex == 1:
+            return int(time() - self._boot_time)
+        else:
+            return self.node.od[index][subindex].value  # TBD

@@ -140,6 +140,39 @@ class Fram:
         except Fm24cl64bError as e:
             raise FramError(f'F-RAM write failed with {e}')
 
+    def get_all(self) -> dict:
+        '''
+        Get all values at once.
+
+        Returns
+        -------
+        dict
+            All the value, use FramKey for the keys
+        '''
+
+        try:
+            raw = self._fm24cl64b.read(0, self._total_bytes)
+        except Fm24cl64bError as e:
+            raise FramError(f'F-RAM get_all failed with {e}')
+
+        data = {}
+
+        for key in list(FramKey):
+            entry = self._entries[key]
+            raw_value = raw[entry.offset: entry.offset + entry.size]
+
+            if entry.fmt is None:
+                value = raw_value
+            else:
+                try:
+                    value = struct.unpack(entry.fmt, raw_value)[0]
+                except ValueError as e:
+                    raise FramError(f'F-RAM unpack failed with {e}')
+
+            data[key] = value
+
+        return data
+
     def clear(self):
         '''Clear the F-RAM'''
 

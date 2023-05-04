@@ -10,12 +10,11 @@ from time import time
 from threading import Thread, Event
 
 import canopen
-from olaf import Resource, logger
+from olaf import Resource, logger, NodeStop
 
 from .. import NodeId
 from ..protocols.edl import EdlServer, EdlError, EdlCode
 from ..subsystems.opd import Opd, OpdNode, OpdError, Max7310Error
-from . import soft_reset, hard_reset, factory_reset
 
 
 class EdlResource(Resource):
@@ -47,7 +46,12 @@ class EdlResource(Resource):
         self._edl_server = EdlServer(hmac_key, seq_num)
 
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
-        self._last_tx_enabled_obj = self.node.od['Persistent State']['Last TX Enable']
+        persist_state_rec = self.node.od['Persistent State']
+        self._last_tx_enabled_obj = persist_state_rec['Last TX Enable']
+        self._edl_sequence_count_obj = persist_state_rec['EDL Sequence Count']
+        self._edl_rejected_count_obj = persist_state_rec['EDL Rejected Count']
+        self._last_edl_obj = persist_state_rec['Last EDL']
+
         self._thread.start()
 
     def on_end(self):
@@ -61,16 +65,20 @@ class EdlResource(Resource):
             try:
                 message, sender = self._uplink_socket.recvfrom(self._BUFFER_LEN)
                 logger.info(f'EDL recv: {message.hex(sep=" ")}')
-            except (TimeoutError, socket.timeout):
+            except socket.timeout:
                 continue
 
             if len(message) == 0:
                 continue  # Skip empty packets
 
+            self._last_edl_obj.value = int(time())
+            self._edl_sequence_count_obj.value += 1
+
             try:
                 payload = self._edl_server.parse_request(message)
                 code = EdlCode.from_bytes(payload[0])
             except EdlError as e:
+                self._edl_rejected_count_obj.value += 1
                 logger.error(e)
                 continue
 
@@ -92,7 +100,7 @@ class EdlResource(Resource):
     def _run_cmd(self, code: EdlCode, args: bytes) -> bytes:
 
         ret = 0
-        fmt = 'b'
+        fmt = 'B'
 
         args_hex = args.hex(sep=' ')
         logger.info(f'running EDL command: 0x{code:02X}, arg(s): {args_hex}')
@@ -109,13 +117,13 @@ class EdlResource(Resource):
                     ret = 1
             elif code == EdlCode.C3_SOFTRESET:
                 logger.info('EDL soft reset')
-                soft_reset()
+                self.node.stop(NodeStop.SOFT_RESET)
             elif code == EdlCode.C3_HARDRESET:
                 logger.info('EDL hard reset')
-                hard_reset()
+                self.node.stop(NodeStop.HARD_RESET)
             elif code == EdlCode.C3_FACTORYRESET:
                 logger.info('EDL factory reset')
-                factory_reset()
+                self.node.stop(NodeStop.FACTORY_RESET)
             elif code == EdlCode.CO_NODE_ENABLE:
                 node = NodeId.from_bytes(args[0])
                 logger.info(f'EDL enabling CANopen node {node.name}')

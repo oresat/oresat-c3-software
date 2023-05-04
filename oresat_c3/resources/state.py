@@ -36,11 +36,14 @@ class StateResource(Resource):
         self._deployed_obj = persist_state_rec['Deployed']
         self._last_edl = persist_state_rec['Last EDL']
         self._c3_state_obj = self.node.od['C3 State']
+        self._tx_timeout_obj = self.node.od['TX Control']['Timeout']
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+        self._last_tx_enable_obj = persist_state_rec['Last TX Enable']
         self._edl_timeout_obj = self.node.od['State Control']['EDL Timeout']
         self._pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
         self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP1']
         self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP2']
+        self._reset_timeout_obj = self.node.od['State Control']['Reset Timeout']
 
         self._fram_entry_co_objs = {
             FramKey.C3_STATE: self._c3_state_obj,
@@ -48,7 +51,7 @@ class StateResource(Resource):
             FramKey.ALARM_A: persist_state_rec['Alarm A'],
             FramKey.ALARM_B: persist_state_rec['Alarm B'],
             FramKey.WAKEUP: persist_state_rec['Wakeup'],
-            FramKey.LAST_TX_ENABLE: persist_state_rec['Last TX Enable'],
+            FramKey.LAST_TX_ENABLE: self._last_tx_enable_obj,
             FramKey.LAST_EDL: self._last_edl,
             FramKey.DEPLOYED: self._deployed_obj,
             FramKey.POWER_CYCLES: persist_state_rec['Power Cycles'],
@@ -93,7 +96,7 @@ class StateResource(Resource):
     def _deploy(self):
 
         if not self._deployed_obj.value and self._attempts < self._attempts_obj.value \
-                and self._bat_good:
+                and self._bat_lvl_good:
             logger.info(f'deploying antennas, attempt {self._attempts}')
             # TODO deploy here
             self._attempts += 1
@@ -111,7 +114,7 @@ class StateResource(Resource):
             self._c3_state_obj.value = C3State.EDL.value
         elif self._trigger_reset:
             self.node.stop(NodeStop.HARD_RESET)
-        elif self._tx_enabled_obj.value and self._bat_good:
+        elif self._is_tx_enabled and self._bat_lvl_good:
             self._c3_state_obj.value = C3State.BEACON.value
 
     def _beacon(self):
@@ -120,13 +123,13 @@ class StateResource(Resource):
             self._c3_state_obj.value = C3State.EDL.value
         elif self._trigger_reset:
             self.node.stop(NodeStop.HARD_RESET)
-        elif self._tx_enabled_obj.value and not self._bat_good:
+        elif not self._is_tx_enabled or not self._bat_lvl_good:
             self._c3_state_obj.value = C3State.STANDBY.value
 
     def _edl(self):
 
         if not self._is_edl_enabled:
-            if self._tx_enabled_obj.value and self._bat_good:
+            if self._is_tx_enabled and self._bat_lvl_good:
                 self._c3_state_obj.value = C3State.BEACON.value
             else:
                 self._c3_state_obj.value = C3State.STANDBY.value
@@ -156,22 +159,29 @@ class StateResource(Resource):
             self._event.wait(0.1)
 
     @property
+    def _is_tx_enabled(self) -> bool:
+        '''bool: Helper property to check if the tx timeout has been reached.'''
+
+        return (time() - self._last_tx_enable_obj.value) < self._tx_timeout_obj.value
+
+    @property
     def _is_edl_enabled(self) -> bool:
         '''bool: Helper property to check if the edl timeout has been reached.'''
 
-        return time() - self._last_edl.value < self._edl_timeout_obj.value
+        return (time() - self._last_edl.value) < self._edl_timeout_obj.value
 
     @property
-    def _bat_good(self) -> bool:
-        '''bool: Helper property to check if the battery levels are good'''
+    def _bat_lvl_good(self) -> bool:
+        '''bool: Helper property to check if the battery levels are good.'''
 
-        return self._vbatt_bp1_obj < self.BAT_LEVEL_LOW or self._vbatt_bp2_obj < self.BAT_LEVEL_LOW
+        return self._vbatt_bp1_obj.value > self.BAT_LEVEL_LOW \
+            and self._vbatt_bp2_obj.value > self.BAT_LEVEL_LOW
 
     @property
     def _tigger_reset(self) -> bool:
-        '''bool: Helper property to check if the reset timeout has been reached'''
+        '''bool: Helper property to check if the reset timeout has been reached.'''
 
-        return time() - self._boot_time >= self._p_state_rec['Reset Timeout']
+        return (time() - self._boot_time) >= self._reset_timeout_obj.value
 
     def _store_state(self):
 

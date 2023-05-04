@@ -2,7 +2,7 @@ bitstring
 build
 eds-utils
 flake8
-oresat-olaf
+oresat-olaf>=2.0.1
 setuptools
 smbus2
 spacepackets

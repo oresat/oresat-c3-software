@@ -32,7 +32,7 @@ def main():
     # TODO get from OD
     i2c_bus_num = 2
     opd_enable_pin = 20
-    fram_i2c_addr = 0xA0
+    fram_i2c_addr = 0x50
 
     opd = Opd(opd_enable_pin, i2c_bus_num, mock=mock_opd)
     fram = Fram(i2c_bus_num, fram_i2c_addr, mock=mock_fram)

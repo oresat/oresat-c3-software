@@ -14,8 +14,8 @@ class Fm24cl64bError(Exception):
 class Fm24cl64b:
     ''''FM24CL64B GPIO Expander driver'''
 
-    ADDR_MIN = 0xA0
-    ADDR_MAX = 0xAE
+    ADDR_MIN = 0x50
+    ADDR_MAX = 0x5F
     ADDRESSES = list(range(ADDR_MIN, ADDR_MAX + 2, 2))
 
     def __init__(self, bus_num: int, addr: int, mock: bool = False):
@@ -31,7 +31,7 @@ class Fm24cl64b:
         '''
 
         if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
-            raise Fm24cl64bError(f'arg addr 0x{self._addr:X} is not between 0x{self.ADDR_MIN:X} '
+            raise Fm24cl64bError(f'arg addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} '
                                  f'and 0x{self.ADDR_MAX:X}')
 
         self._bus_num = bus_num
@@ -96,6 +96,9 @@ class Fm24cl64b:
         data: bytes
             The data to write.
         '''
+
+        if not isinstance(data, bytes) and not isinstance(data, bytearray):
+            raise Fm24cl64bError(f'write data must be a bytes or bytearray type not {type(data)}')
 
         size = len(data)
         address = offset.to_bytes(2, 'little')

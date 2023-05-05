@@ -163,11 +163,16 @@ class Opd:
 
         self._gpio = GPIO(enable_pin, mock)
         self._nodes = {i: Max7310(bus, i, mock) for i in list(OpdNode)}
-        self._last_probe = {i: False for i in list(OpdNode)}
         self._status = {i: OpdNodeState.OFF for i in list(OpdNode)}
+        self._dead = False
 
     def start(self):
         '''Start the OPD subsystem, will also do a scan.'''
+
+        if self._dead:
+            raise OpdError('OPD subsystem is consider dead')
+        if self.is_subsystem_enabled:
+            return  # already enabled
 
         logger.info('starting OPD subsystem')
 
@@ -183,10 +188,7 @@ class Opd:
         self._gpio.high()
 
         for i in self._status:
-            if self._status[i] == OpdNodeState.ON:
-                self._status[i] = OpdNodeState.OFF
-
-        self._last_probe = {i: False for i in list(OpdNode)}
+            self._status[i] = OpdNodeState.OFF
 
     def restart(self):
         '''Restart the OPD subsystem with a delay between stop and start.'''
@@ -196,20 +198,22 @@ class Opd:
         self.start()
 
     @property
-    def is_system_enabled(self) -> bool:
+    def is_subsystem_enabled(self) -> bool:
         '''bool: OPD is enabled or not.'''
 
         return not self._gpio.is_high
 
-    def _is_valid_and_enabled(self, node):
+    def _is_valid_and_sys_enabled(self, node: OpdNode):
         '''
-        Quick helper function that will raise an OpdError if the node does not exist or if the OPD
-        subsystem is not enabled
+        Quick helper function that will raise an OpdError if the node does not exist, if the OPD
+        subsystem is not enabled, or if the subsystem is dead.
         '''
 
-        if self._gpio.is_high:
-            raise OpdError('OPD subsystem is not enabled')
-        if node not in OpdNode:
+        if self.is_subsystem_dead:
+            raise OpdError('OPD subsystem is dead')
+        if self.is_subsystem_enabled:
+            raise OpdError('OPD subsystem is disabled')
+        if node not in list(OpdNode):
             raise OpdError(f'invalid OPD node {node}')
 
     def _config_node(self, node: OpdNode):
@@ -222,7 +226,7 @@ class Opd:
         else:
             self._nodes[node].configure(0, 0, self._STM32_CONFIG, self._TIMEOUT_CONFIG)
 
-    def probe_node(self, node: OpdNode, restart: bool = False) -> bool:
+    def probe(self, node: OpdNode, restart: bool = False) -> bool:
         '''
         Probe the OPD for a node (see if it is there). Will automatically call configure the
         MAX7310, if found.
@@ -246,9 +250,9 @@ class Opd:
             return False  # node is dead, no reason to probe
 
         try:
-            self._is_valid_and_enabled(node)
+            self._is_valid_and_sys_enabled(node)
             if self._nodes[node].is_valid:
-                if not self._last_probe[node]:
+                if self._status[node] == OpdNodeState.NOT_FOUND:
                     logger.info(f'OPD node {node.name} (0x{node.value:02X}) was found')
                     self._config_node(node)
 
@@ -256,23 +260,20 @@ class Opd:
                     self._nodes[node].reset()
                     self._config_node(node)
 
-                self._last_probe[node] = True
                 self._status[node] = OpdNodeState.OFF
             else:
-                if self._last_probe[node]:
+                if self._status[node] != OpdNodeState.NOT_FOUND:
                     logger.info(f'OPD node {node.name} (0x{node.value:02X}) was lost')
                     self._status[node] = OpdNodeState.NOT_FOUND
-                self._last_probe[node] = False
         except Max7310Error:
             logger.debug(f'OPD node {node.name} (0x{node.value:02X}) was not found')
             self._status[node] = OpdNodeState.NOT_FOUND
-            self._last_probe[node] = False
 
-        return self._last_probe[node]
+        return self._status[node] != OpdNodeState.NOT_FOUND
 
     def scan(self, restart: bool = False):
         '''
-        Scan / probe for all nodes.
+        Scan / probe for all nodes. This will turn on all battery cards found.
 
         Parameters
         ----------
@@ -288,8 +289,14 @@ class Opd:
         count = 0
 
         for node in list(OpdNode):
-            if self.probe_node(node, restart):
+            if self.probe(node, restart):
                 count += 1
+
+        # Turn on any battery cards found
+        if self._status[OpdNode.BATTERY_0] == OpdNodeState.OFF:
+            self.enable(OpdNode.BATTERY_0)
+        if self._status[OpdNode.BATTERY_1] == OpdNodeState.OFF:
+            self.enable(OpdNode.BATTERY_1)
 
         return count
 
@@ -304,7 +311,7 @@ class Opd:
         '''
 
         logger.info(f'enabling OPD node {node.name} (0x{node.value:02X})')
-        self._is_valid_and_enabled(node)
+        self._is_valid_and_sys_enabled(node)
 
         self._nodes[node].set_pin(self._ENABLE_PIN)
         self._status[node] = OpdNodeState.ON
@@ -320,7 +327,7 @@ class Opd:
         '''
 
         logger.info(f'disabling OPD node {node.name} (0x{node.value:02X})')
-        self._is_valid_and_enabled(node)
+        self._is_valid_and_sys_enabled(node)
 
         self._nodes[node].clear_pin(self._ENABLE_PIN)
         self._status[node] = OpdNodeState.OFF
@@ -336,19 +343,19 @@ class Opd:
             The OPD node id to enable.
         '''
 
-        logger.info(f'reseting OPD node {node.name} (0x{node.value:02X})')
-        self._is_valid_and_enabled(node)
+        self._is_valid_and_sys_enabled(node)
 
         reset = False
 
         for i in range(3):
-            logger.info(f'reseting OPD node {node.name} (0x{node.value:02X}) try {i + 1}')
+            logger.info(f'reseting OPD node {node.name} (0x{node.value:02X}), try {i + 1}')
             try:
                 self._nodes[node].set_pin(self._CB_RESET_PIN)
                 sleep(self._NODE_RESET_DELAY_S)
                 self._nodes[node].clear_pin(self._CB_RESET_PIN)
 
                 if self._nodes[node].pin_status(self._NOT_FAULT_PIN):
+                    self._status[node] = OpdNodeState.ON
                     reset = True
                     break
             except Max7310Error:
@@ -374,24 +381,62 @@ class Opd:
             The status of the OPD node.
         '''
 
-        if self.fault(node):
-            self._status[node] = OpdNodeState.ERROR
-
         return self._status[node]
 
-    def fault(self, node: OpdNode) -> bool:
+    def monitor_nodes(self):
         '''
-        Get the Status of a node.
+        Check all nodes for faults. Will use batteries to check subsystem health as a whole
+        as the batteries should always be on. If batteries are dead after 3 subsystem resets,
+        this will mark the subsystem as dead.
 
-        Parameters
-        ----------
-        node: OpdNode
-            The OPD node id to enable.
-
-        Returns
-        -------
-        bool
-            If circut breaker is tripped.
+        This should be called periodically in a loop.
         '''
 
-        return not bool(self._nodes[node].input_port & 1 < self._NOT_FAULT_PIN)
+        if self.is_subsystem_dead or not self.is_subsystem_enabled:
+            return  # nothing to monitor
+
+        for i in range(3):
+            # batteries should always be on and are used to see if the subsystem is working
+            bat0_was_alive = self._status[OpdNode.BATTERY_0] in [OpdNodeState.ON, OpdNodeState.OFF]
+            bat1_was_alive = self._status[OpdNode.BATTERY_1] in [OpdNodeState.ON, OpdNodeState.OFF]
+
+            for node in list(OpdNode):
+                if self._status[node] == OpdNodeState.DEAD:
+                    continue  # node is dead, can't do anything
+
+                if not bool(self._nodes[node].input_port & 1 < self._NOT_FAULT_PIN):
+                    logger.error(f'OPD node {node.name} (0x{node.value:02X}) circut breaker '
+                                 'has tripped')
+                    self._status[node] = OpdNodeState.ERROR
+                    self.reset(node)
+
+            # batteries should still be alive, after check for node faults
+            reset = False
+            if bat0_was_alive and self._status[OpdNode.BATTERY_0] == OpdNodeState.DEAD:
+                reset = True
+                logger.error(f'OPD node {OpdNode.BATTERY_0.name} (0x{OpdNode.BATTERY_0.value:02X})'
+                             ' died')
+            if bat1_was_alive and self._status[OpdNode.BATTERY_1] == OpdNodeState.DEAD:
+                reset = True
+                logger.error(f'OPD node {OpdNode.BATTERY_1.name} (0x{OpdNode.BATTERY_1.value:02X})'
+                             ' died')
+
+            # if batteries are dead, try to reset subsystem to fix
+            if reset:
+                logger.info(f'restarting OPD subsystem, try {i + 1}')
+                self.restart()
+            else:
+                return  # all good
+
+        if (bat0_was_alive and self._status[OpdNode.BATTERY_0] in OpdNodeState.DEAD) \
+                or (bat1_was_alive and self._status[OpdNode.BATTERY_1] in OpdNodeState.DEAD):
+            logger.critical('OPD monitor failed fix subsystem after 3 restarts, subsystem is '
+                            'consider dead')
+            self.disable()
+            self._dead = True
+
+    @property
+    def is_subsystem_dead(self) -> bool:
+        '''bool: OPD is dead or not.'''
+
+        return self._dead

@@ -5,10 +5,11 @@ Handle powering OreSat cards on and off.
 '''
 
 import json
+from time import time
 
 from olaf import Resource, TimerLoop
 
-from ..subsystems.opd import Opd, OpdNode
+from ..subsystems.opd import Opd, OpdNode, OpdNodeState
 from .. import NodeId
 
 
@@ -82,22 +83,22 @@ class OpdResource(Resource):
         elif subindex == 0x5:
             self.opd.scan(False)
 
-    def _loop(self):
-        '''
-        TODO
+    def _loop(self) -> bool:
+        '''Monitor all OPD nodes and check that nodes that are on are sending heartbeats.'''
 
-        if no CANopen heartbeats, check for fault, try cb_reset 3 times, then restart it 3 time,
-        then dead
-          - retry on each boot
-        if no batteries restart opd subsystem upto 3 times. the OPD subsystem is dead.
+        self.opd.monitor_nodes()
 
-        once a minute
-        '''
+        if self.opd.is_subsystem_dead:
+            return False  # no reason to continue to loop
 
         for node in list(OpdNode):
-            if node != OpdNode.CFC_SENSOR:
-                continue
+            if node == OpdNode.CFC_SENSOR:
+                continue  # not a CANopen node
 
-            co_status = self.node.node_status[OPD_NODE_TO_CO_NODE[node]]
-            if self.opd.status[node] == OpdNode.ON and co_status not in [0x5, 0x7F]:
+            co_node = OPD_NODE_TO_CO_NODE[node]
+            co_status = self.node.node_status[co_node.value]
+            if self.opd.status(node) == OpdNodeState.ON and co_status[1] + 60 < time():
+                # card is on, but no CANopen heartbeat have been received in a minute, reset it
                 self.opd.reset(node)
+
+        return True

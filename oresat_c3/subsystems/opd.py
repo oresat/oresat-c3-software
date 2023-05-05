@@ -61,7 +61,7 @@ class OpdNodeState(IntEnum):
 
 
 class OpdStm32Pin(IntEnum):
-    '''The MAX7310 pins uses on the OPD for STM32s.'''
+    '''The MAX7310 pins uses on the OPD for STM32-based cards.'''
 
     SCL = 0
     '''Input: The I2C SCL. Allows for I2C bootloader for the STM32s.'''
@@ -78,19 +78,19 @@ class OpdStm32Pin(IntEnum):
     for several milliseconds.'''
     BOOT = 5
     '''Output: If boot high, the STM32 will go into boot loader mode.'''
-    TEST_POINT = 6
-    '''Output: Just a test point, set low.'''
+    TEST_POINT6 = 6
+    '''Output: Just a test point, set to low.'''
     UART_ENABLE = 7
     '''Output: UART connect, when high it will connect the card to C3 UART.'''
 
 
 class OpdOctavoPin(IntEnum):
-    '''The MAX7310 pins uses on the OPD for Octavo A8s.'''
+    '''The MAX7310 pins uses on the OPD for Octavo A8-based cards.'''
 
     TEST_POINT0 = 0
-    '''Output: Just a test point, set low.'''
-    TEST_POINT1 = 0
-    '''Output: Just a test point, set low.'''
+    '''Output: Just a test point, set to low.'''
+    TEST_POINT1 = 1
+    '''Output: Just a test point, set to low.'''
     NOT_FAULT = 2
     '''Input: If this is low there the circut breaker has tripped.
     Hopefully the CB_RESET output can be used to clear the error.'''
@@ -100,10 +100,10 @@ class OpdOctavoPin(IntEnum):
     '''Output: Circuit breaker reset. Can be used to try to clear the
     fault. If it goes high it reset the circut breakers, must be high
     for several milliseconds.'''
-    BOOT = 5
-    '''Output: The boot select pin; eMMC or SD card. (not yet implamented)'''
+    BOOT_SELECT = 5
+    '''Output: The boot select pin; eMMC or SD card. (not implemented)'''
     TEST_POINT6 = 6
-    '''Output: Just a test point, set low.'''
+    '''Output: Just a test point, set to low.'''
     UART_ENABLE = 7
     '''Output: UART connect, when high it will connect the card to C3 UART.'''
 
@@ -112,9 +112,9 @@ class OpdCfcSensorPin(IntEnum):
     '''The MAX7310 pins uses on the OPD for the CFC sensor card.'''
 
     TEST_POINT0 = 0
-    '''Output: Just a test point, set low.'''
-    TEST_POINT1 = 0
-    '''Output: Just a test point, set low.'''
+    '''Output: Just a test point, set to low.'''
+    TEST_POINT1 = 1
+    '''Output: Just a test point, set to low.'''
     NOT_FAULT = 2
     '''Input: If this is low there the circut breaker has tripped.
     Hopefully the CB_RESET output can be used to clear the error.'''
@@ -125,11 +125,11 @@ class OpdCfcSensorPin(IntEnum):
     fault. If it goes high it reset the circut breakers, must be high
     for several milliseconds.'''
     TEST_POINT5 = 5
-    '''Output: Just a test point, set low.'''
-    TEST_POINT = 6
-    '''Output: Just a test point, set low.'''
+    '''Output: Just a test point, set to low.'''
+    TEST_POINT6 = 6
+    '''Output: Just a test point, set to low.'''
     TEST_POINT7 = 7
-    '''Output: Just a test point, set low.'''
+    '''Output: Just a test point, set to low.'''
 
 
 class Opd:
@@ -140,14 +140,14 @@ class Opd:
 
     _STM32_CONFIG = 1 << OpdStm32Pin.SCL.value | 1 << OpdStm32Pin.SDA.value \
         | 1 << OpdStm32Pin.NOT_FAULT.value
-    _OCTAVO_CONFIG = 1 << OpdStm32Pin.NOT_FAULT.value
-    _CFC_SENSOR_CONFIG = 1 << OpdStm32Pin.NOT_FAULT.value
+    _OCTAVO_CONFIG = 1 << OpdOctavoPin.NOT_FAULT.value
+    _CFC_SENSOR_CONFIG = 1 << OpdCfcSensorPin.NOT_FAULT.value
     _TIMEOUT_CONFIG = 1
 
-    # these are consistence
+    # these are consistent between all cards
     _ENABLE_PIN = OpdStm32Pin.ENABLE.value
-    _NOT_FAULT_PIN = OpdStm32Pin.ENABLE.value
-    _CB_RESET_PIN = OpdStm32Pin.ENABLE.value
+    _NOT_FAULT_PIN = OpdStm32Pin.NOT_FAULT.value
+    _CB_RESET_PIN = OpdStm32Pin.CB_RESET.value
 
     def __init__(self, enable_pin: int, bus: int, mock: bool = False):
         '''

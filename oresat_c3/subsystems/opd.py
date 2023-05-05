@@ -54,40 +54,100 @@ class OpdNodeState(IntEnum):
     '''OPD Node is on'''
     ERROR = 2
     '''Fault input is set for OPD node'''
+    DEAD = 3
+    '''The node is dead'''
     NOT_FOUND = 0xFF
     '''OPD node is not found'''
 
 
-class OpdPin(IntEnum):
-    '''The MAX7310 pins uses on the OPD.'''
+class OpdStm32Pin(IntEnum):
+    '''The MAX7310 pins uses on the OPD for STM32s.'''
 
     SCL = 0
-    '''Input: The I2C SCL'''
+    '''Input: The I2C SCL. Allows for I2C bootloader for the STM32s.'''
     SDA = 1
-    '''Input: The I2C SDA'''
-    FAULT = 2
-    '''Input: If this is high there is a error. Hopefully the CB_RESET output can be used to clear
-    the error.'''
+    '''Input: The I2C SDA. Allows for I2C bootloader for the STM32s.'''
+    NOT_FAULT = 2
+    '''Input: If this is low there the circut breaker has tripped.
+    Hopefully the CB_RESET output can be used to clear the error.'''
     ENABLE = 3
     '''Output: Enable (high) or disable (low) the node on the OPD.'''
     CB_RESET = 4
-    '''Output: Can be used to try to clear the fault.'''
-    BOOT0 = 5
-    '''Output: ?'''
-    LINUX_BOOT = 6
-    '''Output: Only used by Linux cards'''
-    TBD = 7
-    '''Output: ?'''
+    '''Output: Circuit breaker reset. Can be used to try to clear the
+    fault. If it goes high it reset the circut breakers, must be high
+    for several milliseconds.'''
+    BOOT = 5
+    '''Output: If boot high, the STM32 will go into boot loader mode.'''
+    TEST_POINT = 6
+    '''Output: Just a test point, set low.'''
+    UART_ENABLE = 7
+    '''Output: UART connect, when high it will connect the card to C3 UART.'''
+
+
+class OpdOctavoPin(IntEnum):
+    '''The MAX7310 pins uses on the OPD for Octavo A8s.'''
+
+    TEST_POINT0 = 0
+    '''Output: Just a test point, set low.'''
+    TEST_POINT1 = 0
+    '''Output: Just a test point, set low.'''
+    NOT_FAULT = 2
+    '''Input: If this is low there the circut breaker has tripped.
+    Hopefully the CB_RESET output can be used to clear the error.'''
+    ENABLE = 3
+    '''Output: Enable (high) or disable (low) the node on the OPD.'''
+    CB_RESET = 4
+    '''Output: Circuit breaker reset. Can be used to try to clear the
+    fault. If it goes high it reset the circut breakers, must be high
+    for several milliseconds.'''
+    BOOT = 5
+    '''Output: The boot select pin; eMMC or SD card. (not yet implamented)'''
+    TEST_POINT6 = 6
+    '''Output: Just a test point, set low.'''
+    UART_ENABLE = 7
+    '''Output: UART connect, when high it will connect the card to C3 UART.'''
+
+
+class OpdCfcSensorPin(IntEnum):
+    '''The MAX7310 pins uses on the OPD for the CFC sensor card.'''
+
+    TEST_POINT0 = 0
+    '''Output: Just a test point, set low.'''
+    TEST_POINT1 = 0
+    '''Output: Just a test point, set low.'''
+    NOT_FAULT = 2
+    '''Input: If this is low there the circut breaker has tripped.
+    Hopefully the CB_RESET output can be used to clear the error.'''
+    ENABLE = 3
+    '''Output: Enable (high) or disable (low) the node on the OPD.'''
+    CB_RESET = 4
+    '''Output: Circuit breaker reset. Can be used to try to clear the
+    fault. If it goes high it reset the circut breakers, must be high
+    for several milliseconds.'''
+    TEST_POINT5 = 5
+    '''Output: Just a test point, set low.'''
+    TEST_POINT = 6
+    '''Output: Just a test point, set low.'''
+    TEST_POINT7 = 7
+    '''Output: Just a test point, set low.'''
 
 
 class Opd:
     '''OreSat Power Domain.'''
 
-    _RESET_DELAY_S = 0.25
-    _OUT_CONFIG = 1 << OpdPin.LINUX_BOOT.value
-    _PI_CONFIG = 1 << OpdPin.FAULT.value
-    _CONF_CONFIG = 1 << OpdPin.SCL.value | 1 << OpdPin.SDA.value | 1 << OpdPin.FAULT.value
+    _NODE_RESET_DELAY_S = 0.25
+    _SYS_RESET_DELAY_S = 10
+
+    _STM32_CONFIG = 1 << OpdStm32Pin.SCL.value | 1 << OpdStm32Pin.SDA.value \
+        | 1 << OpdStm32Pin.NOT_FAULT.value
+    _OCTAVO_CONFIG = 1 << OpdStm32Pin.NOT_FAULT.value
+    _CFC_SENSOR_CONFIG = 1 << OpdStm32Pin.NOT_FAULT.value
     _TIMEOUT_CONFIG = 1
+
+    # these are consistence
+    _ENABLE_PIN = OpdStm32Pin.ENABLE.value
+    _NOT_FAULT_PIN = OpdStm32Pin.ENABLE.value
+    _CB_RESET_PIN = OpdStm32Pin.ENABLE.value
 
     def __init__(self, enable_pin: int, bus: int, mock: bool = False):
         '''
@@ -103,7 +163,8 @@ class Opd:
 
         self._gpio = GPIO(enable_pin, mock)
         self._nodes = {i: Max7310(bus, i, mock) for i in list(OpdNode)}
-        self._last_valid = {i: False for i in list(OpdNode)}
+        self._last_probe = {i: False for i in list(OpdNode)}
+        self._status = {i: OpdNodeState.OFF for i in list(OpdNode)}
 
     def start(self):
         '''Start the OPD subsystem, will also do a scan.'''
@@ -121,7 +182,18 @@ class Opd:
 
         self._gpio.high()
 
-        self._last_valid = {i: False for i in list(OpdNode)}
+        for i in self._status:
+            if self._status[i] == OpdNodeState.ON:
+                self._status[i] = OpdNodeState.OFF
+
+        self._last_probe = {i: False for i in list(OpdNode)}
+
+    def restart(self):
+        '''Restart the OPD subsystem with a delay between stop and start.'''
+
+        self.stop()
+        sleep(self._SYS_RESET_DELAY_S)
+        self.start()
 
     @property
     def is_system_enabled(self) -> bool:
@@ -139,6 +211,16 @@ class Opd:
             raise OpdError('OPD subsystem is not enabled')
         if node not in OpdNode:
             raise OpdError(f'invalid OPD node {node}')
+
+    def _config_node(self, node: OpdNode):
+        '''Handle GPIO configration for different cards'''
+
+        if node == OpdNode.CFC_SENSOR:
+            self._nodes[node].configure(0, 0, self._CFC_SENSOR_CONFIG, self._TIMEOUT_CONFIG)
+        elif node in node.is_linux_card:
+            self._nodes[node].configure(0, 0, self._OCTAVO_CONFIG, self._TIMEOUT_CONFIG)
+        else:
+            self._nodes[node].configure(0, 0, self._STM32_CONFIG, self._TIMEOUT_CONFIG)
 
     def probe_node(self, node: OpdNode, restart: bool = False) -> bool:
         '''
@@ -160,29 +242,33 @@ class Opd:
 
         logger.info(f'probing OPD node {node.name} (0x{node.value:02X})')
 
+        if self._status[node] == OpdNodeState.DEAD:
+            return False  # node is dead, no reason to probe
+
         try:
             self._is_valid_and_enabled(node)
             if self._nodes[node].is_valid:
-                if not self._last_valid[node]:
+                if not self._last_probe[node]:
                     logger.info(f'OPD node {node.name} (0x{node.value:02X}) was found')
-                    self._nodes[node].configure(self._OUT_CONFIG, self._PI_CONFIG,
-                                                self._CONF_CONFIG, self._TIMEOUT_CONFIG)
+                    self._config_node(node)
 
                 if restart:
                     self._nodes[node].reset()
-                    self._nodes[node].configure(self._OUT_CONFIG, self._PI_CONFIG,
-                                                self._CONF_CONFIG, self._TIMEOUT_CONFIG)
+                    self._config_node(node)
 
-                self._last_valid[node] = True
+                self._last_probe[node] = True
+                self._status[node] = OpdNodeState.OFF
             else:
-                if self._last_valid[node]:
+                if self._last_probe[node]:
                     logger.info(f'OPD node {node.name} (0x{node.value:02X}) was lost')
-                self._last_valid[node] = False
+                    self._status[node] = OpdNodeState.NOT_FOUND
+                self._last_probe[node] = False
         except Max7310Error:
             logger.debug(f'OPD node {node.name} (0x{node.value:02X}) was not found')
-            self._last_valid[node] = False
+            self._status[node] = OpdNodeState.NOT_FOUND
+            self._last_probe[node] = False
 
-        return self._last_valid[node]
+        return self._last_probe[node]
 
     def scan(self, restart: bool = False):
         '''
@@ -220,7 +306,8 @@ class Opd:
         logger.info(f'enabling OPD node {node.name} (0x{node.value:02X})')
         self._is_valid_and_enabled(node)
 
-        self._nodes[node].set_pin(OpdPin.ENABLE)
+        self._nodes[node].set_pin(self._ENABLE_PIN)
+        self._status[node] = OpdNodeState.ON
 
     def disable(self, node: OpdNode):
         '''
@@ -235,11 +322,13 @@ class Opd:
         logger.info(f'disabling OPD node {node.name} (0x{node.value:02X})')
         self._is_valid_and_enabled(node)
 
-        self._nodes[node].clear_pin(OpdPin.ENABLE)
+        self._nodes[node].clear_pin(self._ENABLE_PIN)
+        self._status[node] = OpdNodeState.OFF
 
     def reset(self, node: OpdNode):
         '''
-        Reset a node on the OPD (disable and then re-enable it).
+        Reset a node on the OPD (disable and then re-enable it) Will try up to reset up
+        to 3 times.
 
         Parameters
         ----------
@@ -254,17 +343,21 @@ class Opd:
 
         for i in range(3):
             logger.info(f'reseting OPD node {node.name} (0x{node.value:02X}) try {i + 1}')
-            self._nodes[node].set_pin(OpdPin.CB_RESET)
-            sleep(self._RESET_DELAY_S)
-            self._nodes[node].clear_pin(OpdPin.CB_RESET)
+            try:
+                self._nodes[node].set_pin(self._CB_RESET_PIN)
+                sleep(self._NODE_RESET_DELAY_S)
+                self._nodes[node].clear_pin(self._CB_RESET_PIN)
 
-            if self._nodes[node].pin_status(OpdPin.FAULT):
-                reset = True
-                break
+                if self._nodes[node].pin_status(self._NOT_FAULT_PIN):
+                    reset = True
+                    break
+            except Max7310Error:
+                continue
 
         if not reset:
-            raise OpdError(f'OPD node {node.name} (0x{node.value:02X}) failed to reset 3 times in '
-                           'a row')
+            self._status[node] = OpdNodeState.DEAD
+            logger.critical(f'OPD node {node.name} (0x{node.value:02X}) failed to reset 3 times '
+                            'in a row, is now consider dead')
 
     def status(self, node: OpdNode) -> OpdNodeState:
         '''
@@ -281,12 +374,24 @@ class Opd:
             The status of the OPD node.
         '''
 
-        try:
-            if self._nodes[node].pin_status(OpdPin.FAULT):
-                value = OpdNodeState.ERROR
-            else:
-                value = OpdNodeState(int(self._nodes[node].pin_status(OpdPin.ENABLE)))
-        except Max7310Error:
-            value = OpdNodeState.NOT_FOUND
+        if self.fault(node):
+            self._status[node] = OpdNodeState.ERROR
 
-        return value
+        return self._status[node]
+
+    def fault(self, node: OpdNode) -> bool:
+        '''
+        Get the Status of a node.
+
+        Parameters
+        ----------
+        node: OpdNode
+            The OPD node id to enable.
+
+        Returns
+        -------
+        bool
+            If circut breaker is tripped.
+        '''
+
+        return not bool(self._nodes[node].input_port & 1 < self._NOT_FAULT_PIN)

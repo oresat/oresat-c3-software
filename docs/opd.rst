@@ -18,7 +18,19 @@ The C3 configures and controls all MAX7310s over I2C, using the pin as describe
 below to control the power to all the non-solar cards.
 
 
-.. autoclass:: oresat_c3.subsystems.opd.OpdPin
+.. autoclass:: oresat_c3.subsystems.opd.OpdStm32Pin
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+
+.. autoclass:: oresat_c3.subsystems.opd.OpdOctavoPin
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+
+.. autoclass:: oresat_c3.subsystems.opd.OpdCfcSensorPin
    :members:
    :undoc-members:
    :member-order: bysource
@@ -30,9 +42,6 @@ below to control the power to all the non-solar cards.
    :member-order: bysource
    :exclude-members: from_bytes
 
-
-Nodes
------
 
 All Nodes have unique ids.
 

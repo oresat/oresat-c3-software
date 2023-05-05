@@ -16,7 +16,9 @@ class Fm24cl64b:
 
     ADDR_MIN = 0x50
     ADDR_MAX = 0x5F
-    ADDRESSES = list(range(ADDR_MIN, ADDR_MAX + 2, 2))
+    ADDRESSES = list(range(ADDR_MIN, ADDR_MAX + 1))
+
+    SIZE = 8192  # size of F-RAM in bytes
 
     def __init__(self, bus_num: int, addr: int, mock: bool = False):
         '''
@@ -38,7 +40,7 @@ class Fm24cl64b:
         self._addr = addr
         self._mock = mock
         if mock:
-            self._mock_data = bytearray([0] * 8000)
+            self._mock_data = bytearray([0] * self.SIZE)
 
     def read(self, offset: int, size: int) -> bytes:
         '''
@@ -61,6 +63,14 @@ class Fm24cl64b:
         bytes
             The requested bytes.
         '''
+
+        if size < 1:
+            raise Fm24cl64bError('read size must be greater than 1')
+        if offset < 0 or offset > self.SIZE:
+            raise Fm24cl64bError(f'read offset must be greater than 0 and less than {self.SIZE}')
+        if offset + size > self.SIZE:
+            # this actually valid as the device will wrap around, this just simplifies things
+            raise Fm24cl64bError(f'read offset and size are greater than {self.SIZE}')
 
         address = offset.to_bytes(2, 'little')
 
@@ -99,6 +109,13 @@ class Fm24cl64b:
 
         if not isinstance(data, bytes) and not isinstance(data, bytearray):
             raise Fm24cl64bError(f'write data must be a bytes or bytearray type not {type(data)}')
+
+        if offset < 0 or offset > self.SIZE:
+            raise Fm24cl64bError(f'write offset must be greater than 0 and less than {self.SIZE}')
+        if offset + len(data) > self.SIZE:
+            raise Fm24cl64bError(f'write offset and data length are greater than {self.SIZE}')
+        if len(data) == 0:
+            raise Fm24cl64bError('no data to write')
 
         size = len(data)
         address = offset.to_bytes(2, 'little')

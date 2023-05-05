@@ -57,8 +57,10 @@ class Fram:
         self._total_bytes = 0
         self._entries = OrderedDict()  # lookup table for entries
 
+        self._init = True
+
         # add the entries in order to make the lookup table
-        # add new enties to the end
+        # add new entries to the end
         # if a entry's data type or size has change or is no longer used, leave it existing entry,
         # and add a new entry to the end
         self._add_entry(FramKey.C3_STATE, 'I', 4)  # uint32
@@ -78,6 +80,8 @@ class Fram:
         self._add_entry(FramKey.EDL_REJECTED_COUNT, 'I', 4)
         self._add_entry(FramKey.CRYTO_KEY, None, 128)  # bytes
 
+        self._init = False
+
     def _add_entry(self, key: str, fmt: str, size: int):
         '''
         Parameters
@@ -91,8 +95,12 @@ class Fram:
             Size of the data type.
         '''
 
+        if not self._init:
+            raise FramError('do not dyanimaic add entries after __init__')
+        if key not in list(FramKey):
+            raise FramError(f'{key} is not a valid key')
         if size < 1:
-            raise FramError('Size must be set to a number greater than 1')
+            raise FramError('size must be set to a number greater than 1')
 
         self._entries[key] = FramEntry(self._total_bytes, fmt, size)
         self._total_bytes += size
@@ -113,10 +121,13 @@ class Fram:
         except Fm24cl64bError as e:
             raise FramError(f'F-RAM read failed with {e}')
 
-        try:
-            value = struct.unpack(entry.fmt, raw)[0]
-        except ValueError as e:
-            raise FramError(f'F-RAM unpack failed with {e}')
+        if entry.fmt is None:
+            value = raw
+        else:
+            try:
+                value = struct.unpack(entry.fmt, raw)[0]
+            except struct.error as e:
+                raise FramError(f'F-RAM unpack failed with {e}')
 
         return value
 
@@ -127,13 +138,21 @@ class Fram:
 
         entry = self._entries[key]
 
-        if entry.fmt is None and len(value) != entry.size:
-            raise FramError(f'F-RAM entry {key.name} must be {entry.size} bytes')
+        if entry.fmt == '?' and not isinstance(value, bool):  # struct still packs non-bool as bool
+            raise FramError(f'{key.name} cannot write a non-bool value to a bool entry')
 
-        try:
-            raw = struct.pack(entry.fmt, value)
-        except ValueError as e:
-            raise FramError(f'F-RAM pack failed with {e}')
+        if entry.fmt is None:
+            if not isinstance(value, bytes) or isinstance(value, bytearray):
+                raise FramError(f'{key.name} value not a bytes or bytearray; is a {type(value)}')
+            raw = value
+        else:
+            try:
+                raw = struct.pack(entry.fmt, value)
+            except struct.error as e:
+                raise FramError(f'F-RAM pack failed with {e}')
+
+        if entry.fmt is None and len(raw) != entry.size:
+            raise FramError(f'F-RAM entry {key.name} must be {entry.size} bytes')
 
         try:
             self._fm24cl64b.write(entry.offset, raw)

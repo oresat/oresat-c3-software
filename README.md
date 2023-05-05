@@ -1,10 +1,17 @@
 # OreSat C3 Software
 
-Software for Linux version of the C3 card.
+Software for Linux version of the Octavo A8-based C3 card.
+
+**Note:** For OreSat0, the C3 card used STM32F4 and ChibiOS, for that project
+see the [oresat-firmware] repo.
+
+The C3 card was converted to Octavo-A8-based card to simplify the code base
+by swapping from heavily embedded system using ChibiOS to a general
+Linux-environment using Python and make to use existing Python libraries.
 
 Like all OreSat software projects it is built using OLAF (OreSat Linux App
-Framework), which it built ontop of [CANopen for Python]. See the
-[oresat-olaf repo] for more info about OLAF.
+Framework), which it built ontop of [CANopen for Python] project. See the
+[oresat-olaf] repo for more info about OLAF.
 
 ## Quickstart
 
@@ -13,7 +20,8 @@ Install dependenies
 ```bash
 $ pip3 install -r requirements.txt
 ```
-Make a virtual CAN bus
+
+Make a virtual CAN bus (skip if using a real CAN bus)
 
 ```bash
 $ sudo ip link add dev vcan0 type vcan
@@ -30,10 +38,15 @@ Can select the CAN bus to use (`vcan0`, `can0`, etc) with the `-b BUS` arg.
 
 Can mock hardware by using the `-m HARDWARE` flag.
 
-- The`-m all` flag can be used to mock all hardware (CAN bus is always
-required).
-- The `-m opd` flag would only mock the OPD and expect all other hardware
-to exist.
+- The`-m all` argument can be used to mock hardware (CAN bus is always
+  required).
+- The `-m opd` argument would only mock the hardware for the OPD subsystem and
+  expect all other hardware
+  to exist.
+- The `-m fram` argument would only mock the F-RAM chip and expect all other
+  hardware to exist.
+- The `-m opd fram` argument would both mock the hardware for the OPD subsystem
+  and the F-RAM chip and expect all other hardware to exist.
 
 See other options with `-h` flag.
 
@@ -59,8 +72,45 @@ A basic [Flask]-based website for development and integration can be found at
 
 ## Documentation
 
-See the https://oresat-c3-software.readthedocs.io/en/latest/
+Project uses [Sphinx] to generate documentation.
 
+Documentation is hosted on [Read the Docs], see https://oresat-c3-software.readthedocs.io/en/latest/
+
+To manually build the documentation:
+
+```bash
+$ make -C docs html
+```
+
+Open `docs/build/html/index.html` in a web broswer
+
+## Unit Tests
+
+This project uses python's build in `unittest` module for unit testing.
+
+To run units:
+
+```bash
+$ python3 -m unittest
+```
+
+By default all unit tests run with the hardware mocked. When running on the real
+hardware set the `MOCK_HW` environment variable to `"false"` (case insensitive).
+
+To run units when on real hardware:
+
+```bash
+$ MOCK_HW="false" python3 -m unittest
+```
+
+**Note:** The follow environment variables are also available:
+
+- `I2C_BUS_NUM`: The I2C bus number used by the OPD and F-RAM.
+- `FRAM_ADDR`: The I2C address for the F-RAM chip. Must be in hex (e.g., `"0x50"`)
+
+[oresat-firmware]: https://github.com/oresat/oresat-firmware
 [Flask]: https://flask.palletsprojects.com/en/latest/
-[oresat-olaf repo]: https://github.com/oresat/oresat-olaf
+[oresat-olaf]: https://github.com/oresat/oresat-olaf
 [CANopen for Python]: https://github.com/christiansandberg/canopen
+[Read the Docs]: https://readthedocs.org
+[Sphinx]: https://www.sphinx-doc.org/en/master/

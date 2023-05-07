@@ -14,7 +14,7 @@ from olaf import Resource, logger, NodeStop
 
 from .. import NodeId
 from ..protocols.edl import EdlServer, EdlError, EdlCode
-from ..subsystems.opd import Opd, OpdNode, OpdError, Max7310Error
+from ..subsystems.opd import Opd, OpdNodeId, OpdError, Max7310Error
 
 
 class EdlResource(Resource):
@@ -150,7 +150,7 @@ class EdlResource(Resource):
                 self.node.send_sync()
             elif code == EdlCode.OPD_SYSENABLE:
                 fmt = '?'
-                enable = OpdNode.from_bytes(args[0])
+                enable = OpdNodeId.from_bytes(args[0])
                 if enable:
                     logger.info('EDL enabling OPD system')
                     self._opd.start()
@@ -163,11 +163,11 @@ class EdlResource(Resource):
                 ret = self._opd.scan()
             elif code == EdlCode.OPD_PROBE:
                 fmt = '?'
-                node = OpdNode.from_bytes(args[0])
+                node = OpdNodeId.from_bytes(args[0])
                 logger.info(f'EDL probing for OPD node {node.name}')
                 ret = self._opd.probe(node)
             elif code == EdlCode.OPD_ENABLE:
-                node = OpdNode.from_bytes(args[0])
+                node = OpdNodeId.from_bytes(args[0])
                 if args[1] == b'\x00':
                     logger.info(f'EDL disabling OPD node {node.name}')
                     self._opd.disable_node(node)
@@ -176,12 +176,12 @@ class EdlResource(Resource):
                     self._opd.enable_node(node)
                 ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_RESET:
-                node = OpdNode.from_bytes(args[0])
+                node = OpdNodeId.from_bytes(args[0])
                 logger.info(f'EDL resetting for OPD node {node.name}')
                 self._opd.reset_node(node)
                 ret = self._opd.node_status(node).value
             elif code == EdlCode.OPD_STATUS:
-                node = OpdNode.from_bytes(args[0])
+                node = OpdNodeId.from_bytes(args[0])
                 logger.info(f'EDL getting the status for OPD node {node.name}')
                 ret = self._opd.node_status(node).value
             elif code == EdlCode.RTC_SET_TIME:

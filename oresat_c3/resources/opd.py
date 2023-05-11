@@ -7,7 +7,7 @@ Handle powering OreSat cards on and off.
 import json
 from time import time
 
-from olaf import Resource, TimerLoop
+from olaf import Resource, TimerLoop, logger
 
 from ..subsystems.opd import Opd, OpdNode, OpdNodeState
 from .. import NodeId
@@ -99,6 +99,7 @@ class OpdResource(Resource):
             co_status = self.node.node_status[co_node.value]
             if self.opd.status(node) == OpdNodeState.ON and co_status[1] + 60 < time():
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it
+                logger.info(f'CANopen node {node} has sent no heartbeats in 60s, resetting it')
                 self.opd.reset(node)
 
         return True

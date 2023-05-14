@@ -40,9 +40,9 @@ class StateResource(Resource):
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
         self._last_tx_enable_obj = persist_state_rec['Last TX Enable']
         self._edl_timeout_obj = self.node.od['State Control']['EDL Timeout']
-        self._pre_deply_timeout_obj = self.node.od['Deployment Control']['Timeout']
+        self._pre_deploy_timeout_obj = self.node.od['Deployment Control']['Timeout']
         self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP1']
-        self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP2']
+        self._vbatt_bp2_obj = self.node.od['Battery 0']['VBatt BP2']
         self._reset_timeout_obj = self.node.od['State Control']['Reset Timeout']
 
         self._fram_entry_co_objs = {
@@ -87,7 +87,7 @@ class StateResource(Resource):
 
     def _pre_deploy(self):
 
-        if self._boot_time + self._pre_deply_timeout_obj.value < time():
+        if (self._boot_time + self._pre_deploy_timeout_obj.value) < time():
             self._tx_enabled_obj.value = True  # start beacons
         else:
             logger.info('pre-deploy timeout reached')
@@ -96,17 +96,16 @@ class StateResource(Resource):
 
     def _deploy(self):
 
-        if not self._deployed_obj.value and self._attempts < self._attempts_obj.value \
-                and self._bat_lvl_good:
-            logger.info(f'deploying antennas, attempt {self._attempts}')
-            # TODO deploy here
-            self._attempts += 1
+        if not self._deploy_obj.value and self._attempts < self._attempts_obj.value:
+            if self._bat_good:
+                logger.info(f'deploying antennas, attempt {self._attempts}')
+                # TODO deploy here
+                self._attempts += 1
+            # wait for battery to be at a good level
         else:
-            self._c3_state_obj.value = C3State.STANDBY.value
-            self._fram[FramKey.C3_STATE] = C3State.STANDBY.value
-            self._deployed_obj.value = True
-            self._fram[FramKey.DEPLOYED] = True
             logger.info('antennas deployed')
+            self._c3_state_obj.value = C3State.STANDBY.value
+            self._deploy_obj.value = True
             self._attempts = 0
 
     def _standby(self):

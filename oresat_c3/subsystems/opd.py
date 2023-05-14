@@ -142,6 +142,7 @@ class Opd:
         | 1 << OpdStm32Pin.NOT_FAULT.value
     _OCTAVO_CONFIG = 1 << OpdOctavoPin.NOT_FAULT.value
     _CFC_SENSOR_CONFIG = 1 << OpdCfcSensorPin.NOT_FAULT.value
+    _NODE_RESET_DELAY_S = 0.25
     _TIMEOUT_CONFIG = 1
 
     # these are consistent between all cards
@@ -442,3 +443,224 @@ class Opd:
         '''bool: OPD is dead or not.'''
 
         return self._dead
+
+
+class OpdNode:
+    '''
+    Base class for all OPD nodes
+
+    NOTE: CFC sensor node does not have UART enable pin.
+    '''
+
+    _RESET_DELAY_S = 0.25
+
+    _TIMEOUT_CONFIG = 1
+
+    # these are consistent between all cards
+    _NOT_FAULT_PIN = 2
+    _ENABLE_PIN = 3
+    _CB_RESET_PIN = 4
+
+    def __init__(self, bus: int, node_id: OpdNodeId, mock: bool = False):
+        '''
+        Parameters
+        ----------
+        enable_pin: int
+            Pin that enable the OPD subsystem.
+        bus: int
+            The I2C bus.
+        mock: bool
+            Mock the OPD subsystem.
+        '''
+
+        self._node_id = node_id
+        self._max7310 = Max7310(bus, node_id.value, mock)
+        self._status = OpdNodeState.OFF
+
+    def __del__(self):
+
+        self._max7310.clear_pin(self._ENABLE_PIN)
+
+    def configure(self):
+        '''Configure the MAX7310'''
+
+        config = 1 << OpdStm32Pin.NOT_FAULT.value
+
+        self._max7310.configure(0, 0, config, self._TIMEOUT_CONFIG)
+
+    def probe(self, reset: bool = False) -> bool:
+        '''
+        Probe the OPD for a node (see if it is there). Will automatically call configure the
+        MAX7310, if found.
+
+        Parameters
+        ----------
+        reset: bool
+            Optional flag to reset the MAX7310, if found.
+
+        Returns
+        -------
+        bool
+            If the node was found.
+        '''
+
+        logger.info(f'probing OPD node {self._node_id.name} (0x{self._node_id.value:02X})')
+
+        if self._status == OpdNodeState.DEAD:
+            return False  # node is dead, no reason to probe
+
+        try:
+            if self._is_valid:
+                if self._status == OpdNodeState.NOT_FOUND:
+                    logger.info(f'OPD node {self._node_id.name} (0x{self._node_id.value:02X}) was '
+                                'found')
+                    self.configure()
+
+                if reset:
+                    self.reset()
+                    self.configure()
+
+                self._status = OpdNodeState.OFF
+            else:
+                if self._status != OpdNodeState.NOT_FOUND:
+                    logger.info(f'OPD node {self._node_id.name} (0x{self._node_id.value:02X}) was '
+                                'lost')
+                    self._status = OpdNodeState.NOT_FOUND
+        except Max7310Error:
+            logger.debug(f'OPD node {self._node_id.name} (0x{self._node_id.value:02X}) was not '
+                         'found')
+            self._status = OpdNodeState.NOT_FOUND
+
+        return self._status != OpdNodeState.NOT_FOUND
+
+    def enable(self):
+        '''Enable the OPD node.'''
+
+        self._max7310.set_pin(self._ENABLE_PIN)
+        self._status = OpdNodeState.ON
+
+    def disable(self):
+        '''Disable the OPD node.'''
+
+        self._max7310.clear_pin(self._ENABLE_PIN)
+        self._status = OpdNodeState.OFF
+
+    def reset(self, node_id: OpdNodeId, attempts: int = 3):
+        '''
+        Reset a node on the OPD (disable and then re-enable it) Will try up to reset up
+        to X times.
+
+        Parameters
+        ----------
+        attempts: int
+            The times to attempt to reset.
+        '''
+
+        reset = False
+
+        for i in range(attempts):
+            logger.info(f'reseting OPD node {node_id.name} (0x{node_id.value:02X}), try {i + 1}')
+            try:
+                self._max7310.set_pin(self._CB_RESET_PIN)
+                sleep(self._NODE_RESET_DELAY_S)
+                self._max7310.clear_pin(self._CB_RESET_PIN)
+
+                if self._max7310.pin_status(self._NOT_FAULT_PIN):
+                    self._status = OpdNodeState.ON
+                    reset = True
+                    break
+            except Max7310Error:
+                continue
+
+        if not reset:
+            self._status = OpdNodeState.DEAD
+            logger.critical(f'OPD node {node_id.name} (0x{node_id.value:02X}) failed to reset 3 '
+                            'times in a row, is now consider dead')
+
+    @property
+    def status(self) -> OpdNodeState:
+        '''OpdNodeState: Status of the OPD node.'''
+
+        return self._status
+
+    @property
+    def fault(self) -> bool:
+
+        return not self._max7310.pin_status(self._NOT_FAULT_PIN)
+
+
+class OpdStm32Node(OpdNode):
+    '''A STM32-based OPD Node'''
+
+    def __init__(self, bus: int, node_id: OpdNodeId, mock: bool = False):
+        '''
+        Parameters
+        ----------
+        enable_pin: int
+            Pin that enable the OPD subsystem.
+        bus: int
+            The I2C bus.
+        mock: bool
+            Mock the OPD subsystem.
+        '''
+
+        super().__init__(bus, node_id, mock)
+        self._uart_pin = 7
+
+    def configure(self):
+
+        config = 1 << OpdStm32Pin.SCL.value | 1 << OpdStm32Pin.SDA.value \
+            | 1 << OpdStm32Pin.NOT_FAULT.value
+
+        self._max7310.configure(0, 0, config, self._TIMEOUT_CONFIG)
+
+    def enable_uart(self):
+        '''Connect the node the C3's UART'''
+
+        self._max7310.set_pin(self._uart_pin)
+
+    def disable_uart(self):
+        '''Disconnect the node from the C3's UART'''
+
+        self._max7310.clear_pin(self._uart_pin)
+
+    @property
+    def is_uart_enabled(self) -> bool:
+        '''bool: Check if the UART pin is connected'''
+
+        self._max7310.pin_status(self._uart_pin)
+
+
+class OpdOctavoNode(OpdNode):
+    '''A Octavo A8-based OPD Node'''
+
+    def __init__(self, bus: int, node_id: OpdNodeId, mock: bool = False):
+        '''
+        Parameters
+        ----------
+        enable_pin: int
+            Pin that enable the OPD subsystem.
+        bus: int
+            The I2C bus.
+        mock: bool
+            Mock the OPD subsystem.
+        '''
+
+        super().__init__(bus, node_id, mock)
+        self._uart_pin = 7
+
+    def enable_uart(self):
+        '''Connect the node the C3's UART'''
+
+        self._max7310.set_pin(self._uart_pin)
+
+    def disable_uart(self):
+        '''Disconnect the node the C3's UART'''
+
+        self._max7310.clear_pin(self._uart_pin)
+
+    @property
+    def is_uart_enabled(self) -> bool:
+        '''bool: Check if the UART pin is connected'''
+
+        self._max7310.pin_status(self._uart_pin)

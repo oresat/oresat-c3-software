@@ -3,7 +3,7 @@ from enum import Enum, IntEnum
 __version__ = '0.1.0'
 
 
-class C3State(Enum):
+class C3State(IntEnum):
     '''All valid C3 states'''
 
     OFFLINE = ord('A')

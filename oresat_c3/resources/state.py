@@ -92,12 +92,12 @@ class StateResource(Resource):
         else:
             logger.info('pre-deploy timeout reached')
             self._c3_state_obj.value = C3State.DEPLOY.value
-            self._fram[FramKey.C3_STATE] = C3State.DEPLOYED.value
+            self._fram[FramKey.C3_STATE] = C3State.DEPLOY.value
 
     def _deploy(self):
 
-        if not self._deploy_obj.value and self._attempts < self._attempts_obj.value:
-            if self._bat_good:
+        if not self._deployed_obj.value and self._attempts < self._attempts_obj.value:
+            if self._bat_lvl_good:
                 logger.info(f'deploying antennas, attempt {self._attempts}')
                 # TODO deploy here
                 self._attempts += 1
@@ -105,7 +105,7 @@ class StateResource(Resource):
         else:
             logger.info('antennas deployed')
             self._c3_state_obj.value = C3State.STANDBY.value
-            self._deploy_obj.value = True
+            self._deployed_obj.value = True
             self._attempts = 0
 
     def _standby(self):
@@ -138,6 +138,8 @@ class StateResource(Resource):
 
         loop = 0
         while not self._event.is_set():
+            state_a = self._c3_state_obj.value
+
             if self._c3_state_obj.value == C3State.PRE_DEPLOY:
                 self._pre_deploy()
             elif self._c3_state_obj.value == C3State.DEPLOY:
@@ -150,6 +152,11 @@ class StateResource(Resource):
                 self._edl()
             else:
                 self._c3_state_obj.value = C3State.PRE_DEPLOY.value
+                continue
+
+            state_b = self._c3_state_obj.value
+            if state_a != state_b:
+                logger.info(f'C3 state change: {C3State(state_a).name} -> {C3State(state_b).name}')
 
             # only save state once a second
             loop = (loop + 1) % 10
@@ -178,7 +185,7 @@ class StateResource(Resource):
             and self._vbatt_bp2_obj.value > self.BAT_LEVEL_LOW
 
     @property
-    def _tigger_reset(self) -> bool:
+    def _trigger_reset(self) -> bool:
         '''bool: Helper property to check if the reset timeout has been reached.'''
 
         return (time() - self._boot_time) >= self._reset_timeout_obj.value

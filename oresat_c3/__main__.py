@@ -24,7 +24,7 @@ def main():
 
     path = os.path.dirname(os.path.abspath(__file__))
 
-    args = olaf_setup(f'{path}/data/oresat_c3.dcf')
+    args = olaf_setup(f'{path}/data/oresat_c3.dcf', master_node=True)
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = 'opd' in mock_args or 'all' in mock_args
     mock_fram = 'fram' in mock_args or 'all' in mock_args

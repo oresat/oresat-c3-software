@@ -2,6 +2,7 @@ import os
 
 from olaf import olaf_setup, olaf_run, app, rest_api, render_olaf_template
 
+from . import __version__
 from .subsystems.opd import Opd
 from .subsystems.fram import Fram
 from .resources.beacon import BeaconResource
@@ -20,6 +21,11 @@ def opd_template():
     return render_olaf_template('opd.html', name='OPD (OreSat Power Domain)')
 
 
+@rest_api.app.route('/state')
+def state_template():
+    return render_olaf_template('state.html', name='State')
+
+
 def main():
 
     path = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +34,8 @@ def main():
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = 'opd' in mock_args or 'all' in mock_args
     mock_fram = 'fram' in mock_args or 'all' in mock_args
+
+    app.node.od['Manufacturer software version'].value = __version__
 
     # TODO get from OD
     i2c_bus_num = 2
@@ -44,6 +52,7 @@ def main():
 
     rest_api.add_template(f'{path}/templates/beacon.html')
     rest_api.add_template(f'{path}/templates/opd.html')
+    rest_api.add_template(f'{path}/templates/state.html')
 
     # on factory reset clear F-RAM
     app.set_factory_reset_callback(fram.clear)

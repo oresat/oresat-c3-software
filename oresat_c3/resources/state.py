@@ -34,7 +34,7 @@ class StateResource(Resource):
         self._attempts_obj = self.node.od['Deployment Control']['Attempts']
         persist_state_rec = self.node.od['Persistent State']
         self._deployed_obj = persist_state_rec['Deployed']
-        self._last_edl = persist_state_rec['Last EDL']
+        self._last_edl_obj = persist_state_rec['Last EDL']
         self._c3_state_obj = self.node.od['C3 State']
         self._tx_timeout_obj = self.node.od['TX Control']['Timeout']
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
@@ -52,7 +52,7 @@ class StateResource(Resource):
             FramKey.ALARM_B: persist_state_rec['Alarm B'],
             FramKey.WAKEUP: persist_state_rec['Wakeup'],
             FramKey.LAST_TX_ENABLE: self._last_tx_enable_obj,
-            FramKey.LAST_EDL: self._last_edl,
+            FramKey.LAST_EDL: self._last_edl_obj,
             FramKey.DEPLOYED: self._deployed_obj,
             FramKey.POWER_CYCLES: persist_state_rec['Power Cycles'],
             FramKey.LBAND_RX_BYTES: persist_state_rec['LBand RX Bytes'],
@@ -87,8 +87,10 @@ class StateResource(Resource):
 
     def _pre_deploy(self):
 
-        if (self._boot_time + self._pre_deploy_timeout_obj.value) < time():
-            self._tx_enabled_obj.value = True  # start beacons
+        if (self._boot_time + self._pre_deploy_timeout_obj.value) > time():
+            if not self._tx_enabled_obj.value:
+                self._tx_enabled_obj.value = True  # start beacons
+                self._last_tx_enable_obj.value = time()
         else:
             logger.info('pre-deploy timeout reached')
             self._c3_state_obj.value = C3State.DEPLOY.value
@@ -136,9 +138,17 @@ class StateResource(Resource):
 
     def _state_machine_thread(self):
 
+        # make sure the initial state is valid (will be invalid on a cleared F-RAM)
+        if self._c3_state_obj.value not in list(C3State):
+            self._c3_state_obj.value = C3State.PRE_DEPLOY.value
+
         loop = 0
+        state_b = self._c3_state_obj.value
+        logger.info(f'C3 initial state: {C3State(state_b).name}')
         while not self._event.is_set():
             state_a = self._c3_state_obj.value
+            if state_a != state_b:  # incase of change thru REST API
+                logger.info(f'C3 state change: {C3State(state_b).name} -> {C3State(state_a).name}')
 
             if self._c3_state_obj.value == C3State.PRE_DEPLOY:
                 self._pre_deploy()
@@ -151,7 +161,10 @@ class StateResource(Resource):
             elif self._c3_state_obj.value == C3State.EDL:
                 self._edl()
             else:
+                logger.error(f'C3 invalid state: {self._c3_state_obj.value}, '
+                             'resetting to PRE_DEPLOY')
                 self._c3_state_obj.value = C3State.PRE_DEPLOY.value
+                state_b = self._c3_state_obj.value
                 continue
 
             state_b = self._c3_state_obj.value
@@ -175,7 +188,7 @@ class StateResource(Resource):
     def _is_edl_enabled(self) -> bool:
         '''bool: Helper property to check if the edl timeout has been reached.'''
 
-        return (time() - self._last_edl.value) < self._edl_timeout_obj.value
+        return (time() - self._last_edl_obj.value) < self._edl_timeout_obj.value
 
     @property
     def _bat_lvl_good(self) -> bool:
@@ -210,5 +223,3 @@ class StateResource(Resource):
 
         if subindex == 1:
             return int(time() - self._boot_time)
-        else:
-            return self.node.od[index][subindex].value  # TBD

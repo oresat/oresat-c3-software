@@ -436,7 +436,7 @@ ParameterName=Manufacturer device name
 ObjectType=0x07
 DataType=0x0009
 AccessType=ro
-DefaultValue=OreSat Node
+DefaultValue=OreSat C3
 
 [1009]
 ParameterName=Manufacturer hardware version

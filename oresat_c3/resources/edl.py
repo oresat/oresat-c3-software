@@ -150,12 +150,11 @@ class EdlResource(Resource):
                 self.node.send_sync()
             elif code == EdlCode.OPD_SYSENABLE:
                 fmt = '?'
-                enable = OpdNodeId.from_bytes(args[0])
-                if enable:
-                    logger.info('EDL enabling OPD system')
+                if bool(int(args[0])):
+                    logger.info('EDL enabling OPD subsystem')
                     self._opd.start()
                 else:
-                    logger.info('EDL disabling OPD system')
+                    logger.info('EDL disabling OPD subsystem')
                     self._opd.stop()
                 ret = self._opd.is_system_enabled
             elif code == EdlCode.OPD_SCAN:
@@ -163,27 +162,27 @@ class EdlResource(Resource):
                 ret = self._opd.scan()
             elif code == EdlCode.OPD_PROBE:
                 fmt = '?'
-                node = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL probing for OPD node {node.name}')
-                ret = self._opd.probe(node)
+                node_id = OpdNodeId.from_bytes(args[0])
+                logger.info(f'EDL probing for OPD node {node_id.name}')
+                ret = self._opd[node_id].probe()
             elif code == EdlCode.OPD_ENABLE:
                 node = OpdNodeId.from_bytes(args[0])
                 if args[1] == b'\x00':
-                    logger.info(f'EDL disabling OPD node {node.name}')
-                    self._opd.disable_node(node)
+                    logger.info(f'EDL disabling OPD node {node_id.name}')
+                    self._opd[node_id].disable()
                 else:
-                    logger.info(f'EDL enabling OPD node {node.name}')
-                    self._opd.enable_node(node)
-                ret = self._opd.node_status(node).value
+                    logger.info(f'EDL enabling OPD node {node_id.name}')
+                    self._opd[node_id].enable()
+                ret = self._opd[node_id].status
             elif code == EdlCode.OPD_RESET:
-                node = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL resetting for OPD node {node.name}')
-                self._opd.reset_node(node)
-                ret = self._opd.node_status(node).value
+                node_id = OpdNodeId.from_bytes(args[0])
+                logger.info(f'EDL resetting for OPD node {node_id.name}')
+                self._opd[node_id].reset()
+                ret = self._opd[node_id].status
             elif code == EdlCode.OPD_STATUS:
-                node = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL getting the status for OPD node {node.name}')
-                ret = self._opd.node_status(node).value
+                node_id = OpdNodeId.from_bytes(args[0])
+                logger.info(f'EDL getting the status for OPD node {node_id.name}')
+                ret = self._opd[node_id].status
             elif code == EdlCode.RTC_SET_TIME:
                 fmt = 'I'
                 value = struct.unpack(fmt, args)

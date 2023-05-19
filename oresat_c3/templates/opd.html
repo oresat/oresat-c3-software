@@ -56,6 +56,7 @@
        0x00: 'OFF',
        0x01: 'ON',
        0x02: 'ERROR',
+       0x03: 'DEAD',
        0xFF: 'NOT_FOUND',
     };
 
@@ -95,16 +96,19 @@
       const span = document.getElementById(`node${node}`);
       const button = document.getElementById(`node${node}Button`);
 
-      if (value === 0) {
-        span.innerText = 'OFF';
+      const state = NODE_STATES[value];
+      span.innerText = state;
+
+      switch (state) {
+      case 'OFF':
         button.innerText = 'Enable';
         button.disabled = false;
-      } else if (value === 1) {
-        span.innerText = 'ON';
+        break;
+      case 'ON':
         button.innerText = 'Disable';
         button.disabled = false;
-      } else {
-        span.innerText = 'NOT_FOUND';
+        break;
+      default:
         button.innerText = 'Enable';
         button.disabled = true;
       }

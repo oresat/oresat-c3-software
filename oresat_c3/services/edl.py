@@ -77,7 +77,24 @@ class EdlService(Service):
             return
 
         try:
-            response = self._edl_server.generate_response(payload)
+            payload = self._edl_server.unpack_request(message)
+            code = EdlCode.from_bytes(payload[0])
+        except EdlError as e:
+            self._edl_rejected_count_obj.value += 1
+            logger.error(f'Invalid EDL request packet: {e}')
+            return
+
+        self._last_edl_obj.value = int(time())
+        self._edl_sequence_count_obj.value += 1
+
+        try:
+            self._run_cmd(code, payload[1:])
+        except Exception as e:
+            logger.error(f'EDL command {code.name} raised: {e}')
+            return
+
+        try:
+            response = self._edl_server.pack_response(payload)
         except EdlError as e:
             logger.error(f'EDL response generation raised: {e}')
             return

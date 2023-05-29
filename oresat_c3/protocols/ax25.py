@@ -9,11 +9,11 @@ AX25_PAYLOAD_MAX_LEN = AX25_PACKET_MAX_LEN - AX25_HEADER_LEN
 
 
 class Ax25Error(Exception):
-    '''Error with generate_ax25_packet'''
+    '''Error with ax25_pack'''
 
 
-def generate_ax25_packet(dest: str, dest_ssid: int, src: str, src_ssid: int, control: int,
-                         pid: int, payload: bytes, crc32: bool = True) -> bytes:
+def ax25_pack(dest: str, dest_ssid: int, src: str, src_ssid: int, control: int,
+              pid: int, payload: bytes, crc32: bool = True) -> bytes:
     '''
     Generate a AX25 packet.
 

@@ -260,7 +260,7 @@ class EdlBase:
 
         return hmac.digest(self._hmac_key, message, hashlib.sha3_256)
 
-    def _parse_packet(self, packet: bytes, src_dest: SourceOrDestField) -> bytes:
+    def _unpack(self, packet: bytes, src_dest: SourceOrDestField) -> bytes:
 
         if len(packet) < self._TC_MIN_LEN:
             raise EdlError(f'EDL packet too short: {len(packet)}')
@@ -288,7 +288,7 @@ class EdlBase:
 
         return payload
 
-    def _generate_packet(self, payload: bytes, src_dest: SourceOrDestField) -> bytes:
+    def _pack(self, payload: bytes, src_dest: SourceOrDestField) -> bytes:
 
         # USLP transfer frame total length - 1
         frame_len = len(payload) + self._TC_MIN_LEN - 1
@@ -349,21 +349,21 @@ class EdlBase:
 
 class EdlServer(EdlBase):
 
-    def parse_request(self, packet: bytes) -> bytes:
+    def unpack_request(self, packet: bytes) -> bytes:
 
-        return self._parse_packet(packet, src_dest=SourceOrDestField.SOURCE)
+        return self._unpack(packet, src_dest=SourceOrDestField.SOURCE)
 
-    def generate_response(self, payload: bytes) -> bytes:
+    def pack_response(self, payload: bytes) -> bytes:
 
-        return self._generate_packet(payload, src_dest=SourceOrDestField.DEST)
+        return self._pack(payload, src_dest=SourceOrDestField.DEST)
 
 
 class EdlClient(EdlBase):
 
-    def generate_request(self, payload: bytes) -> bytes:
+    def pack_request(self, payload: bytes) -> bytes:
 
-        return self._generate_packet(payload, src_dest=SourceOrDestField.SOURCE)
+        return self._pack(payload, src_dest=SourceOrDestField.SOURCE)
 
-    def parse_response(self, packet: bytes) -> bytes:
+    def unpack_response(self, packet: bytes) -> bytes:
 
-        return self._parse_packet(packet, src_dest=SourceOrDestField.DEST)
+        return self._unpack(packet, src_dest=SourceOrDestField.DEST)

@@ -9,7 +9,7 @@ import socket
 from olaf import Service, logger
 
 from .. import C3State
-from ..protocols.ax25 import generate_ax25_packet
+from ..protocols.ax25 import ax25_pack
 
 BEACON_FIELDS = [
     # C3
@@ -187,7 +187,7 @@ class BeaconService(Service):
                 obj = self.node.od[field[0]][field[1]]
             payload += obj.encode_raw(obj.value)
 
-        packet = generate_ax25_packet(
+        packet = ax25_pack(
             dest=self._aprs_dest,
             dest_ssid=0,
             src=self._aprs_src,

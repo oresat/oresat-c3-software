@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from oresat_c3.drivers.fm24cl64b import Fm24cl64b, Fm24cl64bError
@@ -6,6 +7,16 @@ from .. import MOCK_HW, I2C_BUS_NUM, FRAM_ADDR
 
 
 class TestFm24cl64b(unittest.TestCase):
+
+    def setUp(self):
+
+        if os.path.isfile(Fm24cl64b._MOCK_FILE):
+            os.remove(Fm24cl64b._MOCK_FILE)
+
+    def tearDown(self):
+
+        if os.path.isfile(Fm24cl64b._MOCK_FILE):
+            os.remove(Fm24cl64b._MOCK_FILE)
 
     def test_addresses(self):
         '''Test valid and invalid i2c addresses'''
@@ -66,5 +77,31 @@ class TestFm24cl64b(unittest.TestCase):
 
         # make sure data is actually written
         data = bytes([0xAA] * 10)
-        fram.write(0, data)
-        self.assertEqual(fram.read(0, len(data)), data)
+        offset = 0
+        fram.write(offset, data)
+        self.assertEqual(fram.read(offset, len(data)), data)
+
+        # overwrite a couple bytes
+        new_bytes = b'\x12\x34'
+        offset = 1
+        tmp = bytearray(data)
+        tmp[offset: offset + len(new_bytes)] = new_bytes
+        new_data = bytes(tmp)
+        fram.write(offset, new_bytes)
+        self.assertEqual(fram.read(offset, len(new_bytes)), new_bytes)
+        self.assertEqual(fram.read(0, len(new_data)), new_data)
+
+    def test_reload(self):
+
+        data = bytes([1] * 5)
+        offset = 0
+
+        fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
+
+        fram.write(offset, data)
+        self.assertEqual(fram.read(offset, len(data)), data)
+
+        # remake obj
+        fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
+
+        self.assertEqual(fram.read(offset, len(data)), data)

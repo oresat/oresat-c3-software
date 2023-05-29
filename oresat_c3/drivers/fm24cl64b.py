@@ -4,6 +4,8 @@ FM24CL64B F-RAM driver
 The FM24CL64B is a 64-Kbit F-RAM (ferroelectric random access memory) with an I2C interface.
 '''
 
+import os
+
 from smbus2 import SMBus, i2c_msg
 
 
@@ -20,6 +22,8 @@ class Fm24cl64b:
 
     SIZE = 8192  # size of F-RAM in bytes
 
+    _MOCK_FILE = '/tmp/FM24CL64B.bin'
+
     def __init__(self, bus_num: int, addr: int, mock: bool = False):
         '''
         Parameters
@@ -32,15 +36,16 @@ class Fm24cl64b:
             Mock the FM24CL64B.
         '''
 
-        if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
+        if addr not in self.ADDRESSES:
             raise Fm24cl64bError(f'arg addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} '
                                  f'and 0x{self.ADDR_MAX:X}')
 
         self._bus_num = bus_num
         self._addr = addr
         self._mock = mock
-        if mock:
-            self._mock_data = bytearray([0] * self.SIZE)
+        if mock and not os.path.isfile(self._MOCK_FILE):
+            with open(self._MOCK_FILE, 'wb') as f:
+                f.write(bytearray([0] * self.SIZE))
 
     def read(self, offset: int, size: int) -> bytes:
         '''
@@ -75,7 +80,9 @@ class Fm24cl64b:
         address = offset.to_bytes(2, 'little')
 
         if self._mock:
-            result = self._mock_data[offset: offset + size]
+            with open(self._MOCK_FILE, 'rb') as f:
+                data = bytearray(f.read())
+            result = data[offset: offset + size]
         else:
             write = i2c_msg.write(self._addr, address)
             read = i2c_msg.read(self._addr, size)
@@ -121,7 +128,11 @@ class Fm24cl64b:
         address = offset.to_bytes(2, 'little')
 
         if self._mock:
-            self._mock_data[offset: offset + size] = data
+            with open(self._MOCK_FILE, 'rb') as f:
+                tmp = bytearray(f.read())
+            tmp[offset: offset + size] = data
+            with open(self._MOCK_FILE, 'wb') as f:
+                f.write(tmp)
         else:
             write = i2c_msg.write(self._addr, address + data)
 

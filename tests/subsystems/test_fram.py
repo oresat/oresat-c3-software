@@ -1,11 +1,23 @@
+import os
 import unittest
 
+from oresat_c3.drivers.fm24cl64b import Fm24cl64b
 from oresat_c3.subsystems.fram import FramKey, Fram, FramError
 
 from .. import MOCK_HW, I2C_BUS_NUM, FRAM_ADDR
 
 
 class TestFram(unittest.TestCase):
+
+    def setUp(self):
+
+        if os.path.isfile(Fm24cl64b._MOCK_FILE):
+            os.remove(Fm24cl64b._MOCK_FILE)
+
+    def tearDown(self):
+
+        if os.path.isfile(Fm24cl64b._MOCK_FILE):
+            os.remove(Fm24cl64b._MOCK_FILE)
 
     def test_entries(self):
 

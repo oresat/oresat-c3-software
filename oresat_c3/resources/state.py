@@ -211,7 +211,10 @@ class StateResource(Resource):
         for key in list(FramKey):
             if key == FramKey.CRYTO_KEY:
                 continue  # static, skip this
-            self._fram[key] = self._fram_entry_co_objs[key].value
+            elif key == FramKey.LAST_TIME_STAMP:
+                self._fram[key] = int(time())
+            else:
+                self._fram[key] = self._fram_entry_co_objs[key].value
 
     def _restore_state(self):
 

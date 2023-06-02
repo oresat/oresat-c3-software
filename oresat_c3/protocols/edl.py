@@ -1,13 +1,33 @@
 import binascii
 import hashlib
 import hmac
+import struct
 from enum import IntEnum, auto
+from collections import namedtuple
 
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen
 from spacepackets.uslp.frame import TransferFrame, TransferFrameDataField, TfdzConstructionRules, \
     UslpProtocolIdentifier, VarFrameProperties, FrameType
 from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolCommandFlag, \
     BypassSequenceControlFlag
+
+EdlCommand = namedtuple(
+    'EdlCommand',
+    ['req_fmt', 'res_fmt', 'req_func', 'res_func'],
+    defaults=(None, None, None, None)
+)
+'''
+Parameters
+----------
+req_fmt: str
+    The struct.unpack() format for request packet.
+res_fmt: str
+    The struct.pack() format for response packet.
+req_func: Callable[[bytes], tuple]
+    Optional callback function to use instead of req_fmt for unpacking the request packet.
+res_func: Callable[[tuple], bytes]
+    Optional callback function to use instead of res_fmt for packing the response packet.
+'''
 
 
 class EdlCode(IntEnum):
@@ -222,6 +242,34 @@ class EdlCode(IntEnum):
     '''
 
 
+def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
+
+    res = struct.unpack('<2BHI', request_raw[:8])
+    res += (request_raw[8:])
+
+    return res
+
+
+EDL_COMMANDS = {
+    EdlCode.TX_CTRL: EdlCommand('?', '?'),
+    EdlCode.C3_SOFT_RESET: EdlCommand(),
+    EdlCode.C3_HARD_RESET: EdlCommand(),
+    EdlCode.C3_FACTORY_RESET: EdlCommand(),
+    EdlCode.CO_NODE_ENABLE: EdlCommand('B?', 'B'),
+    EdlCode.CO_NODE_STATUS: EdlCommand('B', 'B'),
+    EdlCode.CO_SDO_WRITE: EdlCommand(None, 'I', _edl_res_sdo_write_cb),
+    EdlCode.CO_SYNC: EdlCommand(None, '?'),
+    EdlCode.OPD_SYSENABLE: EdlCommand(None, '?'),
+    EdlCode.OPD_SCAN: EdlCommand(None, 'B'),
+    EdlCode.OPD_PROBE: EdlCommand('B', '?'),
+    EdlCode.OPD_ENABLE: EdlCommand('B', 'B'),
+    EdlCode.OPD_RESET: EdlCommand('B', 'B'),
+    EdlCode.OPD_STATUS: EdlCommand('B', 'B'),
+    EdlCode.RTC_SET_TIME: EdlCommand('I', '?'),
+}
+'''All valid EDL commands lookup table'''
+
+
 def crc16_bytes(data: bytes) -> bytes:
     '''Helper function for generating the crc16 of a message as bytes'''
     return binascii.crc_hqx(data, 0).to_bytes(2, 'little')
@@ -349,21 +397,75 @@ class EdlBase:
 
 class EdlServer(EdlBase):
 
-    def unpack_request(self, packet: bytes) -> bytes:
+    def unpack_request(self, code: EdlCode, packet: bytes) -> tuple:
 
-        return self._unpack(packet, src_dest=SourceOrDestField.SOURCE)
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
 
-    def pack_response(self, payload: bytes) -> bytes:
+        command = EDL_COMMANDS[code]
+        raw = self._unpack_packet(packet, src_dest=SourceOrDestField.SOURCE)
 
-        return self._pack(payload, src_dest=SourceOrDestField.DEST)
+        if command.req_fmt is not None:
+            args = struct.unpack(command.req_fmt, packet)
+        elif command.req_func is not None:
+            args = command.req_func(raw)
+        else:
+            args = ()
+
+        return args
+
+    def pack_response(self, code: EdlCode, payload: tuple) -> bytes:
+
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
+        if not isinstance(payload, tuple):
+            payload = (payload,)  # convert to a tuple
+
+        command = EDL_COMMANDS[code]
+
+        if command.req_fmt is not None:
+            payload_raw = struct.pack(command.res_fmt, *payload)
+        elif command.req_func is not None:
+            payload_raw = command.res_func(payload)
+        else:
+            payload_raw = ()
+
+        return self._pack_packet(payload_raw, src_dest=SourceOrDestField.DEST)
 
 
 class EdlClient(EdlBase):
 
-    def pack_request(self, payload: bytes) -> bytes:
+    def pack_request(self, code: EdlCode, payload: tuple) -> bytes:
 
-        return self._pack(payload, src_dest=SourceOrDestField.SOURCE)
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
+        if not isinstance(payload, tuple):
+            payload = (payload,)  # convert to a tuple
 
-    def unpack_response(self, packet: bytes) -> bytes:
+        command = EDL_COMMANDS[code]
 
-        return self._unpack(packet, src_dest=SourceOrDestField.DEST)
+        if command.req_fmt is not None:
+            payload_raw = struct.pack(command.res_fmt, *payload)
+        elif command.req_func is not None:
+            payload_raw = command.res_func(payload)
+        else:
+            payload_raw = ()
+
+        return self._pack_packet(payload_raw, src_dest=SourceOrDestField.SOURCE)
+
+    def unpack_response(self, code: EdlCode, packet: bytes) -> tuple:
+
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
+
+        command = EDL_COMMANDS[code]
+        raw = self._unpack_packet(packet, src_dest=SourceOrDestField.DEST)
+
+        if command.req_fmt is not None:
+            args = struct.unpack(command.req_fmt, packet)
+        elif command.req_func is not None:
+            args = command.req_func(raw)
+        else:
+            args = ()
+
+        return args

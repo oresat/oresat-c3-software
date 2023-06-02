@@ -1,3 +1,38 @@
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "oresat-c3"
+description = "OreSat C3 OLAF app"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL-3.0"}
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Embedded Systems",
+]
+dependencies = [
+    "bitstring",
+    "oresat-olaf>=2.1.1",
+    "smbus2",
+    "spacepackets",
+]
+dynamic = ["version"]
+
+[project.scripts]
+oresat-c3 = "oresat_c3.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "oresat_c3.__version__"}
+
+[tool.setuptools.packages.find]
+exclude = ["docs*"] 
+
+[tool.setuptools.package-data]
+"*" = ["*.eds", "*.dcf"]

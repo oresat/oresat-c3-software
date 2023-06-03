@@ -10,7 +10,7 @@ from enum import Enum, auto
 from ..drivers.fm24cl64b import Fm24cl64b, Fm24cl64bError
 
 FramEntry = namedtuple('FramEntry', ['offset', 'fmt', 'size'])
-'''An entry in lookup table'''
+'''An F-RAM entry in lookup table'''
 
 
 class FramKey(Enum):
@@ -63,7 +63,7 @@ class Fram:
         # add new entries to the end
         # if a entry's data type or size has change or is no longer used, leave it existing entry,
         # and add a new entry to the end
-        self._add_entry(FramKey.C3_STATE, 'I')  # uint8
+        self._add_entry(FramKey.C3_STATE, 'B')  # uint8
         self._add_entry(FramKey.LAST_TIME_STAMP, 'Q')  # uint64
         self._add_entry(FramKey.ALARM_A, 'I')  # uint32
         self._add_entry(FramKey.ALARM_B, 'I')
@@ -90,7 +90,7 @@ class Fram:
             The key
         fmt: [str, int]
             The struct format, see https://docs.python.org/3/library/struct.html.
-            Set to number of bytes, if data type is bytes, for a fixed length buffer.
+            For a fixed length bytes buffer, set to number of bytes.
         '''
 
         if not self._init:
@@ -98,15 +98,15 @@ class Fram:
         if key not in list(FramKey):
             raise FramError(f'{key} is not a valid key')
         if not isinstance(fmt, str) and not isinstance(fmt, int):
-            raise FramError('fmt bust a struct string or length of bytes')
+            raise FramError('fmt must a struct format string or the number of bytes')
 
         if isinstance(fmt, int):
             size = fmt
-            self._entries[key] = FramEntry(self._total_bytes, None, fmt)
+            fmt = None
         else:
             size = struct.calcsize(fmt)
-            self._entries[key] = FramEntry(self._total_bytes, fmt, size)
 
+        self._entries[key] = FramEntry(self._total_bytes, fmt, size)
         self._total_bytes += size
 
     def __len__(self) -> int:

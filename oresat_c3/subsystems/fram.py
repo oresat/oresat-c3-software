@@ -63,46 +63,50 @@ class Fram:
         # add new entries to the end
         # if a entry's data type or size has change or is no longer used, leave it existing entry,
         # and add a new entry to the end
-        self._add_entry(FramKey.C3_STATE, 'I', 4)  # uint32
-        self._add_entry(FramKey.LAST_TIME_STAMP, 'Q', 8)  # uint64
-        self._add_entry(FramKey.ALARM_A, 'I', 4)
-        self._add_entry(FramKey.ALARM_B, 'I', 4)
-        self._add_entry(FramKey.WAKEUP, 'I', 4)
-        self._add_entry(FramKey.LAST_TX_ENABLE, 'I', 4)
-        self._add_entry(FramKey.LAST_EDL, 'I', 4)
-        self._add_entry(FramKey.DEPLOYED, '?', 1)  # bool
-        self._add_entry(FramKey.POWER_CYCLES, 'H', 2)  # uint16
-        self._add_entry(FramKey.LBAND_RX_BYTES, 'I', 4)
-        self._add_entry(FramKey.LBAND_RX_PACKETS, 'I', 4)
-        self._add_entry(FramKey.VC1_SEQUENCE_COUNT, 'Q', 8)
-        self._add_entry(FramKey.VC1_EXPEDITE_COUNT, 'Q', 8)
-        self._add_entry(FramKey.EDL_SEQUENCE_COUNT, 'I', 4)
-        self._add_entry(FramKey.EDL_REJECTED_COUNT, 'I', 4)
-        self._add_entry(FramKey.CRYTO_KEY, None, 128)  # bytes
+        self._add_entry(FramKey.C3_STATE, 'I')  # uint8
+        self._add_entry(FramKey.LAST_TIME_STAMP, 'Q')  # uint64
+        self._add_entry(FramKey.ALARM_A, 'I')  # uint32
+        self._add_entry(FramKey.ALARM_B, 'I')
+        self._add_entry(FramKey.WAKEUP, 'I')
+        self._add_entry(FramKey.LAST_TX_ENABLE, 'I')
+        self._add_entry(FramKey.LAST_EDL, 'I')
+        self._add_entry(FramKey.DEPLOYED, '?')  # bool
+        self._add_entry(FramKey.POWER_CYCLES, 'H')  # uint16
+        self._add_entry(FramKey.LBAND_RX_BYTES, 'I')
+        self._add_entry(FramKey.LBAND_RX_PACKETS, 'I')
+        self._add_entry(FramKey.VC1_SEQUENCE_COUNT, 'Q')
+        self._add_entry(FramKey.VC1_EXPEDITE_COUNT, 'Q')
+        self._add_entry(FramKey.EDL_SEQUENCE_COUNT, 'I')
+        self._add_entry(FramKey.EDL_REJECTED_COUNT, 'I')
+        self._add_entry(FramKey.CRYTO_KEY, 128)  # bytes
 
         self._init = False
 
-    def _add_entry(self, key: str, fmt: str, size: int):
+    def _add_entry(self, key: str, fmt: [str, int]):
         '''
         Parameters
         -----------
         key: FramKey
             The key
-        fmt: str
+        fmt: [str, int]
             The struct format, see https://docs.python.org/3/library/struct.html.
-            Set to None, if data type is bytes, for a fixed length buffer.
-        size: int
-            Size of the data type.
+            Set to number of bytes, if data type is bytes, for a fixed length buffer.
         '''
 
         if not self._init:
             raise FramError('do not dyanimaic add entries after __init__')
         if key not in list(FramKey):
             raise FramError(f'{key} is not a valid key')
-        if size < 1:
-            raise FramError('size must be set to a number greater than 1')
+        if not isinstance(fmt, str) and not isinstance(fmt, int):
+            raise FramError('fmt bust a struct string or length of bytes')
 
-        self._entries[key] = FramEntry(self._total_bytes, fmt, size)
+        if isinstance(fmt, int):
+            size = fmt
+            self._entries[key] = FramEntry(self._total_bytes, None, fmt)
+        else:
+            size = struct.calcsize(fmt)
+            self._entries[key] = FramEntry(self._total_bytes, fmt, size)
+
         self._total_bytes += size
 
     def __len__(self) -> int:

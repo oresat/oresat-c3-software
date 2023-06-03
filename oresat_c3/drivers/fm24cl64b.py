@@ -77,7 +77,7 @@ class Fm24cl64b:
             # this actually valid as the device will wrap around, this just simplifies things
             raise Fm24cl64bError(f'read offset and size are greater than {self.SIZE}')
 
-        address = offset.to_bytes(2, 'little')
+        address = offset.to_bytes(2, 'big')
 
         if self._mock:
             with open(self._MOCK_FILE, 'rb') as f:
@@ -125,7 +125,7 @@ class Fm24cl64b:
             raise Fm24cl64bError('no data to write')
 
         size = len(data)
-        address = offset.to_bytes(2, 'little')
+        address = offset.to_bytes(2, 'big')
 
         if self._mock:
             with open(self._MOCK_FILE, 'rb') as f:

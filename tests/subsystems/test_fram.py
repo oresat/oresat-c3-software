@@ -24,7 +24,7 @@ class TestFram(unittest.TestCase):
         fram = Fram(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         with self.assertRaises(FramError):  # cannot add new entries dynamically
-            fram._add_entry(FramKey.C3_STATE, 'I', 4)
+            fram._add_entry(FramKey.C3_STATE, 'I')
 
     def test_read(self):
 

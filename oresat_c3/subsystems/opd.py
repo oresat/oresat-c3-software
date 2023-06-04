@@ -101,7 +101,8 @@ class OpdNode:
         self._mock = mock
         self._max7310 = Max7310(bus, node_id.value, mock)
         self._status = OpdNodeState.NOT_FOUND
-        self._enabled = False
+
+        self.configure()
 
     def __del__(self):
 
@@ -165,25 +166,21 @@ class OpdNode:
 
         if self.fault:
             self._status = OpdNodeState.ERROR
-            return
-
-        if self.is_enabled:
-            return  # nothing to do
-
-        self._max7310.set_pin(self._ENABLE_PIN)
-        self._status = OpdNodeState.ON
+        else:
+            self._max7310.set_pin(self._ENABLE_PIN)
+            self._status = OpdNodeState.ON
 
     def disable(self):
         '''Disable the OPD node.'''
 
         logger.info(f'disabling OPD node {self.id.name} (0x{self.id.value:02X})')
 
+        self._max7310.clear_pin(self._ENABLE_PIN)
+
         if self.fault:
             self._status = OpdNodeState.ERROR
-            return
-
-        self._max7310.clear_pin(self._ENABLE_PIN)
-        self._status = OpdNodeState.OFF
+        else:
+            self._status = OpdNodeState.OFF
 
     def reset(self, attempts: int = 3):
         '''
@@ -223,7 +220,7 @@ class OpdNode:
                             'times in a row, is now consider dead')
 
     def set_as_dead(self):
-        '''Set the node as DEAD. only used by OpdResource.'''
+        '''Set the node as DEAD. only used by :py:class:`OpdResource`.'''
 
         self.disable()
         self._status = OpdNodeState.DEAD
@@ -243,13 +240,13 @@ class OpdNode:
 
     @property
     def is_enabled(self) -> bool:
-        '''bool: The OPD node is enabled.'''
+        '''bool: The node is enabled.'''
 
-        return self._enabled
+        return self._max7310.pin_status(self._ENABLE_PIN)
 
     @property
     def fault(self) -> bool:
-        '''bool: the OPD fault pin has tripped.'''
+        '''bool: The OPD fault pin has tripped.'''
 
         return not self._max7310.pin_status(self._NOT_FAULT_PIN)
 
@@ -271,9 +268,6 @@ class OpdStm32Node(OpdNode):
         boot: bool
             Go into bootloader mode.
         '''
-
-        if self.is_enabled:
-            return  # nothing to do
 
         if boot:
             self._max7310.set_pin(self._BOOT_PIN)
@@ -379,18 +373,19 @@ class Opd:
 
         self._dead = False
 
-        self.start()
+        self.enable()
 
-    def __getitem__(self, node_id: OpdNodeId):
+    def __getitem__(self, node_id: OpdNodeId) -> OpdNode:
 
         return self._nodes[node_id]
 
-    def __iter__(self):
+    def __iter__(self) -> OpdNode:
+
         for p in list(OpdNodeId):
             yield self._nodes[p]
 
-    def start(self):
-        '''Start the OPD subsystem, will also do a scan.'''
+    def enable(self):
+        '''Enable the OPD subsystem, will also do a scan.'''
 
         if self._dead:
             raise OpdError('OPD subsystem is consider dead')
@@ -402,27 +397,31 @@ class Opd:
 
         self.scan(True)
 
-    def stop(self):
-        '''Stop the OPD subsystem.'''
+    def disable(self):
+        '''Disable the OPD subsystem.'''
 
         logger.info('stopping OPD subsystem')
+
+        for node in self:
+            node.disable()
+
         self._gpio.high()
 
-    def restart(self):
+    def reset(self):
         '''Restart the OPD subsystem with a delay between stop and start.'''
 
-        self.stop()
+        self.disable()
         sleep(self._SYS_RESET_DELAY_S)
-        self.start()
+        self.enable()
 
-    def scan(self, restart: bool = False):
+    def scan(self, reset: bool = False):
         '''
         Scan / probe for all nodes. This will turn on all battery cards found.
 
         Parameters
         ----------
-        restart: bool
-            Optional flag to restart any node that is found.
+        reset: bool
+            Optional flag to reset any node that is found.
 
         Returns
         -------
@@ -433,7 +432,7 @@ class Opd:
         count = 0
 
         for node in self._nodes.values():
-            if node.probe(restart):
+            if node.probe(reset):
                 count += 1
 
         # Turn on any battery cards found
@@ -485,15 +484,15 @@ class Opd:
 
             # if batteries are dead, try to reset subsystem to fix
             if reset:
-                logger.info(f'restarting OPD subsystem, try {i + 1}')
-                self.restart()
+                logger.info(f'reseting OPD subsystem, try {i + 1}')
+                self.reset()
             else:
                 return  # all good
 
         if (bat0_was_alive and bat0_node.status in OpdNodeState.DEAD) \
                 or (bat1_was_alive and bat1_node.status in OpdNodeState.DEAD):
             logger.critical(f'OPD monitor failed fix subsystem after {self._RESET_ATTEMPTS} '
-                            'restarts, subsystem is now consider dead')
+                            'resets, subsystem is now consider dead')
             self.disable()
             self._dead = True
 

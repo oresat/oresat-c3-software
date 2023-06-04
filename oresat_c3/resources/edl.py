@@ -152,10 +152,10 @@ class EdlResource(Resource):
                 fmt = '?'
                 if bool(int(args[0])):
                     logger.info('EDL enabling OPD subsystem')
-                    self._opd.start()
+                    self._opd.enable()
                 else:
                     logger.info('EDL disabling OPD subsystem')
-                    self._opd.stop()
+                    self._opd.disable()
                 ret = self._opd.is_system_enabled
             elif code == EdlCode.OPD_SCAN:
                 logger.info('EDL scaning for all OPD nodes')

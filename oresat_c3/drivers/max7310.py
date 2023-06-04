@@ -73,14 +73,13 @@ class Max7310:
         '''
 
         if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
-            raise Max7310Error(f'self._addr 0x{self._addr:X} is not between 0x{self.ADDR_MIN:X} '
+            raise Max7310Error(f'self._addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} '
                                f'and 0x{self.ADDR_MAX:X}')
 
         self._mock = mock
-        self._mock_regs = [0x00, 0x00, 0xF0, 0xFF, 0x01]
+        self._mock_regs = [0x00, 0x00, 0xF0, 0xFF, 0x01]  # default values according to spec
         self._bus_num = bus_num
         self._addr = addr
-        self._enabled = False
 
     def _i2c_read_reg(self, reg: Max7310Reg) -> int:
 
@@ -144,8 +143,6 @@ class Max7310:
         self._i2c_write_reg(Max7310Reg.CONFIGURATION, configuration)
         self._i2c_write_reg(Max7310Reg.TIMEOUT, timeout)
 
-        self._enabled = True
-
     def reset(self):
         '''Reset the registers of the MAX7310 back to the default values.'''
 
@@ -154,8 +151,6 @@ class Max7310:
         self._i2c_write_reg(Max7310Reg.OUTPUT_PORT, 0x00)
         self._i2c_write_reg(Max7310Reg.POLARITY_INVERSION, 0xF0)
         self._i2c_write_reg(Max7310Reg.TIMEOUT, 0x01)
-
-        self._enabled = False
 
     def set_pin(self, pin_num: int):
         '''
@@ -231,12 +226,6 @@ class Max7310:
         '''int: Value from the timeout register.'''
 
         return self._i2c_read_reg(Max7310Reg.TIMEOUT)
-
-    @property
-    def is_enabled(self) -> bool:
-        '''bool: Is the max7310 enabled.'''
-
-        return self._enabled
 
     @property
     def is_valid(self) -> bool:

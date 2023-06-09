@@ -1,3 +1,7 @@
+'''
+Anything dealing with packing and unpacking an EDL (Engineering Data Link) packets.
+'''
+
 import binascii
 import hashlib
 import hmac
@@ -10,6 +14,9 @@ from spacepackets.uslp.frame import TransferFrame, TransferFrameDataField, TfdzC
     UslpProtocolIdentifier, VarFrameProperties, FrameType
 from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolCommandFlag, \
     BypassSequenceControlFlag
+
+SRC_DEST_ORESAT = SourceOrDestField.SOURCE
+SRC_DEST_UNICLOGS = SourceOrDestField.DEST
 
 EdlCommand = namedtuple(
     'EdlCommand',
@@ -279,7 +286,149 @@ class EdlError(Exception):
     '''Error with EdlBase'''
 
 
-class EdlBase:
+class EdlRequest:
+    '''
+    An request payload for an EDL command for the C3 to process.
+    '''
+
+    def __init__(self, code: EdlCode, args: tuple):
+        '''
+        Parameters
+        ----------
+        code: EdlCode
+            The EDL code
+        args: tuple
+            The arguments for the EDL command
+        '''
+
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
+        if not isinstance(args, tuple) and args is not None:
+            raise EdlError('EdlRequest args must be a tuple or None')
+
+        self.code = code
+        self.command = EDL_COMMANDS[code]
+        self.args = args
+
+    def pack(self) -> bytes:
+        '''
+        Pack the EDL C3 command request packet.
+        '''
+
+        if self.command.req_fmt is not None:
+            raw = struct.pack(self.command.req_fmt, *self.args)
+        elif self.command.req_func is not None:
+            raw = self.command.res_func(self.args)
+        else:
+            raw = b''
+
+        return raw
+
+    def unpack(cls, raw: bytes):
+        '''
+        Unpack the EDL C3 command response packet.
+
+        Parameters
+        ----------
+        raw: bytes
+            The raw data to unpack.
+        '''
+
+        code_int = int.from_bytes(raw[0], 'little')
+        code = EdlCode(code_int)
+        command = EDL_COMMANDS[code]
+
+        if command.req_fmt is not None:
+            args = struct.unpack(command.req_fmt, raw)
+        elif command.req_func is not None:
+            args = command.req_func(raw)
+        else:
+            args = None
+
+        return cls.__init__(code, args)
+
+
+class EdlRespone:
+    '''
+    An response payload to an EDL command from the C3.
+    '''
+
+    def __init__(self, code: EdlCode, values: tuple):
+        '''
+        Parameters
+        ----------
+        code: EdlCode
+            The EDL code
+        values: tuple
+            The return values for the response.
+        '''
+
+        if code not in list(EdlCode):
+            raise EdlError(f'Invalid EDL code {code}')
+        if not isinstance(values, tuple) and values is not None:
+            raise EdlError('EdlRespone values must be a tuple or None')
+
+        self.code = code
+        self.command = EDL_COMMANDS[code]
+        self.values = values
+
+    def pack(self) -> bytes:
+        '''
+        Pack the EDL C3 command response.
+        '''
+
+        if self.command.req_fmt is not None:
+            raw = struct.pack(self.command.res_fmt, *self.values)
+        elif self.command.req_func is not None:
+            raw = self.command.res_func(self.values)
+        else:
+            raw = b''
+
+        return raw
+
+    @classmethod
+    def unpack(cls, raw: bytes):
+        '''
+        Unpack the EDL C3 command response.
+
+        Parameters
+        ----------
+        raw: bytes
+            The raw data to unpack.
+        '''
+
+        code_int = int.from_bytes(raw[0], 'little')
+        code = EdlCode(code_int)
+        command = EDL_COMMANDS[code]
+
+        if command.req_fmt is not None:
+            values = struct.unpack(command.res_fmt, raw)
+        elif command.req_func is not None:
+            values = command.req_func(raw)
+        else:
+            values = None
+
+        return cls.__init__(code, values)
+
+
+def gen_hmac(hmac_key, message: bytes) -> bytes:
+
+    return hmac.digest(hmac_key, message, hashlib.sha3_256)
+
+
+class EdlVcid(IntEnum):
+    '''USLP virtual channel IDs for EDL packets'''
+
+    C3_COMMAND = 0
+    FILE_TRANSFER = 1
+
+
+class EdlPacket:
+    '''
+    An EDL (Engineering Data Link) packet.
+
+    Only packs and unpacks the packet (does not process/run it).
+    '''
 
     SPACECRAFT_ID = 0x4F53  # aka "OS" in ascii
 
@@ -298,62 +447,41 @@ class EdlBase:
         fecf_len=FECF_LEN,
     )
 
-    def __init__(self, hmac_key: bytes, sequence_number: int):
+    def __init__(self, payload: EdlRequest or EdlRespone, seq_num: int,
+                 src_dest: SourceOrDestField) -> bytes:
+        '''
+        Parameters
+        ----------
+        payload: EdlRequest or EdlRespone
+            The payload object.
+        seq_num: int
+            The sequence number for packet.
+        src_dest: SourceOrDestFiedld
+            Origin of packet, use `SRC_DEST_ORESAT` or `SRC_DEST_UNICLOGS`.
+        '''
 
-        self._hmac_key = b'\x00'
-        self.hmac_key = hmac_key
-        self._seq_num = sequence_number
+        if isinstance(payload, EdlRequest) or isinstance(payload, EdlRespone):
+            vcid = EdlVcid.C3_COMMAND
+        else:
+            raise EdlCode(f'unknown payload object: {type(payload)}')
 
-    def _gen_hmac(self, message: bytes) -> bytes:
+        self.vcid = vcid
+        self.src_dest = src_dest
+        self.seq_num = seq_num
+        self.payload = payload
 
-        return hmac.digest(self._hmac_key, message, hashlib.sha3_256)
+    def pack(self, hmac_key: bytes) -> bytes:
+        '''
+        Pack the EDL packet.
 
-    def _unpack(self, packet: bytes, src_dest: SourceOrDestField) -> bytes:
+        Parameters
+        ----------
+        hmac_key: bytes
+            The HMAC key to use.
+        '''
 
-        if len(packet) < self._TC_MIN_LEN:
-            raise EdlError(f'EDL packet too short: {len(packet)}')
-
-        crc16_raw = packet[-self.FECF_LEN:]
-        crc16_raw_calc = crc16_bytes(packet[:-self.FECF_LEN])
-        if crc16_raw_calc != crc16_raw:
-            raise EdlError(f'invalid FECF: {crc16_raw} vs {crc16_raw_calc}')
-
-        try:
-            frame = TransferFrame.unpack(packet, FrameType.VARIABLE, self.FRAME_PROPS)
-        except UslpInvalidRawPacketOrFrameLen:
-            raise EdlError('USLP invalid packet or frame length')
-
-        if frame.insert_zone > self.sequence_number_bytes:
-            raise EdlError(f'invalid sequence number: {frame.insert_zone} vs '
-                           f'{self.sequence_number_bytes}')
-
-        payload = frame.tfdf.tfdz[:-self.HMAC_LEN]
-        hmac_bytes = frame.tfdf.tfdz[-self.HMAC_LEN:]
-        hmac_bytes_calc = self._gen_hmac(payload)
-
-        if hmac_bytes != hmac_bytes_calc:
-            raise EdlError(f'invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}')
-
-        return payload
-
-    def _pack(self, payload: bytes, src_dest: SourceOrDestField) -> bytes:
-
-        # USLP transfer frame total length - 1
-        frame_len = len(payload) + self._TC_MIN_LEN - 1
-
-        frame_header = PrimaryHeader(
-            scid=self.SPACECRAFT_ID,
-            map_id=0,
-            vcid=0,
-            src_dest=src_dest,
-            frame_len=frame_len,
-            vcf_count_len=0,
-            op_ctrl_flag=False,
-            prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
-            bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
-        )
-
-        tfdz = payload + self._gen_hmac(payload)
+        payload_raw = self.payload.pack()
+        tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
 
         tfdf = TransferFrameDataField(
             tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
@@ -361,111 +489,67 @@ class EdlBase:
             tfdz=tfdz,
         )
 
-        frame = TransferFrame(header=frame_header, tfdf=tfdf,
-                              insert_zone=self.sequence_number_bytes)
+        # USLP transfer frame total length - 1
+        frame_len = len(payload_raw) + self.TC_MIN_LEN - 1
+
+        frame_header = PrimaryHeader(
+            scid=self.SPACECRAFT_ID,
+            map_id=0,
+            vcid=self.vcid,
+            src_dest=self.src_dest,
+            frame_len=frame_len,
+            vcf_count_len=0,
+            op_ctrl_flag=False,
+            prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
+            bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
+        )
+
+        seq_num_bytes = self.seq_num.to_bytes(self.SEQ_NUM_LEN, 'little')
+        frame = TransferFrame(header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes)
         packet = frame.pack(frame_type=FrameType.VARIABLE)
         packet += crc16_bytes(packet)
 
-        self._seq_num += 1
-        self._seq_num %= 0xFF_FF_FF_FF
-
         return packet
 
-    @property
-    def sequence_number(self) -> int:
+    @classmethod
+    def unpack(cls, raw: bytes):
+        '''
+        Unpack the EDL packet.
 
-        return self._seq_num
+        Parameters
+        ----------
+        raw: bytes
+            The raw data to unpack.
+        '''
 
-    @property
-    def sequence_number_bytes(self) -> bytes:
+        if len(raw) < cls._TC_MIN_LEN:
+            raise EdlError(f'EDL packet too short: {len(raw)}')
 
-        return self._seq_num.to_bytes(self.SEQ_NUM_LEN, 'little')
+        crc16_raw = raw[-cls.FECF_LEN:]
+        crc16_raw_calc = crc16_bytes(raw[:-cls.FECF_LEN])
+        if crc16_raw_calc != crc16_raw:
+            raise EdlError(f'invalid FECF: {crc16_raw} vs {crc16_raw_calc}')
 
-    @property
-    def hmac_key(self) -> bytes:
+        try:
+            frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
+        except UslpInvalidRawPacketOrFrameLen:
+            raise EdlError('USLP invalid packet or frame length')
 
-        return self._hmac_key
+        payload_raw = frame.tfdf.tfdz[:-cls.HMAC_LEN]
+        hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN:]
+        hmac_bytes_calc = gen_hmac(payload_raw)
 
-    @hmac_key.setter
-    def hmac_key(self, value: bytes or bytearray):
+        if hmac_bytes != hmac_bytes_calc:
+            raise EdlError(f'invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}')
 
-        if not isinstance(value, bytes) and not isinstance(value, bytearray):
-            raise EdlError('invalid HMAC key data type')
-
-        self._hmac_key = bytes(value)
-
-
-class EdlServer(EdlBase):
-
-    def unpack_request(self, code: EdlCode, packet: bytes) -> tuple:
-
-        if code not in list(EdlCode):
-            raise EdlError(f'Invalid EDL code {code}')
-
-        command = EDL_COMMANDS[code]
-        raw = self._unpack_packet(packet, src_dest=SourceOrDestField.SOURCE)
-
-        if command.req_fmt is not None:
-            args = struct.unpack(command.req_fmt, packet)
-        elif command.req_func is not None:
-            args = command.req_func(raw)
+        if frame.header.vcid == EdlVcid.C3_COMMAND:
+            if frame.header.src_dest == SRC_DEST_ORESAT:
+                payload = EdlRequest.unpack(payload_raw)
+            else:
+                payload = EdlRespone.unpack(payload_raw)
         else:
-            args = ()
+            raise EdlCode(f'unknown vcid {frame.header.vcid}')
 
-        return args
+        seq_num = int.from_bytes(frame.insert_zone, 'little')
 
-    def pack_response(self, code: EdlCode, payload: tuple) -> bytes:
-
-        if code not in list(EdlCode):
-            raise EdlError(f'Invalid EDL code {code}')
-        if not isinstance(payload, tuple):
-            payload = (payload,)  # convert to a tuple
-
-        command = EDL_COMMANDS[code]
-
-        if command.req_fmt is not None:
-            payload_raw = struct.pack(command.res_fmt, *payload)
-        elif command.req_func is not None:
-            payload_raw = command.res_func(payload)
-        else:
-            payload_raw = ()
-
-        return self._pack_packet(payload_raw, src_dest=SourceOrDestField.DEST)
-
-
-class EdlClient(EdlBase):
-
-    def pack_request(self, code: EdlCode, payload: tuple) -> bytes:
-
-        if code not in list(EdlCode):
-            raise EdlError(f'Invalid EDL code {code}')
-        if not isinstance(payload, tuple):
-            payload = (payload,)  # convert to a tuple
-
-        command = EDL_COMMANDS[code]
-
-        if command.req_fmt is not None:
-            payload_raw = struct.pack(command.res_fmt, *payload)
-        elif command.req_func is not None:
-            payload_raw = command.res_func(payload)
-        else:
-            payload_raw = ()
-
-        return self._pack_packet(payload_raw, src_dest=SourceOrDestField.SOURCE)
-
-    def unpack_response(self, code: EdlCode, packet: bytes) -> tuple:
-
-        if code not in list(EdlCode):
-            raise EdlError(f'Invalid EDL code {code}')
-
-        command = EDL_COMMANDS[code]
-        raw = self._unpack_packet(packet, src_dest=SourceOrDestField.DEST)
-
-        if command.req_fmt is not None:
-            args = struct.unpack(command.req_fmt, packet)
-        elif command.req_func is not None:
-            args = command.req_func(raw)
-        else:
-            args = ()
-
-        return args
+        return cls.__init__(payload, seq_num, frame.header.src_dest)

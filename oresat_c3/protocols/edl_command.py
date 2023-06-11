@@ -25,6 +25,10 @@ res_func: Callable[[tuple], bytes]
 '''
 
 
+class EdlCommandPacketError(Exception):
+    '''Error with EdlCommandRequest or EdlCommandResponse'''
+
+
 class EdlCommandCode(IntEnum):
     '''The EDL telecommand codes.'''
 
@@ -293,20 +297,31 @@ class EdlCommandRequest:
         self.command = EDL_COMMANDS[code]
         self.args = args
 
+    def __eq__(self, other) -> bool:
+
+        if not isinstance(other, EdlCommandRequest):
+            return False
+        return self.code == other.code and self.args == other.args
+
+    def __str__(self) -> str:
+
+        return f'{self.code} {self.args}'
+
     def pack(self) -> bytes:
         '''
         Pack the EDL C3 command request packet.
         '''
 
+        raw = self.code.value.to_bytes(1, 'little')
+
         if self.command.req_fmt is not None:
-            raw = struct.pack(self.command.req_fmt, *self.args)
+            raw += struct.pack(self.command.req_fmt, *self.args)
         elif self.command.req_func is not None:
-            raw = self.command.res_func(self.args)
-        else:
-            raw = b''
+            raw += self.command.res_func(self.args)
 
         return raw
 
+    @classmethod
     def unpack(cls, raw: bytes):
         '''
         Unpack the EDL C3 command response packet.
@@ -317,21 +332,20 @@ class EdlCommandRequest:
             The raw data to unpack.
         '''
 
-        code_int = int.from_bytes(raw[0], 'little')
-        code = EdlCommandCode(code_int)
+        code = EdlCommandCode(raw[0])
         command = EDL_COMMANDS[code]
 
         if command.req_fmt is not None:
-            args = struct.unpack(command.req_fmt, raw)
+            args = struct.unpack(command.req_fmt, raw[1:])
         elif command.req_func is not None:
-            args = command.req_func(raw)
+            args = command.req_func(raw[1:])
         else:
             args = None
 
-        return cls.__init__(code, args)
+        return EdlCommandRequest(code, args)
 
 
-class EdlCommandRespone:
+class EdlCommandResponse:
     '''
     An response payload to an EDL command from the C3.
     '''
@@ -349,23 +363,29 @@ class EdlCommandRespone:
         if code not in list(EdlCommandCode):
             raise EdlCommandError(f'Invalid EDL code {code}')
         if not isinstance(values, tuple) and values is not None:
-            raise EdlCommandError('EdlCommandRespone values must be a tuple or None')
+            raise EdlCommandError('EdlCommandResponse values must be a tuple or None')
 
         self.code = code
         self.command = EDL_COMMANDS[code]
         self.values = values
+
+    def __eq__(self, other) -> bool:
+
+        if not isinstance(other, EdlCommandResponse):
+            return False
+        return self.code == other.code and self.values == other.values
 
     def pack(self) -> bytes:
         '''
         Pack the EDL C3 command response.
         '''
 
+        raw = self.code.value.to_bytes(1, 'little')
+
         if self.command.req_fmt is not None:
-            raw = struct.pack(self.command.res_fmt, *self.values)
+            raw += struct.pack(self.command.res_fmt, *self.values)
         elif self.command.req_func is not None:
-            raw = self.command.res_func(self.values)
-        else:
-            raw = b''
+            raw += self.command.res_func(self.values)
 
         return raw
 
@@ -380,15 +400,14 @@ class EdlCommandRespone:
             The raw data to unpack.
         '''
 
-        code_int = int.from_bytes(raw[0], 'little')
-        code = EdlCommandCode(code_int)
+        code = EdlCommandCode(raw[0])
         command = EDL_COMMANDS[code]
 
         if command.req_fmt is not None:
-            values = struct.unpack(command.res_fmt, raw)
+            values = struct.unpack(command.res_fmt, raw[1:])
         elif command.req_func is not None:
-            values = command.req_func(raw)
+            values = command.req_func(raw[1:])
         else:
             values = None
 
-        return cls.__init__(code, values)
+        return EdlCommandResponse(code, values)

@@ -1,5 +1,10 @@
 '''
 Anything dealing with packing and unpacking EDL (Engineering Data Link) C3 command packets.
+
+These package are defined as 1 octect for code and X octects for the data.
+
+The EDL code is used to identify the message the rest of message is for argument for
+request, and values for responeses.
 '''
 
 import binascii

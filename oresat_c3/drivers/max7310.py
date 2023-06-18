@@ -92,7 +92,7 @@ class Max7310:
             try:
                 with SMBus(self._bus_num) as bus:
                     bus.i2c_rdwr(write, read)
-            except OSError:
+            except (TimeoutError, OSError):
                 raise Max7310Error(f'MAX7310 at address 0x{self._addr:02X} does not exist')
 
             result = list(read)[0]
@@ -113,7 +113,7 @@ class Max7310:
             try:
                 with SMBus(self._bus_num) as bus:
                     bus.i2c_rdwr(write)
-            except OSError:
+            except (TimeoutError, OSError):
                 raise Max7310Error(f'MAX7310 at address 0x{self._addr:02X} does not exist')
 
     def _valid_pin(self, pin_num: int):
@@ -152,9 +152,9 @@ class Max7310:
         self._i2c_write_reg(Max7310Reg.POLARITY_INVERSION, 0xF0)
         self._i2c_write_reg(Max7310Reg.TIMEOUT, 0x01)
 
-    def set_pin(self, pin_num: int):
+    def output_set(self, pin_num: int):
         '''
-        Set a pin / port.
+        Set a output pin / port.
 
         Parameters
         ----------
@@ -168,9 +168,9 @@ class Max7310:
         result |= (1 << pin_num)
         self._i2c_write_reg(Max7310Reg.OUTPUT_PORT, result)
 
-    def clear_pin(self, pin_num: int):
+    def output_clear(self, pin_num: int):
         '''
-        Clear a pin / port.
+        Clear a output pin / port.
 
         Parameters
         ----------
@@ -184,9 +184,9 @@ class Max7310:
         result &= ~(1 << pin_num)
         self._i2c_write_reg(Max7310Reg.OUTPUT_PORT, result)
 
-    def pin_status(self, pin_num: int) -> bool:
+    def output_status(self, pin_num: int) -> bool:
         '''
-        Get the status of a pin.
+        Get the status of a output pin.
 
         Parameters
         ----------
@@ -195,6 +195,19 @@ class Max7310:
         '''
 
         result = self._i2c_read_reg(Max7310Reg.OUTPUT_PORT)
+        return bool((result >> pin_num) & 0x01)
+
+    def input_status(self, pin_num: int) -> bool:
+        '''
+        Get the status of a input pin.
+
+        Parameters
+        ----------
+        pin_num: int
+            The pin / port to get the status of.
+        '''
+
+        result = self._i2c_read_reg(Max7310Reg.INPUT_PORT)
         return bool((result >> pin_num) & 0x01)
 
     @property
@@ -233,7 +246,7 @@ class Max7310:
 
         try:
             self._i2c_read_reg(Max7310Reg.INPUT_PORT)
-        except (Max7310Error, OSError):
+        except Max7310Error:
             return False
 
         return True

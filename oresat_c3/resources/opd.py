@@ -75,9 +75,9 @@ class OpdResource(Resource):
 
         if subindex == 0x1:
             if value is True:
-                self.opd.start()
+                self.opd.enable()
             else:
-                self.opd.stop()
+                self.opd.disable()
         elif subindex == 0x3:
             self.cur_node = OpdNodeId(value)
         elif subindex == 0x4:

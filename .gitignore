@@ -133,3 +133,6 @@ dmypy.json
 
 # Generated rst files
 /docs/beacon.rst
+
+# Vim
+*.swp

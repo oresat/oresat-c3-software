@@ -35,4 +35,4 @@ version = {attr = "oresat_c3.__version__"}
 exclude = ["docs*"] 
 
 [tool.setuptools.package-data]
-"*" = ["*.eds", "*.dcf"]
+"*" = ["*.eds", "*.dcf", "*.html"]

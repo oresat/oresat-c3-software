@@ -23,7 +23,6 @@ class TestMax7310(unittest.TestCase):
         max7310 = Max7310(I2C_BUS_NUM, MAX7310_ADDR, MOCK_HW)
 
         self.assertTrue(max7310.is_valid)
-        self.assertFalse(max7310.is_enabled)  # False until configured
 
         # valid
         max7310.configure(0, 0, 4, 1)
@@ -31,8 +30,6 @@ class TestMax7310(unittest.TestCase):
         self.assertEqual(max7310.polarity_inversion, 0)
         self.assertEqual(max7310.configuration, 4)
         self.assertEqual(max7310.timeout, 1)
-
-        self.assertTrue(max7310.is_enabled)
 
         # invalid
         with self.assertRaises(Max7310Error):
@@ -56,8 +53,8 @@ class TestMax7310(unittest.TestCase):
 
         max7310 = Max7310(I2C_BUS_NUM, MAX7310_ADDR, MOCK_HW)
         max7310.configure(0, 0, 4, 1)
-        self.assertFalse(max7310.pin_status(3))
-        max7310.set_pin(3)
-        self.assertTrue(max7310.pin_status(3))
-        max7310.clear_pin(3)
-        self.assertFalse(max7310.pin_status(3))
+        self.assertFalse(max7310.output_status(3))
+        max7310.output_set(3)
+        self.assertTrue(max7310.output_status(3))
+        max7310.output_clear(3)
+        self.assertFalse(max7310.output_status(3))

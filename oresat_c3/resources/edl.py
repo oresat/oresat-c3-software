@@ -169,16 +169,14 @@ class EdlResource(Resource):
                 node = OpdNodeId.from_bytes(args[0])
                 if args[1] == b'\x00':
                     logger.info(f'EDL disabling OPD node {node_id.name}')
-                    self._opd[node_id].disable()
+                    ret = self._opd[node_id].disable()
                 else:
                     logger.info(f'EDL enabling OPD node {node_id.name}')
-                    self._opd[node_id].enable()
-                ret = self._opd[node_id].status
+                    ret = self._opd[node_id].enable()
             elif code == EdlCode.OPD_RESET:
                 node_id = OpdNodeId.from_bytes(args[0])
                 logger.info(f'EDL resetting for OPD node {node_id.name}')
-                self._opd[node_id].reset()
-                ret = self._opd[node_id].status
+                ret = self._opd[node_id].reset()
             elif code == EdlCode.OPD_STATUS:
                 node_id = OpdNodeId.from_bytes(args[0])
                 logger.info(f'EDL getting the status for OPD node {node_id.name}')

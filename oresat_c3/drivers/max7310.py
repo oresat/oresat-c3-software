@@ -197,6 +197,44 @@ class Max7310:
         result = self._i2c_read_reg(Max7310Reg.OUTPUT_PORT)
         return bool((result >> pin_num) & 0x01)
 
+    def _mock_input_set(self, pin_num: int):
+        '''
+        Set a input pin / port when mocking.
+
+        Parameters
+        ----------
+        pin_num: int
+            The pin / port to set.
+        '''
+
+        if not self._mock:
+            raise Max7310Error('cannot se _mock_input_set went not mocking')
+
+        self._valid_pin(pin_num)
+
+        result = self._i2c_read_reg(Max7310Reg.INPUT_PORT)
+        result |= (1 << pin_num)
+        self._i2c_write_reg(Max7310Reg.INPUT_PORT, result)
+
+    def _mock_input_clear(self, pin_num: int):
+        '''
+        Clear a intput pin / port when mocking.
+
+        Parameters
+        ----------
+        pin_num: int
+            The pin / port to clear.
+        '''
+
+        if not self._mock:
+            raise Max7310Error('cannot se _mock_input_set went not mocking')
+
+        self._valid_pin(pin_num)
+
+        result = self._i2c_read_reg(Max7310Reg.INPUT_PORT)
+        result &= ~(1 << pin_num)
+        self._i2c_write_reg(Max7310Reg.INPUT_PORT, result)
+
     def input_status(self, pin_num: int) -> bool:
         '''
         Get the status of a input pin.

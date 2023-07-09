@@ -104,7 +104,10 @@ class OpdNode:
 
     def __del__(self):
 
-        self._max7310.output_clear(self._ENABLE_PIN)
+        try:
+            self._max7310.output_clear(self._ENABLE_PIN)
+        except Max7310Error:
+            pass
 
     def configure(self):
         '''Configure the MAX7310 for the OPD node.'''
@@ -112,7 +115,8 @@ class OpdNode:
         inputs = 1 << self._NOT_FAULT_PIN
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
-            self._max7310.output_set(self._NOT_FAULT_PIN)
+            self._max7310._mock_input_set(self._NOT_FAULT_PIN)
+        self._status = OpdNodeState.OFF
 
     def probe(self, reset: bool = False) -> bool:
         '''
@@ -157,23 +161,53 @@ class OpdNode:
 
         return self._status != OpdNodeState.NOT_FOUND
 
-    def enable(self):
-        '''Enable the OPD node.'''
+    def enable(self) -> OpdNodeState:
+        '''
+        Enable the OPD node.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
+        '''
 
         logger.info(f'enabling OPD node {self.id.name} (0x{self.id.value:02X})')
 
-        self._max7310.output_set(self._ENABLE_PIN)
-        self._status = OpdNodeState.ON
+        if self._status == OpdNodeState.NOT_FOUND:
+            return self._status  # cannot enable node that is NOT_FOUND
 
-    def disable(self):
-        '''Disable the OPD node.'''
+        try:
+            self._max7310.output_set(self._ENABLE_PIN)
+            self._status = OpdNodeState.ON
+        except Max7310Error:
+            self._status = OpdNodeState.ERROR
+
+        return self._status
+
+    def disable(self) -> OpdNodeState:
+        '''
+        Disable the OPD node.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
+        '''
 
         logger.info(f'disabling OPD node {self.id.name} (0x{self.id.value:02X})')
 
-        self._max7310.output_clear(self._ENABLE_PIN)
-        self._status = OpdNodeState.OFF
+        if self._status == OpdNodeState.NOT_FOUND:
+            return self._status  # cannot disable node that is NOT_FOUND
 
-    def reset(self, attempts: int = 3):
+        try:
+            self._max7310.output_clear(self._ENABLE_PIN)
+            self._status = OpdNodeState.OFF
+        except Max7310Error:
+            self._status = OpdNodeState.ERROR
+
+        return self._status
+
+    def reset(self, attempts: int = 3) -> OpdNodeState:
         '''
         Reset a node on the OPD (disable and then re-enable it) Will try up to reset up
         to X times.
@@ -194,7 +228,7 @@ class OpdNode:
                 self._max7310.output_clear(self._CB_RESET_PIN)
 
                 if self._mock:
-                    self._max7310.output_set(self._NOT_FAULT_PIN)
+                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)
 
                 if self.fault:
                     self._status = OpdNodeState.ERROR
@@ -209,6 +243,8 @@ class OpdNode:
             self._status = OpdNodeState.DEAD
             logger.critical(f'OPD node {self.id.name} (0x{self.id.value:02X}) failed to reset 3 '
                             'times in a row, is now consider dead')
+
+        return self._status
 
     def set_as_dead(self):
         '''Set the node as DEAD. only used by :py:class:`OpdResource`.'''
@@ -238,7 +274,7 @@ class OpdNode:
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.ERROR
-            raise e
+            raise OpdError(e)
 
         return enabled
 
@@ -251,7 +287,7 @@ class OpdNode:
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.ERROR
-            raise e
+            raise OpdError(e)
 
         return fault
 
@@ -264,7 +300,7 @@ class OpdStm32Node(OpdNode):
     _BOOT_PIN = 5  # bootloader
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self, bootloader_mode: bool = False):
+    def enable(self, bootloader_mode: bool = False) -> OpdNodeState:
         '''
         Enable the OPD node.
 
@@ -272,14 +308,23 @@ class OpdStm32Node(OpdNode):
         ----------
         bootloader_mode: bool
             Boot into bootloader mode.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
         '''
 
-        if bootloader_mode:
-            self._max7310.output_set(self._BOOT_PIN)
-        else:
-            self._max7310.output_clear(self._BOOT_PIN)
+        try:
+            if bootloader_mode:
+                self._max7310.output_set(self._BOOT_PIN)
+            else:
+                self._max7310.output_clear(self._BOOT_PIN)
+        except Max7310Error:
+            self._status = OpdNodeState.ERROR
+            return self._status
 
-        super().enable()
+        return super().enable()
 
     def configure(self):
         '''Configure the MAX7310 for the OPD node.'''
@@ -287,7 +332,8 @@ class OpdStm32Node(OpdNode):
         inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
-            self._max7310.output_set(self._NOT_FAULT_PIN)
+            self._max7310._mock_input_set(self._NOT_FAULT_PIN)
+        self._status = OpdNodeState.OFF
 
     def enable_uart(self):
         '''Connect the node the C3's UART'''
@@ -312,7 +358,7 @@ class OpdOctavoNode(OpdNode):
     _BOOT_PIN = 5  # boot select; eMMC or SD card
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self, boot_select: bool = True):
+    def enable(self, boot_select: bool = True) -> OpdNodeState:
         '''
         Enable the OPD node.
 
@@ -320,14 +366,23 @@ class OpdOctavoNode(OpdNode):
         ----------
         boot_select: bool
             Boot of of eMMC or SD card. Not implemented yet.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
         '''
 
-        if boot_select:
-            self._max7310.output_set(self._BOOT_PIN)
-        else:
-            self._max7310.output_clear(self._BOOT_PIN)
+        try:
+            if boot_select:
+                self._max7310.output_set(self._BOOT_PIN)
+            else:
+                self._max7310.output_clear(self._BOOT_PIN)
+        except Max7310Error:
+            self._status = OpdNodeState.ERROR
+            return self._status
 
-        super().enable()
+        return super().enable()
 
     def enable_uart(self):
         '''Connect the node the C3's UART'''
@@ -379,6 +434,7 @@ class Opd:
             self._nodes[node_id] = node
 
         self._dead = False
+        self.stop_loop = True
 
         self.enable()
 
@@ -410,7 +466,8 @@ class Opd:
         logger.info('stopping OPD subsystem')
 
         for node in self:
-            node.disable()
+            if node.status != OpdNodeState.NOT_FOUND:
+                node.disable()
 
         self._gpio.high()
 
@@ -471,8 +528,12 @@ class Opd:
             bat0_was_alive = bat0_node.status in good_states
             bat1_was_alive = bat1_node.status in good_states
 
+            # loop thru all node and reset any nodes with a fault
             for node in self._nodes.values():
-                if node.status in [OpdNodeState.ON, OpdNodeState.ERROR] \
+                if self.stop_loop:
+                    return
+
+                if node.status not in [OpdNodeState.ON, OpdNodeState.ERROR] \
                         and node._max7310.is_valid \
                         and node.is_enabled:
                     continue  # only can monitor nodes that are enabled
@@ -484,7 +545,7 @@ class Opd:
 
                 if fault:
                     logger.error(f'OPD node {node.id.name} (0x{node.id.value:02X}) circuit '
-                                 'breaker has tripped')
+                                 f'breaker has tripped (in state {node.status.name})')
                     node.reset()
 
             # batteries should still be alive, after check for node faults
@@ -501,10 +562,10 @@ class Opd:
                 logger.info(f'reseting OPD subsystem, try {i + 1}')
                 self.reset()
             else:
-                return  # all good
+                break  # opd subsystem is all good, no need to loop reset attempts
 
-        if (bat0_was_alive and bat0_node.status in OpdNodeState.DEAD) \
-                or (bat1_was_alive and bat1_node.status in OpdNodeState.DEAD):
+        if (bat0_was_alive and bat0_node.status == OpdNodeState.DEAD) \
+                or (bat1_was_alive and bat1_node.status == OpdNodeState.DEAD):
             logger.critical(f'OPD monitor failed fix subsystem after {self._RESET_ATTEMPTS} '
                             'resets, subsystem is now consider dead')
             self.disable()

@@ -53,6 +53,7 @@ class OpdResource(Resource):
 
     def on_end(self):
 
+        self.opd.stop_loop = True
         self._timer_loop.stop()
 
     def _on_read(self, index: int, subindex: int):
@@ -104,7 +105,7 @@ class OpdResource(Resource):
             co_status = self.node.node_status[co_node.value]
             if self._co_resets[node.id] >= self._MAX_CO_RESETS:
                 logger.critical(f'CANopen node {node.id.name} has sent no heartbeats in 60s after '
-                                f'{self._MAX_CO_RESETS} resets, nod is now flagged as DEAD')
+                                f'{self._MAX_CO_RESETS} resets, now is now flagged as DEAD')
                 node.set_as_dead()
             elif node.status == OpdNodeState.ON and co_status[1] + self._RESET_TIMEOUT_S < time():
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it

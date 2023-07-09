@@ -42,9 +42,13 @@ class TestOpdNode(unittest.TestCase):
     def test_node_enable(self):
 
         node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_0, mock=True)
+        node.configure()
+        self.assertEqual(node._status, OpdNodeState.OFF)
 
         node.enable()
         self.assertTrue(node.is_enabled)
+        self.assertEqual(node._status, OpdNodeState.ON)
 
         node.disable()
         self.assertFalse(node.is_enabled)
+        self.assertEqual(node._status, OpdNodeState.OFF)

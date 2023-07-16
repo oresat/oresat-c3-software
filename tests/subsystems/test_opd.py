@@ -12,7 +12,7 @@ class TestOpd(unittest.TestCase):
         opd = Opd(10, I2C_BUS_NUM, mock=True)
 
         for node in opd:
-            if node.id in [OpdNodeId.BATTERY_0, OpdNodeId.BATTERY_1]:
+            if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
                 self.assertIn(node.status, [OpdNodeState.ON, OpdNodeState.NOT_FOUND])
             else:
                 self.assertIn(node.status, [OpdNodeState.OFF, OpdNodeState.NOT_FOUND])
@@ -20,7 +20,7 @@ class TestOpd(unittest.TestCase):
         opd.enable()
 
         for node in opd:
-            if node.id in [OpdNodeId.BATTERY_0, OpdNodeId.BATTERY_1]:
+            if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
                 self.assertIn(node.status, [OpdNodeState.ON, OpdNodeState.NOT_FOUND])
             else:
                 self.assertIn(node.status, [OpdNodeState.OFF, OpdNodeState.NOT_FOUND])
@@ -41,7 +41,7 @@ class TestOpdNode(unittest.TestCase):
 
     def test_node_enable(self):
 
-        node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_0, mock=True)
+        node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_1, mock=True)
         node.configure()
         self.assertEqual(node._status, OpdNodeState.OFF)
 

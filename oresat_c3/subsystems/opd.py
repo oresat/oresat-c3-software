@@ -23,7 +23,7 @@ class OpdNodeId(IntEnum):
     GPS = 0x19
     ACS = 0x1A
     DXWIFI = 0x1B
-    STAR_TRACKER = 0x1C
+    STAR_TRACKER_1 = 0x1C
     BATTERY_2 = 0x1D
     CFC_SENSOR = 0x1E
     CFC_PROCESSOR = 0x1F
@@ -40,8 +40,8 @@ class OpdNodeId(IntEnum):
     def is_stm32_card(self) -> bool:
         '''bool: Flag for if the OPD node is a STM32-based card.'''
 
-        if self not in [OpdNodeId.GPS, OpdNodeId.DXWIFI, OpdNodeId.STAR_TRACKER_0, OpdNodeId.CFC,
-                        OpdNodeId.CFC_SENSOR]:
+        if self not in [OpdNodeId.GPS, OpdNodeId.DXWIFI, OpdNodeId.STAR_TRACKER_1,
+                        OpdNodeId.CFC_PROCESSOR, OpdNodeId.CFC_SENSOR]:
             return True
         return False
 
@@ -49,7 +49,8 @@ class OpdNodeId(IntEnum):
     def is_octavo_card(self) -> bool:
         '''bool: Flag for if the OPD node is a Octavo A8-based card.'''
 
-        if self in [OpdNodeId.GPS, OpdNodeId.DXWIFI, OpdNodeId.STAR_TRACKER_0, OpdNodeId.CFC]:
+        if self in [OpdNodeId.GPS, OpdNodeId.DXWIFI, OpdNodeId.STAR_TRACKER_1,
+                    OpdNodeId.CFC_PROCESSOR]:
             return True
         return False
 
@@ -500,10 +501,10 @@ class Opd:
                 count += 1
 
         # Turn on any battery cards found
-        if self._nodes[OpdNodeId.BATTERY_0].status == OpdNodeState.OFF:
-            self._nodes[OpdNodeId.BATTERY_0].enable()
         if self._nodes[OpdNodeId.BATTERY_1].status == OpdNodeState.OFF:
             self._nodes[OpdNodeId.BATTERY_1].enable()
+        if self._nodes[OpdNodeId.BATTERY_2].status == OpdNodeState.OFF:
+            self._nodes[OpdNodeId.BATTERY_2].enable()
 
         return count
 
@@ -520,8 +521,8 @@ class Opd:
             return  # nothing to monitor
 
         good_states = [OpdNodeState.ON, OpdNodeState.OFF]
-        bat0_node = self._nodes[OpdNodeId.BATTERY_0]
-        bat1_node = self._nodes[OpdNodeId.BATTERY_1]
+        bat0_node = self._nodes[OpdNodeId.BATTERY_1]
+        bat1_node = self._nodes[OpdNodeId.BATTERY_2]
 
         for i in range(self._RESET_ATTEMPTS):
             # batteries should always be on and are used to see if the subsystem is working

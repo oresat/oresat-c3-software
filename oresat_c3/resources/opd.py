@@ -14,18 +14,18 @@ from .. import NodeId
 
 
 OPD_NODE_TO_CO_NODE = {
-    OpdNodeId.BATTERY_0: NodeId.BATTERY_0,
+    OpdNodeId.BATTERY_1: NodeId.BATTERY_1,
     OpdNodeId.GPS: NodeId.GPS,
     OpdNodeId.ACS: NodeId.ACS,
     OpdNodeId.DXWIFI: NodeId.DXWIFI,
-    OpdNodeId.STAR_TRACKER_0: NodeId.STAR_TRACKER_0,
-    OpdNodeId.BATTERY_1: NodeId.BATTERY_1,
-    OpdNodeId.CFC: NodeId.CFC,
+    OpdNodeId.STAR_TRACKER_1: NodeId.STAR_TRACKER_1,
+    OpdNodeId.BATTERY_2: NodeId.BATTERY_2,
+    OpdNodeId.CFC_PROCESSOR: NodeId.CFC_PROCESSOR,
     # CFC_SENSOR is not a CANopen node
-    OpdNodeId.RW_0: NodeId.RW_0,
     OpdNodeId.RW_1: NodeId.RW_1,
     OpdNodeId.RW_2: NodeId.RW_2,
     OpdNodeId.RW_3: NodeId.RW_3,
+    OpdNodeId.RW_4: NodeId.RW_4,
 }
 
 

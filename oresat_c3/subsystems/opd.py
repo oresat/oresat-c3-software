@@ -24,9 +24,9 @@ class OpdNodeId(IntEnum):
     ACS = 0x1A
     DXWIFI = 0x1B
     STAR_TRACKER_1 = 0x1C
-    BATTERY_2 = 0x1D
+    CFC_PROCESSOR = 0x1D
     CFC_SENSOR = 0x1E
-    CFC_PROCESSOR = 0x1F
+    BATTERY_2 = 0x1F
     RW_1 = 0x20
     RW_2 = 0x21
     RW_3 = 0x22

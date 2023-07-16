@@ -28,6 +28,7 @@
       <thead>
         <tr>
           <td>Card</td>
+          <td>Address</td>
           <td>Status</td>
           <td>Control</td>
         </tr>
@@ -66,9 +67,13 @@
       let newRow = tbodyRef.insertRow();
 
       let newCell = newRow.insertCell();
-      let upperHex = parseInt(key).toString(16).toUpperCase()
-      let newText = document.createTextNode(`${NODES[key]} (0x${upperHex})`);
+      let newText = document.createTextNode(NODES[key]);
       newCell.appendChild(newText);
+
+      let newCell4 = newRow.insertCell();
+      let upperHex = parseInt(key).toString(16).toUpperCase()
+      let newText4 = document.createTextNode(`0x${upperHex}`);
+      newCell4.appendChild(newText4);
 
       let newCell2 = newRow.insertCell();
       let span = document.createElement('span');

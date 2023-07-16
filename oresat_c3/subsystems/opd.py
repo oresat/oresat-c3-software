@@ -19,18 +19,18 @@ class OpdError(Exception):
 class OpdNodeId(IntEnum):
     '''I2C addresses for all cards on the OPD'''
 
-    BATTERY_0 = 0x18
+    BATTERY_1 = 0x18
     GPS = 0x19
     ACS = 0x1A
     DXWIFI = 0x1B
-    STAR_TRACKER_0 = 0x1C
-    BATTERY_1 = 0x1D
-    CFC = 0x1E
-    CFC_SENSOR = 0x1F
-    RW_0 = 0x20
-    RW_1 = 0x21
-    RW_2 = 0x22
-    RW_3 = 0x23
+    STAR_TRACKER = 0x1C
+    BATTERY_2 = 0x1D
+    CFC_SENSOR = 0x1E
+    CFC_PROCESSOR = 0x1F
+    RW_1 = 0x20
+    RW_2 = 0x21
+    RW_3 = 0x22
+    RW_4 = 0x23
 
     @staticmethod
     def from_bytes(value: bytes):

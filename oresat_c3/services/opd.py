@@ -44,6 +44,8 @@ class OpdService(Service):
 
     def on_start(self):
 
+        self._flight_mode_obj = self.node.od[0x3007][0x2]
+
         self.node.od[0x8001][0x2].value = '{}'
         self.node.add_sdo_read_callback(0x8001, self._on_read)
         self.node.add_sdo_write_callback(0x8001, self._on_write)
@@ -93,6 +95,9 @@ class OpdService(Service):
         if self.opd.is_subsystem_dead:
             self.sleep(self._MONITOR_DELAY_S)
             return
+
+        if not self._flight_mode_obj.value:
+            return True  # not in flight mode, do not monitor heartbeat
 
         for node in self.opd:
             if node.id == OpdNodeId.CFC_SENSOR or node.status == OpdNodeState.DEAD:

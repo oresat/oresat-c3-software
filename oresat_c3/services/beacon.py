@@ -1,12 +1,12 @@
 ''''
-Beacon Resource
+Beacon Service
 
 Handles the beaconing.
 '''
 
 import socket
 
-from olaf import Resource, logger, TimerLoop
+from olaf import Service, logger
 
 from .. import C3State
 from ..protocols.ax25 import generate_ax25_packet
@@ -146,7 +146,7 @@ NOTE: Do not include leading APRS header or trailing CRC32.
 '''
 
 
-class BeaconResource(Resource):
+class BeaconService(Service):
 
     _DOWNLINK_ADDR = ('localhost', 10015)
 
@@ -168,20 +168,14 @@ class BeaconResource(Resource):
 
         self.node.add_sdo_write_callback(0x8000, self._on_write)
 
-        interval_obj = self.node.od['TX Control']['Beacon Interval']
-        self._timer_loop = TimerLoop('beacon', self._send_beacon_thread, interval_obj)
-        self._timer_loop.start()
+        self.interval_obj = self.node.od['TX Control']['Beacon Interval']
 
-    def on_end(self):
-
-        self._timer_loop.stop()
-
-    def _send_beacon_thread(self) -> bool:
+    def on_loop(self):
 
         if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
             self._send_beacon()
 
-        return True
+        self.sleep(self.interval_obj.value)
 
     def _send_beacon(self):
 

@@ -1,19 +1,18 @@
 '''
-State Resource
+State Service
 
 This handles the main C3 state machine.
 '''
 
 from time import time
-from threading import Thread, Event
 
-from olaf import Resource, logger, NodeStop
+from olaf import Service, logger, NodeStop
 
 from .. import C3State
 from ..subsystems.fram import Fram, FramKey
 
 
-class StateResource(Resource):
+class StateService(Service):
 
     BAT_LEVEL_HIGH = 7_000
     BAT_LEVEL_LOW = 6_500
@@ -25,9 +24,6 @@ class StateResource(Resource):
         self._attempts = 0
 
         self._boot_time = time()
-
-        self._event = Event()
-        self._thread = Thread(target=self._state_machine_thread)
 
     def on_start(self):
 
@@ -69,14 +65,17 @@ class StateResource(Resource):
         self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
         self.node.add_sdo_read_callback(0x7000, self._on_c3_telemetery_read)
 
-        self._thread.start()
+        # make sure the initial state is valid (will be invalid on a cleared F-RAM)
+        if self._c3_state_obj.value not in list(C3State):
+            self._c3_state_obj.value = C3State.PRE_DEPLOY.value
 
-    def on_end(self):
+        self.loop = 0
+        self.last_state = self._c3_state_obj.value
+        logger.info(f'C3 initial state: {C3State(self.last_state).name}')
+
+    def on_stop(self):
 
         self._store_state()
-
-        self._event.set()
-        self._thread.join()
 
     def _on_cryto_key_write(self, index: int, subindex: int, data):
         '''On SDO write set the crypto key in OD and F-RAM'''
@@ -136,47 +135,41 @@ class StateResource(Resource):
             else:
                 self._c3_state_obj.value = C3State.STANDBY.value
 
-    def _state_machine_thread(self):
+    def on_loop(self):
 
-        # make sure the initial state is valid (will be invalid on a cleared F-RAM)
-        if self._c3_state_obj.value not in list(C3State):
+        state_a = self._c3_state_obj.value
+        if state_a != self.last_state:  # incase of change thru REST API
+            logger.info(f'C3 state change: {C3State(self.last_state).name} -> '
+                        f'{C3State(state_a).name}')
+
+        if self._c3_state_obj.value == C3State.PRE_DEPLOY:
+            self._pre_deploy()
+        elif self._c3_state_obj.value == C3State.DEPLOY:
+            self._deploy()
+        elif self._c3_state_obj.value == C3State.STANDBY:
+            self._standby()
+        elif self._c3_state_obj.value == C3State.BEACON:
+            self._beacon()
+        elif self._c3_state_obj.value == C3State.EDL:
+            self._edl()
+        else:
+            logger.error(f'C3 invalid state: {self._c3_state_obj.value}, '
+                         'resetting to PRE_DEPLOY')
             self._c3_state_obj.value = C3State.PRE_DEPLOY.value
+            self.last_state = self._c3_state_obj.value
+            return
 
-        loop = 0
-        state_b = self._c3_state_obj.value
-        logger.info(f'C3 initial state: {C3State(state_b).name}')
-        while not self._event.is_set():
-            state_a = self._c3_state_obj.value
-            if state_a != state_b:  # incase of change thru REST API
-                logger.info(f'C3 state change: {C3State(state_b).name} -> {C3State(state_a).name}')
+        self.last_state = self._c3_state_obj.value
+        if state_a != self.last_state:
+            logger.info(f'C3 state change: {C3State(state_a).name} -> '
+                        f'{C3State(self.last_state).name}')
 
-            if self._c3_state_obj.value == C3State.PRE_DEPLOY:
-                self._pre_deploy()
-            elif self._c3_state_obj.value == C3State.DEPLOY:
-                self._deploy()
-            elif self._c3_state_obj.value == C3State.STANDBY:
-                self._standby()
-            elif self._c3_state_obj.value == C3State.BEACON:
-                self._beacon()
-            elif self._c3_state_obj.value == C3State.EDL:
-                self._edl()
-            else:
-                logger.error(f'C3 invalid state: {self._c3_state_obj.value}, '
-                             'resetting to PRE_DEPLOY')
-                self._c3_state_obj.value = C3State.PRE_DEPLOY.value
-                state_b = self._c3_state_obj.value
-                continue
+        # only save state once a second
+        loop = (self.loop + 1) % 10
+        if loop == 0:
+            self._store_state()
 
-            state_b = self._c3_state_obj.value
-            if state_a != state_b:
-                logger.info(f'C3 state change: {C3State(state_a).name} -> {C3State(state_b).name}')
-
-            # only save state once a second
-            loop = (loop + 1) % 10
-            if loop == 0:
-                self._store_state()
-
-            self._event.wait(0.1)
+        self.sleep(0.1)
 
     @property
     def _is_tx_enabled(self) -> bool:

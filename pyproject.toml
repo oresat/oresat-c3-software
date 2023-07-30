@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "bitstring",
-    "oresat-olaf>=2.1.1",
+    "oresat-olaf>=2.2.0",
     "smbus2",
     "spacepackets",
 ]

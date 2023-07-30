@@ -1,5 +1,5 @@
 ''''
-OPD (OreSat Power Domain) Resource
+OPD (OreSat Power Domain) Service
 
 Handle powering OreSat cards on and off.
 '''
@@ -7,7 +7,7 @@ Handle powering OreSat cards on and off.
 import json
 from time import time
 
-from olaf import Resource, TimerLoop, logger
+from olaf import Service, logger
 
 from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState
 from .. import NodeId
@@ -29,11 +29,11 @@ OPD_NODE_TO_CO_NODE = {
 }
 
 
-class OpdResource(Resource):
+class OpdService(Service):
 
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 60
-    _MONITOR_DELAY_MS = 60_000
+    _MONITOR_DELAY_S = 60
 
     def __init__(self, opd: Opd):
         super().__init__()
@@ -48,13 +48,9 @@ class OpdResource(Resource):
         self.node.add_sdo_read_callback(0x8001, self._on_read)
         self.node.add_sdo_write_callback(0x8001, self._on_write)
 
-        self._timer_loop = TimerLoop('OPD monitor', self._loop, self._MONITOR_DELAY_MS)
-        self._timer_loop.start()
-
-    def on_end(self):
+    def on_stop(self):
 
         self.opd.stop_loop = True
-        self._timer_loop.stop()
 
     def _on_read(self, index: int, subindex: int):
 
@@ -89,16 +85,18 @@ class OpdResource(Resource):
         elif subindex == 0x5:
             self.opd.scan(False)
 
-    def _loop(self) -> bool:
+    def on_loop(self):
         '''Monitor all OPD nodes and check that nodes that are on are sending heartbeats.'''
 
         self.opd.monitor_nodes()
 
         if self.opd.is_subsystem_dead:
-            return False  # no reason to continue to loop
+            self.sleep(self._MONITOR_DELAY_S)
+            return
 
         for node in self.opd:
             if node.id == OpdNodeId.CFC_SENSOR or node.status == OpdNodeState.DEAD:
+                self.sleep(self._MONITOR_DELAY_S)
                 continue  # CFC_SENSOR not a CANopen node or node is dead
 
             co_node = OPD_NODE_TO_CO_NODE[node.id]
@@ -116,4 +114,4 @@ class OpdResource(Resource):
             else:
                 self._co_resets[node.id] = 0
 
-        return True
+            self.sleep(self._MONITOR_DELAY_S)

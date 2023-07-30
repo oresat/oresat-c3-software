@@ -5,10 +5,10 @@ from olaf import olaf_setup, olaf_run, app, rest_api, render_olaf_template
 from . import __version__
 from .subsystems.opd import Opd
 from .subsystems.fram import Fram
-from .resources.beacon import BeaconResource
-from .resources.edl import EdlResource
-from .resources.opd import OpdResource
-from .resources.state import StateResource
+from .services.beacon import BeaconService
+from .services.edl import EdlService
+from .services.opd import OpdService
+from .services.state import StateService
 
 
 @rest_api.app.route('/beacon')
@@ -45,10 +45,10 @@ def main():
     opd = Opd(opd_enable_pin, i2c_bus_num, mock=mock_opd)
     fram = Fram(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
 
-    app.add_resource(StateResource(fram))  # add state first to restore state from F-RAM
-    app.add_resource(BeaconResource())
-    app.add_resource(EdlResource(opd))
-    app.add_resource(OpdResource(opd))
+    app.add_service(StateService(fram))  # add state first to restore state from F-RAM
+    app.add_service(BeaconService())
+    app.add_service(EdlService(opd))
+    app.add_service(OpdService(opd))
 
     rest_api.add_template(f'{path}/templates/beacon.html')
     rest_api.add_template(f'{path}/templates/opd.html')

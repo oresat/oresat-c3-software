@@ -10,7 +10,7 @@ from eds_utils.core import DataType
 _FILE_PATH = dirname(abspath(__file__ + '/../..'))
 sys.path.insert(0, _FILE_PATH)
 
-from oresat_c3.resources.beacon import BEACON_FIELDS
+from oresat_c3.services.beacon import BEACON_FIELDS
 
 
 def gen_beacon_rst():

@@ -90,25 +90,26 @@ class OpdService(Service):
     def on_loop(self):
         '''Monitor all OPD nodes and check that nodes that are on are sending heartbeats.'''
 
-        self.opd.monitor_nodes()
+        self.sleep(self._MONITOR_DELAY_S)
 
         if self.opd.is_subsystem_dead:
-            self.sleep(self._MONITOR_DELAY_S)
             return
 
+        self.opd.monitor_nodes()
+
         if not self._flight_mode_obj.value:
-            return True  # not in flight mode, do not monitor heartbeat
+            return
 
         for node in self.opd:
             if node.id == OpdNodeId.CFC_SENSOR or node.status == OpdNodeState.DEAD:
-                self.sleep(self._MONITOR_DELAY_S)
                 continue  # CFC_SENSOR not a CANopen node or node is dead
 
             co_node = OPD_NODE_TO_CO_NODE[node.id]
             co_status = self.node.node_status[co_node.value]
             if self._co_resets[node.id] >= self._MAX_CO_RESETS:
-                logger.critical(f'CANopen node {node.id.name} has sent no heartbeats in 60s after '
-                                f'{self._MAX_CO_RESETS} resets, now is now flagged as DEAD')
+                logger.critical(f'CANopen node {node.id.name} has sent no heartbeats in '
+                                f'{self._MONITOR_DELAY_S}s after {self._MAX_CO_RESETS} resets, '
+                                'now is now flagged as DEAD')
                 node.set_as_dead()
             elif node.status == OpdNodeState.ON and co_status[1] + self._RESET_TIMEOUT_S < time():
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it
@@ -118,5 +119,3 @@ class OpdService(Service):
                 self._co_resets[node.id] += 1
             else:
                 self._co_resets[node.id] = 0
-
-            self.sleep(self._MONITOR_DELAY_S)

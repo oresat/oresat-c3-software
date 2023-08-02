@@ -1,11 +1,12 @@
 import unittest
+from enum import IntEnum
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
 from oresat_c3.protocols.edl_packet import EdlPacket, EdlPacketError, SRC_DEST_ORESAT, \
     SRC_DEST_UNICLOGS
 
 
-class TestEdl(unittest.TestCase):
+class TestEdlPacket(unittest.TestCase):
 
     def setUp(self):
 
@@ -67,15 +68,18 @@ class TestEdl(unittest.TestCase):
         with self.assertRaises(EdlPacketError):
             EdlPacket.unpack(self.hmac_key, edl_message_req)
 
-    '''
     def test_unpack_invalid_vcid(self):
-        '' 'Test unpacking an EDL packet with an invalid HMAC.' ''
+        '' 'Test unpacking an EDL packet with an invalid VCID.' ''
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
-        edl_packet_req.vcid = 3  # invalid
-        edl_message_req = edl_packet_req.pack(self.hmac_key)
+
+        class TestEnum(IntEnum):
+            '''Invalid enum for VCID'''
+            INVALID = 20
+
+        edl_packet_req.vcid = TestEnum.INVALID
+        req = edl_packet_req.pack(self.hmac_key)
 
         with self.assertRaises(EdlPacketError):
-            EdlPacket.unpack(self.hmac_key, edl_message_req)
-    '''
+            EdlPacket.unpack(self.hmac_key, req)

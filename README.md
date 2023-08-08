@@ -1,11 +1,14 @@
 # OreSat C3 Software
 
-Software for Linux version of the Octavo A8-based C3 card.
+Main application for Octavo A8 with Debian Linux version of the C3 card.
+
+The C3 card is the "flight" computer of OreSat. C3 stands for command,
+control, and commuication. It handles all commuications and controls
+the state of the satellite.
 
 **Note:** For OreSat0, the C3 card used STM32F4 and ChibiOS, for that project
-see the [oresat-firmware] repo.
-
-The C3 card was converted to Octavo-A8-based card to simplify the code base
+see the [oresat-firmware] repo and the `src/f4/app_control` directory.
+The C3 card was converted to Octavo A8 card to simplify the code base
 by swapping from heavily embedded system using ChibiOS to a general
 Linux-environment using Python and make to use existing Python libraries.
 
@@ -62,8 +65,8 @@ A basic [Flask]-based website for development and integration can be found at
     Pythonic drivers used by project. All drivers can mock hardware it's for.
   - `protocols/`: Anything dealing with packing or unpacking beacon and EDL
     packets.
-  - `resources/`: OLAF resources, the "glue" between protocol, drivers, and/or
-    subsystems with the CANopen node.
+  - `services/`: OLAF services, the "glue" between protocol, drivers, and/or
+    subsystems with the CANopen node with a dedicated thread.
   - `subsystems/`: Anything dealing with the subsystems of the C3 other than the
     CAN bus.
   - `templates/`: The [Flask]-based templates to add OLAF's REST API to be used

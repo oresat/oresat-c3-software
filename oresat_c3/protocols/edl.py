@@ -221,6 +221,24 @@ class EdlCode(IntEnum):
         Time sync was sent.
     '''
 
+edl_parameter_types = [
+["bool"],
+[],
+[],
+[],
+["uint8", "bool"],
+["uint8"],
+["uint8", "uint16", "uint8", "uint32", "bytes"],
+[],
+["bool"],
+[],
+["uint8", "bool"],
+["uint8"],
+["uint8"],
+["uint32"],
+[],
+[]  
+]
 
 def crc16_bytes(data: bytes) -> bytes:
     '''Helper function for generating the crc16 of a message as bytes'''

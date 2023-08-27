@@ -532,12 +532,10 @@ class Opd:
             # loop thru all node and reset any nodes with a fault
             for node in self._nodes.values():
                 if self.stop_loop:
-                    return
+                    return  # these loop are time consuming, helps speed up service stop time
 
-                if node.status not in [OpdNodeState.ON, OpdNodeState.ERROR] \
-                        and node._max7310.is_valid \
-                        and node.is_enabled:
-                    continue  # only can monitor nodes that are enabled
+                if node.status not in [OpdNodeState.ON, OpdNodeState.ERROR]:
+                    continue  # only can monitor nodes that are on
 
                 try:
                     fault = node.fault

@@ -5,15 +5,15 @@ Handle recing EDL command and sending replys.
 '''
 
 import socket
-import struct
 from time import time
 
 import canopen
 from olaf import Service, logger, NodeStop
 
 from .. import NodeId
-from ..protocols.edl import EdlServer, EdlError, EdlCode
-from ..subsystems.opd import Opd, OpdNodeId, OpdError, Max7310Error
+from ..protocols.edl_packet import EdlPacket, EdlPacketError, SRC_DEST_UNICLOGS
+from ..protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
+from ..subsystems.opd import Opd, OpdNode
 
 
 class EdlService(Service):
@@ -37,9 +37,8 @@ class EdlService(Service):
 
     def on_start(self):
 
-        hmac_key = self.node.od['Crypto Key'].value
-        seq_num = self.node.od['Persistent State']['EDL Sequence Count'].value
-        self._edl_server = EdlServer(hmac_key, seq_num)
+        self._hmac_key = self.node.od['Crypto Key'].value
+        self._seq_num = self.node.od['Persistent State']['EDL Sequence Count'].value
 
         self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
         persist_state_rec = self.node.od['Persistent State']
@@ -51,134 +50,142 @@ class EdlService(Service):
     def on_loop(self):
 
         try:
-            message, sender = self._uplink_socket.recvfrom(self._BUFFER_LEN)
-            logger.info(f'EDL request packet: {message.hex(sep=" ")}')
+            req_message, _ = self._uplink_socket.recvfrom(self._BUFFER_LEN)
         except socket.timeout:
             return
 
-        if len(message) == 0:
+        logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
+
+        if len(req_message) == 0:
             return  # no message
 
         try:
-            payload = self._edl_server.parse_request(message)
-            code = EdlCode.from_bytes(payload[0])
-        except EdlError as e:
+            req_packet = EdlPacket.unpack(req_message)
+        except (EdlCommandCode, EdlPacketError) as e:
             self._edl_rejected_count_obj.value += 1
-            logger.error(f'Invalid EDL request packet: {e}')
+            self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
+            logger.error(f'invalid EDL request packet: {e}')
             return
 
         self._last_edl_obj.value = int(time())
         self._edl_sequence_count_obj.value += 1
+        self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
 
         try:
-            self._run_cmd(code, payload[1:])
+            res_payload = self._run_cmd(req_packet.payload)
         except Exception as e:
-            logger.error(f'EDL command {code.name} raised: {e}')
+            logger.error(f'EDL command {req_message.code.name} raised: {e}')
             return
 
         try:
-            response = self._edl_server.generate_response(payload)
-        except EdlError as e:
+            res_peacket = EdlPacket(res_payload, self._edl_sequence_count_obj.value,
+                                    SRC_DEST_UNICLOGS)
+            res_message = res_peacket.pack()
+        except (EdlCommandCode, EdlPacketError) as e:
             logger.error(f'EDL response generation raised: {e}')
             return
 
-        self._downlink_socket.sendto(response, self._DOWNLINK_ADDR)
-        logger.info(f'EDL response packet: {response.hex(sep=" ")}')
-
-    def _run_cmd(self, code: EdlCode, args: bytes) -> bytes:
-
-        ret = 0
-        fmt = 'B'
-
-        args_hex = args.hex(sep=' ')
-        logger.info(f'running EDL command: 0x{code:02X}, arg(s): {args_hex}')
+        logger.info(f'EDL response packet: {res_message.hex(sep=" ")}')
 
         try:
-            if code == EdlCode.TX_CTRL:
-                if args == b'\x00':
-                    logger.info('EDL disabling Tx')
-                    self._tx_enabled_obj.value = False
-                else:
-                    logger.info('EDL enabling Tx')
-                    self._tx_enabled_obj.value = True
-                    self._last_tx_enabled_obj.value = int(time())
-                    ret = 1
-            elif code == EdlCode.C3_SOFTRESET:
-                logger.info('EDL soft reset')
-                self.node.stop(NodeStop.SOFT_RESET)
-            elif code == EdlCode.C3_HARDRESET:
-                logger.info('EDL hard reset')
-                self.node.stop(NodeStop.HARD_RESET)
-            elif code == EdlCode.C3_FACTORYRESET:
-                logger.info('EDL factory reset')
-                self.node.stop(NodeStop.FACTORY_RESET)
-            elif code == EdlCode.CO_NODE_ENABLE:
-                node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL enabling CANopen node {node.name}')
-                # TODO
-            elif code == EdlCode.CO_NODE_STATUS:
-                node = NodeId.from_bytes(args[0])
-                logger.info(f'EDL getting CANopen node {node.name} status')
-                ret = self.node.node_status[node.value]
-            elif code == EdlCode.CO_SDO_WRITE:
-                fmt = 'I'
-                node_id, index, subindex, size = struct.unpack('<2BHI', args[:8])
-                data = args[8:]
-                node = NodeId(node_id)
-                logger.info(f'EDL SDO write on CANopen node {node.name}')
-                try:
-                    self.sdo_write(node_id, index, subindex, data)
-                    ret = 0
-                except canopen.SdoError as e:
-                    logger.error(e)
-                    # last 10 chars are always the sdo error code in hex
-                    ret = int(str(e)[-10:], 16)
-            elif code == EdlCode.CO_SYNC:
-                logger.info('EDL sending CANopen SYNC message')
-                self.node.send_sync()
-            elif code == EdlCode.OPD_SYSENABLE:
-                fmt = '?'
-                if bool(int(args[0])):
-                    logger.info('EDL enabling OPD subsystem')
-                    self._opd.enable()
-                else:
-                    logger.info('EDL disabling OPD subsystem')
-                    self._opd.disable()
-                ret = self._opd.is_system_enabled
-            elif code == EdlCode.OPD_SCAN:
-                logger.info('EDL scaning for all OPD nodes')
-                ret = self._opd.scan()
-            elif code == EdlCode.OPD_PROBE:
-                fmt = '?'
-                node_id = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL probing for OPD node {node_id.name}')
-                ret = self._opd[node_id].probe()
-            elif code == EdlCode.OPD_ENABLE:
-                node = OpdNodeId.from_bytes(args[0])
-                if args[1] == b'\x00':
-                    logger.info(f'EDL disabling OPD node {node_id.name}')
-                    ret = self._opd[node_id].disable()
-                else:
-                    logger.info(f'EDL enabling OPD node {node_id.name}')
-                    ret = self._opd[node_id].enable()
-            elif code == EdlCode.OPD_RESET:
-                node_id = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL resetting for OPD node {node_id.name}')
-                ret = self._opd[node_id].reset()
-            elif code == EdlCode.OPD_STATUS:
-                node_id = OpdNodeId.from_bytes(args[0])
-                logger.info(f'EDL getting the status for OPD node {node_id.name}')
-                ret = self._opd[node_id].status
-            elif code == EdlCode.RTC_SET_TIME:
-                fmt = 'I'
-                value = struct.unpack(fmt, args)
-                logger.info(f'EDL setting the RTC {value}')
-                # TODO
-            elif code == EdlCode.TIME_SYNC:
-                logger.info('EDL sending time sync TPDO')
-                self.node.send_tpdo(0)
-        except (Max7310Error, OpdError) as e:  # an OPD command failed
-            logger.error(f'EDL error {e}')
-            ret = 0
+            self._downlink_socket.sendto(res_message, self._DOWNLINK_ADDR)
+        except Exception as e:
+            logger.error(f'failed to send EDL response: {e}')
 
-        return struct.pack(fmt, ret)
+    def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
+
+        ret = None
+
+        logger.info(f'EDL command response: {request.code.name}, args: {request.args}')
+
+        if request.code == EdlCommandCode.TX_CTRL:
+            if request.args[0] == b'\x00':
+                logger.info('EDL disabling Tx')
+                self._tx_enabled_obj.value = False
+                self._last_tx_enabled_obj.value = 0
+                ret = False
+            else:
+                logger.info('EDL enabling Tx')
+                self._tx_enabled_obj.value = True
+                self._last_tx_enabled_obj.value = int(time())
+                ret = True
+        elif request.code == EdlCommandCode.C3_SOFT_RESET:
+            logger.info('EDL soft reset')
+            self.node.stop(NodeStop.SOFT_RESET)
+        elif request.code == EdlCommandCode.C3_HARD_RESET:
+            logger.info('EDL hard reset')
+            self.node.stop(NodeStop.HARD_RESET)
+        elif request.code == EdlCommandCode.C3_FACTORY_RESET:
+            logger.info('EDL factory reset')
+            self.node.stop(NodeStop.FACTORY_RESET)
+        elif request.code == EdlCommandCode.CO_NODE_ENABLE:
+            node = NodeId.from_bytes(request.args[0])
+            logger.info(f'EDL enabling CANopen node {node.name}')
+            # TODO
+        elif request.code == EdlCommandCode.CO_NODE_STATUS:
+            node = NodeId.from_bytes(request.args[0])
+            logger.info(f'EDL getting CANopen node {node.name} status')
+            ret = self.node.node_status[node.value]
+        elif request.code == EdlCommandCode.CO_SDO_WRITE:
+            node_id, index, subindex, size, data = request.args
+            node = NodeId(node_id)
+            logger.info(f'EDL SDO write on CANopen node {node.name}')
+            try:
+                self.sdo_write(node_id, index, subindex, data)
+                ret = 0
+            except canopen.SdoError as e:
+                logger.error(e)
+                e_str = str(e)
+                ret = int(e_str[-10:], 16)  # last 10 chars is always the sdo error code in hex
+        elif request.code == EdlCommandCode.CO_SYNC:
+            logger.info('EDL sending CANopen SYNC message')
+            self.node.send_sync()
+        elif request.code == EdlCommandCode.OPD_SYSENABLE:
+            enable = OpdNode.from_bytes(request.args[0])
+            if enable:
+                logger.info('EDL enabling OPD subsystem')
+                self._opd.enable()
+            else:
+                logger.info('EDL disabling OPD subsystem')
+                self._opd.disable()
+            ret = self._opd.is_system_enabled
+        elif request.code == EdlCommandCode.OPD_SCAN:
+            logger.info('EDL scaning for all OPD nodes')
+            ret = self._opd.scan()
+        elif request.code == EdlCommandCode.OPD_PROBE:
+            node = OpdNode.from_bytes(request.args[0])
+            logger.info(f'EDL probing for OPD node {node.name}')
+            ret = self._opd[node].probe()
+        elif request.code == EdlCommandCode.OPD_ENABLE:
+            node = OpdNode.from_bytes(request.args[0])
+            if request.args[1] == b'\x00':
+                logger.info(f'EDL disabling OPD node {node_id.name}')
+                ret = self._opd[node_id].disable()
+            else:
+                logger.info(f'EDL enabling OPD node {node.name}')
+                ret = self._opd[node_id].enable()
+            ret = self._opd[node].status.value
+        elif request.code == EdlCommandCode.OPD_RESET:
+            node = OpdNode.from_bytes(request.args[0])
+            logger.info(f'EDL resetting for OPD node {node.name}')
+            self._opd[node].reset
+            ret = self._opd[node].status.value
+        elif request.code == EdlCommandCode.OPD_STATUS:
+            node = OpdNode.from_bytes(request.args[0])
+            logger.info(f'EDL getting the status for OPD node {node.name}')
+            ret = self._opd[node].status.value
+        elif request.code == EdlCommandCode.RTC_SET_TIME:
+            logger.info(f'EDL setting the RTC to {request.args[0]}')
+            # TODO
+        elif request.code == EdlCommandCode.TIME_SYNC:
+            logger.info('EDL sending time sync TPDO')
+            self.node.send_tpdo(0)
+
+        if type(ret) not in [None, tuple]:
+            ret = ret,  # make ret a tuple
+
+        response = EdlCommandResponse(request.code, ret)
+
+        logger.info(f'EDL command response: {response.code.name}, values: {response.values}')
+
+        return response

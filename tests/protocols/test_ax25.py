@@ -1,11 +1,11 @@
 import unittest
 
-from oresat_c3.protocols.ax25 import generate_ax25_packet, AX25_PAYLOAD_MAX_LEN, Ax25Error
+from oresat_c3.protocols.ax25 import ax25_pack, AX25_PAYLOAD_MAX_LEN, Ax25Error
 
 
 class TestAx25(unittest.TestCase):
 
-    def test_generate_ax25_invalid_dest_callsign_length(self):
+    def test_ax25_pack_invalid_dest_callsign_length(self):
         '''Set destination callsign with a length greater than AX25_CALLSIGN_LEN'''
 
         invalid_dest_callsign = 'INVAID_CALLSIGN'
@@ -18,7 +18,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid destination callsign length
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 invalid_dest_callsign,
                 dest_ssid,
                 src_callsign,
@@ -28,7 +28,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_dest_ssid_large(self):
+    def test_ax25_pack_invalid_dest_ssid_large(self):
         '''Set destination ssid greater than 15'''
 
         dest_callsign = 'DEST'
@@ -41,7 +41,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid destination ssid value
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 invalid_dest_ssid,
                 src_callsign,
@@ -51,7 +51,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_dest_ssid_small(self):
+    def test_ax25_pack_invalid_dest_ssid_small(self):
         '''Set destination ssid less than 0'''
 
         dest_callsign = 'DEST'
@@ -64,7 +64,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid destination ssid value
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 invalid_dest_ssid,
                 src_callsign,
@@ -74,7 +74,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_src_callsign(self):
+    def test_ax25_pack_invalid_src_callsign(self):
         '''Set source callsign with a length greater than AX25_CALLSIGN_LEN'''
 
         dest_callsign = 'DEST'
@@ -87,7 +87,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid source callsign length
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 dest_ssid,
                 invalid_src_callsign,
@@ -97,7 +97,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_src_ssid_larger(self):
+    def test_ax25_pack_invalid_src_ssid_larger(self):
         '''Set source ssid to be greater than 15'''
 
         dest_callsign = 'DEST'
@@ -110,7 +110,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid invalid source ssid value
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 dest_ssid,
                 src_callsign,
@@ -120,7 +120,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_src_ssid_small(self):
+    def test_ax25_pack_invalid_src_ssid_small(self):
         '''Set source ssid with to be less than 0'''
         dest_callsign = 'DEST'
         dest_ssid = 1
@@ -132,7 +132,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid source ssid value
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 dest_ssid,
                 src_callsign,
@@ -142,7 +142,7 @@ class TestAx25(unittest.TestCase):
                 payload
             )
 
-    def test_generate_ax25_invalid_payload(self):
+    def test_ax25_pack_invalid_payload(self):
         '''Set payload with a length greater than AX25_PAYLOAD_MAX_LEN'''
         dest_callsign = 'DEST'
         dest_ssid = 1
@@ -154,7 +154,7 @@ class TestAx25(unittest.TestCase):
 
         # Check if Ax25Error is raised for the invalid source ssid value
         with self.assertRaises(Ax25Error):
-            generate_ax25_packet(
+            ax25_pack(
                 dest_callsign,
                 dest_ssid,
                 src_callsign,

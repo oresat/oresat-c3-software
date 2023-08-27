@@ -63,6 +63,9 @@ def gen_beacon_rst():
     lines.append('Beacon\n')
     lines.append('======\n')
     lines.append('\n')
+    lines.append('.. note:: Octets are used instead of bytes as octets are guaranteed to be 8 bits'
+                 ' and bytes are not.\n')
+    lines.append('\n')
     lines.append('OreSat use AX.25 V2 frame for it\'s beacon format.\n')
     lines.append('\n')
     lines.append('A great reference for AX.25 is at '
@@ -87,7 +90,7 @@ def gen_beacon_rst():
                  '41  | 43  | 45  | 20  | 00        | 00      | 00  |\n')
     lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
                  '----+-----+-----+-----+-----------+---------+-----+\n')
-    lines.append('| Hex (bitshifted) | 9E  |68   | 5A  | 6A  | 52  | 6C  | 00       | 6A  | 64  | '
+    lines.append('| Hex (bitshifted) | 9E  | 68  | 5A  | 6A  | 52  | 6C  | 00       | 6A  | 64  | '
                  '52  | 56  | 5A  | 28  | 00        | 00      | 00  |\n')
     lines.append('+------------------+-----+-----+-----+-----+-----+-----+----------+-----+-----+-'
                  '----+-----+-----+-----+-----------+---------+-----+\n')

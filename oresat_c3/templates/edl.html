@@ -73,7 +73,10 @@
       </tbody>
     </table>
   </form>
+  <div id="responseDiv"></div>
   <button id="submitButton" type="submit">Send</button>
+
+
   
 <script>
   const optionDescriptions = [
@@ -114,6 +117,25 @@
     []
   ];
 
+  const codeReturnType = [
+    ["bool"],
+    [],
+    [], 
+    [], 
+    ["int"],
+    ["int"],
+    ["int"],
+    ["bool"],
+    ["bool"], 
+    ["int"],
+    ["bool"],
+    ["int"],
+    ["int"],
+    ["int"],
+    ["bool"],
+    ["bool"]
+  ];
+
   const codeParameterTypes = [
     ["bool"],
     [],
@@ -145,7 +167,14 @@
   
   // TODO: Check the args here
 
-   await SendCommand(code)
+  let responseJSON = await SendCommand(code)
+  
+  // Display response value (if there is one)
+  if (codeReturnType[code].length != 0)
+  {
+    const responseDiv = document.getElementById("responseDiv");
+    responseDiv.textContent = JSON.stringify(responseJSON, null, 2);
+  }
   });
 
   async function SendCommand(code) 
@@ -168,35 +197,23 @@
 
     // Send request with args in JSON
     requestData.args = inputList;
-    const response = await fetch(url, 
-    {
+    const response = await fetch(url, {
       method: "POST",
-      headers: {"Content-Type": "application/json" },
-      body: JSON.stringify(requestData)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestData),
     });
 
-    if (!response.ok) 
-    {
-      console.error("Error:", response.statusText);
-      return;
-    }
+    let json = await response.json();
+    return json;
+}
 
-    const data = await response.json();
-    if (data.error !== undefined) 
-    {
-      console.log(data.error);
-      return;
-    }
-
-    return data;
-  }
 
 function convertType(value, type) 
 {
     let convertedValue;
     if (type === "bool") 
     {
-      if (value[i].value.toLowerCase() === 'true' || value[i].value === '1' || value[i].value.toLowerCase() === 't') {convertedValue = true;}
+      if (value.toLowerCase() === 'true' || value === '1' || value.toLowerCase() === 't') {convertedValue = true;}
       else {convertedValue = false;}     
     } 
     else if (type === "int") {convertedValue = parseInt(value);} 

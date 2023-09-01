@@ -5,16 +5,15 @@ from flask import Flask, render_template, jsonify, request, send_from_directory
 from spacepackets.uslp.header import SourceOrDestField
 import socket
 
-
 from . import __version__
 from .subsystems.opd import Opd
-from .subsystems.fram import Fram
+from .subsystems.fram import Fram, FramKey
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.opd import OpdService
 from .services.state import StateService
-from .protocols.edl import EdlCode, edl_parameter_types, EdlClient
-import struct
+from .protocols.edl_command import EdlCommandCode, EdlCommandRequest, edl_parameter_types
+from .protocols.edl_packet import EdlPacket, SourceOrDestField
 
 
 
@@ -26,11 +25,17 @@ def beacon_template():
 def edl_template():
     return render_olaf_template('edl.html', name='EDL (Engineering Data Link)')
 
+DOWNLINK_ADDR = ('localhost', 10025)
+UPLINK_ADDR = ('localhost', 10016)
+
+# Set by main, global to allow endpoint functions access to HMAC
+fram = None
+
 @rest_api.app.route('/static/edl/c3-cmd/<code>/', methods=['POST'])
 def edl_change(code):
     try:
         code = int(code)
-        option = EdlCode(code)
+        option = EdlCommandCode(code)
     except ValueError:
         return  jsonify({'Error' : f'invalid code: {code}'}), 400 
      
@@ -48,29 +53,45 @@ def edl_change(code):
         return jsonify(f'Incorrect number of args for {option}')
     
     parameter_types = edl_parameter_types[code]
-    payload = struct.pack('<B', code)   # Assume code is uint8
 
+    # Verify that types are correct
     for i, param_type in enumerate(parameter_types):
-        if param_type == bool:
-            payload += struct.pack('<?', args[i])
-        elif param_type == int:
-            payload += struct.pack('<i', args[i])
-        else:  # Type is bytes
-            # Process bytes here if needed
-            pass
+        if param_type == "bool" and type(args[i]) == bool:
+            continue
+        elif param_type == "int" and type(args[i]) == int:
+            continue
+        elif param_type == "bytes" and type(args[i]) == str:
+            # Todo: Cast the string to the type specified in oresat-configs
+            return jsonify('failed to send EDL request, SDO writes are not implemented yet'), 500
+        else:  
+            return jsonify(f'failed to send EDL request, incorrect argument type, {args[i]} should be type {param_type}'), 500
 
-        
-    # Create a UDP socket
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    global fram
+    packer = EdlPacket(EdlCommandRequest(option, tuple(args)), fram[FramKey.EDL_SEQUENCE_COUNT], SourceOrDestField.SOURCE)
+    downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    uplink_socket.bind(UPLINK_ADDR)
+    uplink_socket.settimeout(1)
 
     # Send the message
-    udp_socket.sendto(EdlClient._generate_packet(payload, SourceOrDestField(1)), EdlClient.EdlService._UPLINK_ADDR)
+    try:
+       downlink_socket.sendto(packer.pack(fram[FramKey.CRYTO_KEY]), DOWNLINK_ADDR)
+    except Exception as e:
+        return jsonify(f'failed to send EDL request: {e}'), 500
 
+    # Await a response
+    try:
+        res_message, _ = uplink_socket.recvfrom(1024)
+    except socket.timeout:
+        return jsonify('Oresat failed to respond'), 500
+
+    res_packet = EdlPacket.unpack(fram[FramKey.CRYTO_KEY], res_message)
+    
     # Close the socket
-    udp_socket.close()
+    uplink_socket.close()
+    downlink_socket.close()
 
-    response_data = {"message": "Request fulfilled"}
-    return jsonify(response_data), 200
+    return jsonify(res_packet.payload.values), 200
 
 
 @rest_api.app.route('/opd')
@@ -100,8 +121,9 @@ def main():
     fram_i2c_addr = 0x50
 
     opd = Opd(opd_enable_pin, i2c_bus_num, mock=mock_opd)
+    global fram 
     fram = Fram(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
-
+    
     app.add_service(StateService(fram))  # add state first to restore state from F-RAM
     app.add_service(BeaconService())
     app.add_service(EdlService(opd))

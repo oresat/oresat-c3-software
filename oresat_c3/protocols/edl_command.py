@@ -245,6 +245,24 @@ class EdlCommandCode(IntEnum):
         Time sync was sent.
     '''
 
+edl_parameter_types = [
+    ["bool"],
+    [],
+    [],
+    [],
+    ["int", "bool"],
+    ["int"],
+    ["int", "int", "int", "int", "bytes"],
+    [],
+    ["bool"],
+    [],
+    ["int", "bool"],
+    ["int"],
+    ["int"],
+    ["int"],
+    [],
+    []  
+    ]
 
 def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
 
@@ -252,6 +270,7 @@ def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
     res += (request_raw[8:])
 
     return res
+
 
 
 EDL_COMMANDS = {
@@ -322,7 +341,7 @@ class EdlCommandRequest:
         if self.command.req_fmt is not None:
             raw += struct.pack(self.command.req_fmt, *self.args)
         elif self.command.req_func is not None:
-            raw += self.command.res_func(self.args)
+            raw += self.command.req_func(self.args)
 
         return raw
 
@@ -387,9 +406,9 @@ class EdlCommandResponse:
 
         raw = self.code.value.to_bytes(1, 'little')
 
-        if self.command.req_fmt is not None:
+        if self.command.res_fmt is not None:
             raw += struct.pack(self.command.res_fmt, *self.values)
-        elif self.command.req_func is not None:
+        elif self.command.res_func is not None:
             raw += self.command.res_func(self.values)
 
         return raw
@@ -408,10 +427,10 @@ class EdlCommandResponse:
         code = EdlCommandCode(raw[0])
         command = EDL_COMMANDS[code]
 
-        if command.req_fmt is not None:
+        if command.res_fmt is not None:
             values = struct.unpack(command.res_fmt, raw[1:])
-        elif command.req_func is not None:
-            values = command.req_func(raw[1:])
+        elif command.res_func is not None:
+            values = command.res_func(raw[1:])
         else:
             values = None
 

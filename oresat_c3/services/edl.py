@@ -12,7 +12,7 @@ from olaf import Service, logger, NodeStop
 
 from .. import NodeId
 from ..protocols.edl_packet import EdlPacket, EdlPacketError, SRC_DEST_UNICLOGS
-from ..protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
+from ..protocols.edl_command import EdlCommandCode, EdlCommandPacketError, EdlCommandRequest, EdlCommandResponse
 from ..subsystems.opd import Opd, OpdNode
 
 
@@ -60,8 +60,8 @@ class EdlService(Service):
             return  # no message
 
         try:
-            req_packet = EdlPacket.unpack(req_message)
-        except (EdlCommandCode, EdlPacketError) as e:
+            req_packet = EdlPacket.unpack(self._hmac_key, req_message)
+        except (EdlCommandPacketError, EdlPacketError) as e:
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
             logger.error(f'invalid EDL request packet: {e}')
@@ -74,14 +74,13 @@ class EdlService(Service):
         try:
             res_payload = self._run_cmd(req_packet.payload)
         except Exception as e:
-            logger.error(f'EDL command {req_message.code.name} raised: {e}')
+            logger.error(f'EDL command {req_packet.payload.code.name} raised: {e}')
             return
 
         try:
-            res_peacket = EdlPacket(res_payload, self._edl_sequence_count_obj.value,
-                                    SRC_DEST_UNICLOGS)
-            res_message = res_peacket.pack()
-        except (EdlCommandCode, EdlPacketError) as e:
+            res_peacket = EdlPacket(res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS)
+            res_message = res_peacket.pack(self._hmac_key)
+        except (EdlCommandPacketError, EdlPacketError) as e:
             logger.error(f'EDL response generation raised: {e}')
             return
 
@@ -99,16 +98,16 @@ class EdlService(Service):
         logger.info(f'EDL command response: {request.code.name}, args: {request.args}')
 
         if request.code == EdlCommandCode.TX_CTRL:
-            if request.args[0] == b'\x00':
-                logger.info('EDL disabling Tx')
-                self._tx_enabled_obj.value = False
-                self._last_tx_enabled_obj.value = 0
-                ret = False
-            else:
+            if request.args[0]:
                 logger.info('EDL enabling Tx')
                 self._tx_enabled_obj.value = True
                 self._last_tx_enabled_obj.value = int(time())
                 ret = True
+            else:
+                logger.info('EDL disabling Tx')
+                self._tx_enabled_obj.value = False
+                self._last_tx_enabled_obj.value = 0
+                ret = False
         elif request.code == EdlCommandCode.C3_SOFT_RESET:
             logger.info('EDL soft reset')
             self.node.stop(NodeStop.SOFT_RESET)
@@ -119,13 +118,14 @@ class EdlService(Service):
             logger.info('EDL factory reset')
             self.node.stop(NodeStop.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
-            node = NodeId.from_bytes(request.args[0])
+            node = NodeId(request.args[0])
             logger.info(f'EDL enabling CANopen node {node.name}')
             # TODO
+            ret = 5 # Temp, must return an int
         elif request.code == EdlCommandCode.CO_NODE_STATUS:
-            node = NodeId.from_bytes(request.args[0])
+            node = NodeId(request.args[0])
             logger.info(f'EDL getting CANopen node {node.name} status')
-            ret = self.node.node_status[node.value]
+            ret = self.node.node_status[node.value][0]
         elif request.code == EdlCommandCode.CO_SDO_WRITE:
             node_id, index, subindex, size, data = request.args
             node = NodeId(node_id)
@@ -140,6 +140,7 @@ class EdlService(Service):
         elif request.code == EdlCommandCode.CO_SYNC:
             logger.info('EDL sending CANopen SYNC message')
             self.node.send_sync()
+            ret = True
         elif request.code == EdlCommandCode.OPD_SYSENABLE:
             enable = OpdNode.from_bytes(request.args[0])
             if enable:

@@ -246,21 +246,21 @@ class EdlCommandCode(IntEnum):
     '''
 
 edl_parameter_types = [
-    ["bool"],
+    ['bool'],
     [],
     [],
     [],
-    ["int", "bool"],
+    ['int', 'bool'],
+    ['int'],
+    ['int', 'int', 'int', 'int', 'bytes'],
+    [],
+    ['bool'],
+    [],
     ["int"],
-    ["int", "int", "int", "int", "bytes"],
-    [],
-    ["bool"],
-    [],
-    ["int", "bool"],
-    ["int"],
-    ["int"],
-    ["int"],
-    [],
+    ['int', 'bool'],
+    ['int'],
+    ['int'],
+    ['int'],
     []  
     ]
 
@@ -282,13 +282,15 @@ EDL_COMMANDS = {
     EdlCommandCode.CO_NODE_STATUS: EdlCommand('B', 'B'),
     EdlCommandCode.CO_SDO_WRITE: EdlCommand(None, 'I', _edl_res_sdo_write_cb),
     EdlCommandCode.CO_SYNC: EdlCommand(None, '?'),
-    EdlCommandCode.OPD_SYSENABLE: EdlCommand(None, '?'),
+    EdlCommandCode.OPD_SYSENABLE: EdlCommand('?', '?'),
     EdlCommandCode.OPD_SCAN: EdlCommand(None, 'B'),
     EdlCommandCode.OPD_PROBE: EdlCommand('B', '?'),
-    EdlCommandCode.OPD_ENABLE: EdlCommand('B', 'B'),
+    EdlCommandCode.OPD_ENABLE: EdlCommand('B?', '?'),
     EdlCommandCode.OPD_RESET: EdlCommand('B', 'B'),
     EdlCommandCode.OPD_STATUS: EdlCommand('B', 'B'),
     EdlCommandCode.RTC_SET_TIME: EdlCommand('I', '?'),
+    EdlCommandCode.TIME_SYNC: EdlCommand('', '?'),
+
 }
 '''All valid EDL commands lookup table'''
 

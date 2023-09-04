@@ -13,7 +13,7 @@ from olaf import Service, logger, NodeStop
 from .. import NodeId
 from ..protocols.edl_packet import EdlPacket, EdlPacketError, SRC_DEST_UNICLOGS
 from ..protocols.edl_command import EdlCommandCode, EdlCommandPacketError, EdlCommandRequest, EdlCommandResponse
-from ..subsystems.opd import Opd, OpdNode
+from ..subsystems.opd import Opd, OpdNode, OpdNodeId
 
 
 class EdlService(Service):
@@ -142,45 +142,47 @@ class EdlService(Service):
             self.node.send_sync()
             ret = True
         elif request.code == EdlCommandCode.OPD_SYSENABLE:
-            enable = OpdNode.from_bytes(request.args[0])
+            enable = (request.args[0])
             if enable:
                 logger.info('EDL enabling OPD subsystem')
-                self._opd.enable()
+                self.opd.enable()
             else:
                 logger.info('EDL disabling OPD subsystem')
-                self._opd.disable()
-            ret = self._opd.is_system_enabled
+                self.opd.disable()
+            ret = self.opd.is_subsystem_enabled
         elif request.code == EdlCommandCode.OPD_SCAN:
             logger.info('EDL scaning for all OPD nodes')
-            ret = self._opd.scan()
+            ret = self.opd.scan()
         elif request.code == EdlCommandCode.OPD_PROBE:
-            node = OpdNode.from_bytes(request.args[0])
-            logger.info(f'EDL probing for OPD node {node.name}')
-            ret = self._opd[node].probe()
+            node = request.args[0]
+            #logger.info(f'EDL probing for OPD node {node.name}')
+            ret = self.opd[node].probe()
         elif request.code == EdlCommandCode.OPD_ENABLE:
-            node = OpdNode.from_bytes(request.args[0])
-            if request.args[1] == b'\x00':
-                logger.info(f'EDL disabling OPD node {node_id.name}')
-                ret = self._opd[node_id].disable()
+            nodeID = request.args[0]
+            node = self.opd._nodes[nodeID]
+            if request.args[1] == True:
+                logger.info(f'EDL enabling OPD node {OpdNodeId(nodeID).name}')
+                ret = self.opd[nodeID].enable()
             else:
-                logger.info(f'EDL enabling OPD node {node.name}')
-                ret = self._opd[node_id].enable()
-            ret = self._opd[node].status.value
+                logger.info(f'EDL disabling OPD node {OpdNodeId(nodeID).name}')
+                ret = self.opd[nodeID].disable()
         elif request.code == EdlCommandCode.OPD_RESET:
-            node = OpdNode.from_bytes(request.args[0])
-            logger.info(f'EDL resetting for OPD node {node.name}')
-            self._opd[node].reset
-            ret = self._opd[node].status.value
+            nodeID = request.args[0]
+            node = self.opd._nodes[nodeID]
+            logger.info(f'EDL resetting for OPD node {OpdNodeId(nodeID).name}')
+            ret = self.opd[nodeID].reset().value
         elif request.code == EdlCommandCode.OPD_STATUS:
-            node = OpdNode.from_bytes(request.args[0])
-            logger.info(f'EDL getting the status for OPD node {node.name}')
-            ret = self._opd[node].status.value
+            nodeID = request.args[0]
+            logger.info(f'EDL getting the status for OPD node {OpdNodeId(nodeID).name}')
+            ret = self.opd[nodeID].status.value
         elif request.code == EdlCommandCode.RTC_SET_TIME:
             logger.info(f'EDL setting the RTC to {request.args[0]}')
             # TODO
+            ret = True
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info('EDL sending time sync TPDO')
             self.node.send_tpdo(0)
+            ret = True
 
         if type(ret) not in [None, tuple]:
             ret = ret,  # make ret a tuple

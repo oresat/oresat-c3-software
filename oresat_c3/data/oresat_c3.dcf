@@ -13862,14 +13862,14 @@ DefaultValue=0
 [8001]
 ParameterName=Test OPD
 ObjectType=0x09
-SubNumber=6
+SubNumber=7
 
 [8001sub0]
 ParameterName=Highest sub-index supported
 ObjectType=0x07
 DataType=0x0005
 AccessType=const
-DefaultValue=0x05
+DefaultValue=0x06
 
 [8001sub1]
 ParameterName=Enable System
@@ -13905,6 +13905,14 @@ ParameterName=Scan Nodes
 ObjectType=0x07
 DataType=0x0001
 AccessType=wo
+DefaultValue=0
+
+;OPD circuit has a fault
+[8001sub6]
+ParameterName=Fault
+ObjectType=0x07
+DataType=0x0001
+AccessType=ro
 DefaultValue=0
 
 [ManufacturerObjects]

@@ -7,7 +7,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 from enum import IntEnum
 from time import sleep
 
-from olaf import logger, GPIO
+from olaf import logger, Gpio, Adc, GPIO_IN
 
 from ..drivers.max7310 import Max7310, Max7310Error
 
@@ -90,7 +90,7 @@ class OpdNode:
         '''
         Parameters
         ----------
-        enable_pin: int
+        not_enable_pin: int
             Pin that enable the OPD subsystem.
         bus: int
             The I2C bus.
@@ -408,20 +408,28 @@ class Opd:
     _SYS_RESET_DELAY_S = 10
     _RESET_ATTEMPTS = 3
 
-    def __init__(self, enable_pin: int, bus: int, mock: bool = False):
+    def __init__(self, not_enable_pin: int, not_fault_pin: int, current_pin: int, bus: int,
+                 mock: bool = False):
         '''
         Parameters
         ----------
-        enable_pin: int
-            Pin that enable the OPD subsystem.
+        not_enable_pin: int
+            Output pin that enables/disables the OPD subsystem.
+        not_fault_pin: int
+            Input pin for faults.
+        current_pin: int
+            ADC pin number to get OPD current.
         bus: int
             The I2C bus.
         mock: bool
             Mock the OPD subsystem.
         '''
 
-        self._gpio = GPIO(enable_pin, mock)
-        self._gpio.high()  # make sure OPD disable initially
+        self._not_enable_pin = Gpio(not_enable_pin, mock)
+        self._not_fault_pin = Gpio(not_fault_pin, mock, mode=GPIO_IN)
+        self._not_fault_pin._mock_value = 1  # fix default for mocking
+        self._adc = Adc(current_pin, mock)
+        self._not_enable_pin.high()  # make sure OPD disable initially
 
         self._nodes = {}
         for node_id in list(OpdNodeId):
@@ -457,7 +465,7 @@ class Opd:
             return  # already enabled
 
         logger.info('starting OPD subsystem')
-        self._gpio.low()
+        self._not_enable_pin.low()
 
         self.scan(True)
 
@@ -470,7 +478,7 @@ class Opd:
             if node.status != OpdNodeState.NOT_FOUND:
                 node.disable()
 
-        self._gpio.high()
+        self._not_enable_pin.high()
 
     def reset(self):
         '''Restart the OPD subsystem with a delay between stop and start.'''
@@ -580,4 +588,16 @@ class Opd:
     def is_subsystem_enabled(self) -> bool:
         '''bool: OPD is enabled or not.'''
 
-        return not self._gpio.is_high
+        return not self._not_enable_pin.is_high
+
+    @property
+    def has_fault(self) -> bool:
+        '''bool: OPD circuit has a fault.'''
+
+        return not self._not_fault_pin.is_high
+
+    @property
+    def current(self) -> int:
+        '''int: OPD current.'''
+
+        return self._adc.value

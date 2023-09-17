@@ -37,12 +37,14 @@ def main():
 
     app.node.od['Manufacturer software version'].value = __version__
 
-    # TODO get from OD
     i2c_bus_num = 2
-    opd_enable_pin = 20
+    opd_not_enable_pin = 116
+    opd_not_fault_pin = 115
+    opd_adc_current_pin = 2
     fram_i2c_addr = 0x50
 
-    opd = Opd(opd_enable_pin, i2c_bus_num, mock=mock_opd)
+    opd = Opd(opd_not_enable_pin, opd_not_fault_pin, opd_adc_current_pin, i2c_bus_num,
+              mock=mock_opd)
     fram = Fram(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
 
     app.add_service(StateService(fram))  # add state first to restore state from F-RAM

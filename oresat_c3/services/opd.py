@@ -46,6 +46,8 @@ class OpdService(Service):
 
         self._flight_mode_obj = self.node.od[0x3007][0x2]
 
+        self.node.add_sdo_read_callback(0x7000, self._on_read_current)
+
         self.node.od[0x8001][0x2].value = '{}'
         self.node.add_sdo_read_callback(0x8001, self._on_read)
         self.node.add_sdo_write_callback(0x8001, self._on_write)
@@ -53,6 +55,15 @@ class OpdService(Service):
     def on_stop(self):
 
         self.opd.stop_loop = True
+
+    def _on_read_current(self, index: int, subindex: int):
+
+        value = None
+
+        if subindex == 0x6:
+            value = self.opd.current
+
+        return value
 
     def _on_read(self, index: int, subindex: int):
 
@@ -67,6 +78,8 @@ class OpdService(Service):
             value = self.cur_node.value
         elif subindex == 0x4:
             value = self.opd[self.cur_node].status.value
+        elif subindex == 0x6:
+            value = self.opd.has_fault
 
         return value
 

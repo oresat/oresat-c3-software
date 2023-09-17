@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 
 {% block content %}
   <style>
@@ -17,14 +17,22 @@
       padding: 8px;
     }
   </style>
-  <b>OPD Subsystem:</b>
-  <span id='systemStatus'>ENABLED</span>
-  <button id='enableSystemButton' onclick='enableSystem()'>Disable System</button>
-  <button id='scanNodesButton' onclick='scan()'>Scan for Nodes</button>
+  <b>Status:</b>
+  <span id="systemStatus">ENABLED</span>
+  <button id="enableSystemButton" onclick="enableSystem()">Disable System</button>
+  <br />
+  <b>Scan:</b>
+  <button id="scanNodesButton" onclick="scan()">Scan for Nodes</button>
+  <br />
+  <b>Fault:</b>
+  <span id="systemFault">NO_FAULT</span>
+  <br />
+  <b>Current:</b>
+  <span id="systemCurrent">0.000</span> mA
   <br />
   <br />
-  <div id='opdTableDiv'>
-    <table id='opdTable'>
+  <div id="opdTableDiv">
+    <table id="opdTable">
       <thead>
         <tr>
           <td>Card</td>
@@ -39,30 +47,30 @@
   </div>
   <script>
     const NODES = {
-       0x18: 'Battery 1',
-       0x19: 'GPS',
-       0x1A: 'ACS',
-       0x1B: 'DxWiFi',
-       0x1C: 'Star Tracker',
-       0x1D: 'CFC Processor',
-       0x1E: 'CFC Sensor',
-       0x1F: 'Battery 2',
-       0x20: 'Reaction Wheel 1',
-       0x21: 'Reaction Wheel 2',
-       0x22: 'Reaction Wheel 3',
-       0x23: 'Reaction Wheel 4',
+       0x18: "Battery 1",
+       0x19: "GPS",
+       0x1A: "ACS",
+       0x1B: "DxWiFi",
+       0x1C: "Star Tracker",
+       0x1D: "CFC Processor",
+       0x1E: "CFC Sensor",
+       0x1F: "Battery 2",
+       0x20: "Reaction Wheel 1",
+       0x21: "Reaction Wheel 2",
+       0x22: "Reaction Wheel 3",
+       0x23: "Reaction Wheel 4",
     };
 
     const NODE_STATES = {
-       0x00: 'OFF',
-       0x01: 'ON',
-       0x02: 'ERROR',
-       0x03: 'DEAD',
-       0xFF: 'NOT_FOUND',
+       0x00: "OFF",
+       0x01: "ON",
+       0x02: "ERROR",
+       0x03: "DEAD",
+       0xFF: "NOT_FOUND",
     };
 
     // build the table
-    let tbodyRef = document.getElementById('opdTable').getElementsByTagName('tbody')[0];
+    let tbodyRef = document.getElementById("opdTable").getElementsByTagName("tbody")[0];
     for (const key in NODES) {
       let newRow = tbodyRef.insertRow();
 
@@ -76,24 +84,24 @@
       newCell4.appendChild(newText4);
 
       let newCell2 = newRow.insertCell();
-      let span = document.createElement('span');
+      let span = document.createElement("span");
       span.id = `node${key}`;
-      span.innerText = 'OFF';
+      span.innerText = "OFF";
       newCell2.appendChild(span);
 
       let newCell3 = newRow.insertCell();
-      let button = document.createElement('button');
-      button.addEventListener('click', function() {nodeOnClick(key)});
+      let button = document.createElement("button");
+      button.addEventListener("click", function() {nodeOnClick(key)});
       button.id = `node${key}Button`;
-      button.innerText = 'Enable';
+      button.innerText = "Enable";
       newCell3.appendChild(button);
     }
 
     /** Enable / disable a node button callback */
     async function nodeOnClick(nodeId) {
-      await writeValue('0x8001', '0x3', nodeId);
-      const enable = document.getElementById(`node${nodeId}Button`).innerText === 'Enable';
-      let data = await writeValue('0x8001', '0x4', enable);
+      await writeValue("0x8001", "0x3", nodeId);
+      const enable = document.getElementById(`node${nodeId}Button`).innerText === "Enable";
+      let data = await writeValue("0x8001", "0x4", enable);
       updateNode(nodeId, data.value);
     }
 
@@ -106,62 +114,74 @@
       span.innerText = state;
 
       switch (state) {
-      case 'OFF':
-        button.innerText = 'Enable';
+      case "OFF":
+        button.innerText = "Enable";
         button.disabled = false;
         break;
-      case 'ON':
-        button.innerText = 'Disable';
+      case "ON":
+        button.innerText = "Disable";
         button.disabled = false;
         break;
       default:
-        button.innerText = 'Enable';
+        button.innerText = "Enable";
         button.disabled = true;
       }
     }
 
     /** Update data in the table */
     async function updateStatus() {
-      const span = document.getElementById('systemStatus');
-      const enableButton = document.getElementById('enableSystemButton');
-      const spanButton = document.getElementById('scanNodesButton');
-      const div = document.getElementById('opdTableDiv');
-      let systemData = await readValue('0x8001','0x1');
+      const statusSpan = document.getElementById("systemStatus");
+      const faultSpan = document.getElementById("systemFault");
+      const currentSpan = document.getElementById("systemCurrent");
+      const enableButton = document.getElementById("enableSystemButton");
+      const spanButton = document.getElementById("scanNodesButton");
+      const div = document.getElementById("opdTableDiv");
+      let systemData = await readValue("0x8001","0x1");
+      let systemFault = await readValue("0x8001","0x6");
+      let systemCurrent = await readValue("0x7000","0x6");
       let data;
 
       if (systemData.value) { // only update if system is enabled
-        data = await readValue('0x8001','0x2');
+        data = await readValue("0x8001","0x2");
         const json = JSON.parse(data.value);
         for (const key in json) {
           updateNode(key, json[key]);
         }
       }
 
+      if (systemFault.value === true) {
+        faultSpan.innerText = "FAULT";
+      } else {
+        faultSpan.innerText = "NO_FAULT";
+      }
+
+      currentSpan.innerText = (systemCurrent.value * 0.02).toFixed(3);
+
       // do this after the node updates to get the correct values before
       // showning table
       if (systemData.value === true) {
-        span.innerText = 'ENABLED';
-        enableButton.innerText = 'Disable System';
-        div.style.display = '';
+        statusSpan.innerText = "ENABLED";
+        enableButton.innerText = "Disable System";
+        div.style.display = "";
         spanButton.disabled = false;
       } else {
-        span.innerText = 'DISABLED';
-        enableButton.innerText = 'Enable System';
-        div.style.display = 'none';
+        statusSpan.innerText = "DISABLED";
+        enableButton.innerText = "Enable System";
+        div.style.display = "none";
         spanButton.disabled = true;
       }
     }
 
     /** Enable / disable the OPD subsystem button callback */
     async function enableSystem() {
-      const enable = document.getElementById('systemStatus').innerText !== 'ENABLED';
-      const data = await writeValue('0x8001', '0x1', enable);
+      const enable = document.getElementById("systemStatus").innerText !== "ENABLED";
+      const data = await writeValue("0x8001", "0x1", enable);
       updateStatus();
     }
 
     /** Scan button callback */
     async function scan() {
-      const data = await writeValue('0x8001', '0x5', true);
+      const data = await writeValue("0x8001", "0x5", true);
       updateStatus();
     }
 

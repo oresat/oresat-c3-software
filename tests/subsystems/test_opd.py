@@ -9,7 +9,7 @@ class TestOpd(unittest.TestCase):
 
     def test_opd(self):
 
-        opd = Opd(10, I2C_BUS_NUM, mock=True)
+        opd = Opd(10, 12, 2, I2C_BUS_NUM, mock=True)
 
         for node in opd:
             if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:

@@ -15,7 +15,7 @@ from .services.state import StateService
 from .protocols.edl_command import EdlCommandCode, EdlCommandRequest, edl_parameter_types
 from .protocols.edl_packet import EdlPacket, SourceOrDestField
 
-
+from oresat_od_db import NodeId, oresat0_5, Index
 
 @rest_api.app.route('/beacon')
 def beacon_template():
@@ -62,7 +62,42 @@ def edl_change(code):
             continue
         elif param_type == "bytes" and type(args[i]) == str:
             # Todo: Cast the string to the type specified in oresat-configs
-            return jsonify('failed to send EDL request, SDO writes are not implemented yet'), 500
+            # Check nodeID
+            try:
+                nodeID = NodeId(args[0])
+            except ValueError:
+                return  jsonify({'Error' : f'invalid node id: {hex(args[0])}'}), 400 
+            
+            # Retrieve OD for the specified can node
+            cardOD = oresat0_5.OD_DB[nodeID]
+
+            # Classify index
+            index = args[1]
+            constants = [Index.COMMON_DATA, Index.CARD_DATA, Index.OTHER_CARD_BASE_INDEX]
+            filtered_constants = filter(lambda constant: constant < index, constants)
+            index = Index(max(filtered_constants))
+
+            # Fetch
+            if index < Index.COMMON_DATA:
+                try:
+                    index = Index(index)
+                except ValueError:
+                    return  jsonify({'Error' : f'Index either does not exist or is inaccessible: {hex(index)}'}), 400 
+            elif index < Index.CARD_DATA:
+                index = Index.COMMON_DATA
+            elif index < Index.OTHER_CARD_BASE_INDEX:
+                index = Index.COMMON_DATA
+            elif index < Index.OTHER_CARD_BASE_INDEX:
+                index = Index.COMMON_DATA
+
+            index = cardOD[Index.CARD_DATA]
+            index = index[args[1]][args[2]]
+
+            # Subindex optional
+            if args[2] != 0:
+                index = index.variable
+
+            return index, 200
         else:  
             return jsonify(f'failed to send EDL request, incorrect argument type, {args[i]} should be type {param_type}'), 500
 

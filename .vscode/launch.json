@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "module": "oresat_c3",
-            "justMyCode": true,
+            "justMyCode": false,
             "args": ["-m", "all"],
             "sudo": true
         }

@@ -17,27 +17,22 @@
   #argsTable {
     width: 30%;
     border-collapse: collapse;
-    margin: 20px auto; /* Center the table horizontally using margin */
-    text-align: left; /* Left-align the text within the input */
+    margin: 20px auto;
+    text-align: left; 
   }
   
   #argsTable td {
     border: 1px solid #ddd;
   }
   
-  .argument-cell {
-    text-align: center; /* Center the content horizontally within the cell */
-    vertical-align: middle; /* Center content vertically within cells */
+  .param-cell {
+    text-align: center;
+    vertical-align: middle; 
   }
   
-  .argument-textbox-container {
-    display: flex;
-    justify-content: center; /* Center the textbox horizontally */
-  }
-  
-  .argument-textbox {
+  .param {
     width: 100%;
-    max-width: calc(100% - 10px); /* Adjust the width as needed */
+    max-width: calc(100% - 10px);
     border: 0px solid #ddd;
     
   }
@@ -47,119 +42,210 @@
   }
 </style>
 
-<select id="codeSelect" value="0">
-  <option value="0">TX_CTRL</option>
-  <option value="1">C3_SOFT_RESET</option>
-    <option value="2">C3_HARD_RESET</option>
-    <option value="3">C3_FACTORY_RESET</option>
-    <option value="4">CO_NODE_ENABLE</option>
-    <option value="5">CO_NODE_STATUS</option>
-    <option value="6">CO_SDO_WRITE</option>
-    <option value="7">CO_SYNC</option>
-    <option value="8">OPD_SYSENABLE</option>
-    <option value="9">OPD_SCAN</option>
-    <option value="10">OPD_PROBE</option>
-    <option value="11">OPD_ENABLE</option>
-    <option value="12">OPD_RESET</option>
-    <option value="13">OPD_STATUS</option>
-    <option value="14">RTC_SET_TIME</option>
-    <option value="15">TIME_SYNC</option>
-  </select>
+<select id="codeSelect"></select>
   
-  <form id="args">
-    <table id="argsTable">
-      <tbody id="argsBody">
-        <!-- Rows will be added dynamically here -->
-      </tbody>
-    </table>
-  </form>
-  <div id="responseDiv"></div>
-  <button id="submitButton" type="submit">Send</button>
+<form id="args">
+  <table id="argsTable"></table>
+</form>
+<div id="responseDiv"></div>
+<button id="submitButton" type="submit">Send</button>
 
-
-  
 <script>
-  const optionDescriptions = [
-      "Enable or disable Tx. Parameters: enable (bool) - True to enable Tx or False to disable Tx. Returns: bool - Tx status.",
-      "Soft reset the C3 (reboot C3 daemon).",
-      "Hard reset the C3 (reboot system).",
-      "Factory reset the C3 (clear FRAM, reset RTC, and reboot system).",
-      "Enable a CANopen node. Parameters: node_id (uint8) - Node id of the CANopen node to enable / disable. enable (bool) - True to enable or False to disable. Returns: uint8 - Node status.",
-      "Get the status of a CANopen node. Parameters: node_id (uint8) - Node id of node to get the status for. Returns: uint8 - Node status.",
-      "Write a value to a node's OD over the CAN bus using a CANopen SDO message. Parameters: node_id (uint8) - The id of The CANopen node to write to. index (uint16) - The OD index to write to. subindex (uint8) - The OD subindex to write to. size (uint32) - Size of the data buffer. buffer (bytes) - Data buffer. Returns: uint32 - SDO error code (0 is no error).",
-      "Send a CANopen SYNC message on the CAN bus. Returns: bool - The CANopen SYNC message was sent successfully.",
-      "Enable the OPD subsystem. Parameters: enable (bool) - True to enable or False to disable. Returns: bool - OPD subsystem status.",
-      "Scan for all nodes on the OPD. Returns: uint8 - The number of nodes found.",
-      "Probe for a node on the OPD. Parameters: node_id (uint8) - The id of the OPD node to probe for. Returns: bool - True if the node was found or False if not.",
-      "Enable or disable a node on the OPD. Parameters: node_id (uint8) - The id of the OPD node to enable / disable. enable (bool) - True to enable or False to disable. Returns: uint8 - OPD node status.",
-      "Reset a node on the OPD. Parameters: node_id (uint8) - The id of the OPD node to reset. Returns: uint8 - OPD node status.",
-      "Get the status of a node on the OPD. Parameters: node_id (uint8) - The id of the OPD node to get the status of. Returns: uint8 - OPD node status.",
-      "Set the RTC time. Parameters: time (uint32) - The unix time in seconds. Returns: bool - The RTC time was set successfully.",
-      "C3 will send OreSat's Time Sync TPDO over the CAN bus (all nodes that are powered on and care about time will sync to it). Returns: bool - Time sync was sent."
-  ];
+  class Command 
+  {
+    constructor(code, name, desc, paramNames, paramCtors, retType) {
+      this.code = code;
+      this.name = name;
+      this.desc = desc;
+      this.paramNames = paramNames;
+      this.paramCtors = paramCtors;
+      this.retType = retType;
+    }
+  } 
 
-  const codeParameterNames = [
-    ["enable: bool"],
-    [],
-    [], 
-    [], 
-    ["node_id: uint8", "enable: bool"],
-    ["node_id: uint8"],
-    ["node_id: uint8", "index: uint16", "subindex: uint8", "size: uint32", "buffer: bytes"],
-    [],
-    ["enable: bool"], 
-    [],
-    ["node_id: uint8"],
-    ["node_id: uint8", "enable: bool"],
-    ["node_id: uint8"],
-    ["node_id: uint8"],
-    ["time: uint32"],
-    []
-  ];
+  function getNodeSelect() 
+  {
+        const NODES = {
+        0x18: 'Battery 1',
+        0x19: 'GPS',
+        0x1A: 'ACS',
+        0x1B: 'DxWiFi',
+        0x1C: 'Star Tracker',
+        0x1D: 'CFC Processor',
+        0x1E: 'CFC Sensor',
+        0x1F: 'Battery 2',
+        0x20: 'Reaction Wheel 1',
+        0x21: 'Reaction Wheel 2',
+        0x22: 'Reaction Wheel 3',
+        0x23: 'Reaction Wheel 4',
+      };
 
-  const codeReturnType = [
-    ["bool"],
-    [],
-    [], 
-    [], 
-    ["int"],
-    ["int"],
-    ["int"],
-    ["bool"],
-    ["bool"], 
-    ["int"],
-    ["bool"],
-    ["int"],
-    ["int"],
-    ["int"],
-    ["bool"],
-    ["bool"]
-  ];
+      const selectElement = document.createElement("select");
+      selectElement.classList.add("param");
 
-  const codeParameterTypes = [
-    ["bool"],
-    [],
-    [], 
-    [], 
-    ["int", "bool"],
-    ["int"],
-    ["int", "int", "int", "int", "bytes"],
-    [],
-    ["bool"], 
-    [],
-    ["int"],
-    ["int", "bool"],
-    ["int"],
-    ["int"],
-    ["int"],
-    []
-  ];
+    // add options to the select element
+    for (const [value, text] of Object.entries(NODES)) 
+    {
+      const optionElement = document.createElement("option");
+      optionElement.value = value;
+      optionElement.textContent = text;
+      selectElement.appendChild(optionElement);
+    }
+    return selectElement;
+  };
+  
+  let objects;
 
+  async function readAllObjects() 
+  {
+    objects = await fetch(`http://${window.location.host}/od-all`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.error !== undefined) {
+          console.log(data);
+        }
+        return data;
+      });
+  }
+
+
+  function getIndexSelect() 
+  {
+    const indexSelect = document.createElement("select");
+    indexSelect.setAttribute("id", "indexSelect");
+    indexSelect.onchange = updateSubindexSelect
+    for (const index in objects) {
+      let indexHex = "0x" + parseInt(index).toString(16).toUpperCase();
+      let opt = document.createElement("option");
+      opt.value = indexHex;
+      opt.innerHTML = `${indexHex} - ${objects[index].name}`;
+      indexSelect.appendChild(opt);
+    }
+
+    const subindexSelect = document.createElement("select");
+    subindexSelect.setAttribute("id", "subindexSelect");
+
+    return [indexSelect, subindexSelect];
+  };
+
+  function updateSubindexSelect() 
+  {
+    const indexSelect = document.getElementById("indexSelect");
+    const subindexSelect = document.getElementById("subindexSelect");
+    const index = parseInt(indexSelect.value, 16);
+    const obj = objects[index];
+
+    // clear select options
+    subindexSelect.options.length = 0
+
+    let opt = document.createElement("option");
+    opt.value = "";
+    opt.innerHTML = "None";
+    subindexSelect.appendChild(opt);
+
+    if (obj.subindexes === undefined)
+      subindexSelect.disabled = true;
+    else 
+    {
+      subindexSelect.disabled = false;
+      for (const subindex in objects[index].subindexes) {
+        let subindexHex = "0x" + parseInt(subindex).toString(16).toUpperCase();
+        let opt = document.createElement("option");
+        opt.value = subindexHex;
+        opt.innerHTML = `${subindexHex} - ${objects[index].subindexes[subindex].name}`;
+        subindexSelect.appendChild(opt);
+      }
+    }
+  }
+
+  function getBoolSelect() 
+  {
+    const selectElement = document.createElement("select");
+    const trueOption = document.createElement("option");
+    trueOption.value = true;
+    trueOption.textContent = "True";
+
+    const falseOption = document.createElement("option");
+    falseOption.value = false;
+    falseOption.textContent = "False";
+
+    selectElement.appendChild(trueOption);
+    selectElement.appendChild(falseOption);
+    selectElement.classList.add("param");
+
+    return selectElement;
+  }
+
+  function getIntTextInput(name) 
+  {
+    const paramTextbox = document.createElement("input");
+    paramTextbox.type = "text";
+    paramTextbox.placeholder = name;
+    paramTextbox.classList.add("param");
+
+    paramTextbox.addEventListener("input", function() {
+    
+    // Attempt to convert the user's input to an integer
+    paramTextbox.value = parseInt(paramTextbox.value);
+    
+    // Check if the conversion was successful
+    if (!isNaN(paramTextbox.value))
+      console.log("Converted integer value:", paramTextbox.value);
+    else
+      console.log("Invalid input, not an integer");
+    })
+
+    return paramTextbox;
+  }
+
+  function getTextInput(name) 
+  {
+    const paramTextbox = document.createElement("input");
+    paramTextbox.type = "text";
+    paramTextbox.placeholder = name;
+    paramTextbox.classList.add("param");
+    return paramTextbox;
+  }
+
+  const commands = [
+    new Command(0, "TX_CTRL", "Enable or disable Tx. Parameters: enable - True to enable Tx or False to disable Tx. Returns: Tx status.", ["enable: bool"], [getBoolSelect], ["bool"]),
+    new Command(1, "C3_SOFT_RESET", "Soft reset the C3 (reboot C3 daemon).", [], [], []),
+    new Command(2, "C3_HARD_RESET", "Hard reset the C3 (reboot system).", [], [], []),
+    new Command(3, "C3_FACTORY_RESET", "Factory reset the C3 (clear FRAM, reset RTC, and reboot system).", [], [], []),
+    new Command(4, "CO_NODE_ENABLE", "Enable a CANopen node. Parameters: node_id - Node id of the CANopen node to enable / disable. enable - True to enable or False to disable. Returns: Node status.", ["node_id: uint8", "enable: bool"], [getNodeSelect, getBoolSelect], ["int"]),
+    new Command(5, "CO_NODE_STATUS", "Get the status of a CANopen node. Parameters: node_id - Node id of node to get the status for. Returns: Node status.", ["node_id: uint8"], [getNodeSelect], ["int"]),
+    new Command(6, "CO_SDO_WRITE", "Write a value to a node's OD over the CAN bus using a CANopen SDO message. Parameters: node_id - The id of The CANopen node to write to. index - The OD index to write to. subindex - The OD subindex to write to. size - Size of the data buffer. buffer - Data buffer. Returns: SDO error code (0 is no error).", ["node_id: uint8", "index: int", "size: uint32", "buffer: bytes"], [getNodeSelect, getIndexSelect, getIntTextInput, getTextInput], ["int"]),
+    new Command(7, "CO_SYNC", "Send a CANopen SYNC message on the CAN bus. Returns: The CANopen SYNC message was sent successfully.", [], [], ["bool"]),
+    new Command(8, "OPD_SYSENABLE", "Enable the OPD subsystem. Parameters: enable - True to enable or False to disable. Returns: OPD subsystem status.", ["enable: bool"], [getBoolSelect], ["bool"]),
+    new Command(9, "OPD_SCAN", "Scan for all nodes on the OPD. Returns: The number of nodes found.", [], [], ["int"]),
+    new Command(10, "OPD_PROBE", "Probe for a node on the OPD. Parameters: node_id - The id of the OPD node to probe for. Returns: True if the node was found or False if not.", ["node_id: uint8"], [getNodeSelect], ["bool"]),
+    new Command(11, "OPD_ENABLE", "Enable or disable a node on the OPD. Parameters: node_id - The id of the OPD node to enable / disable. enable - True to enable or False to disable. Returns: OPD node status.", ["node_id: uint8", "enable: bool"], [getNodeSelect, getBoolSelect], ["int"]),
+    new Command(12, "OPD_RESET", "Reset a node on the OPD. Parameters: node_id - The id of the OPD node to reset. Returns: OPD node status.", ["node_id: uint8"], [getNodeSelect], ["int"]),
+    new Command(13, "OPD_STATUS", "Get the status of a node on the OPD. Parameters: node_id - The id of the OPD node to get the status of. Returns: OPD node status.", ["node_id: uint8"], [getNodeSelect], ["int"]),
+    new Command(14, "RTC_SET_TIME", "Set the RTC time. Parameters: time - The unix time in seconds. Returns: The RTC time was set successfully.", ["time: uint32"], [getIntTextInput], ["bool"]),
+    new Command(15, "TIME_SYNC", "C3 will send OreSat's Time Sync TPDO over the CAN bus (all nodes that are powered on and care about time will sync to it). Returns: Time sync was sent.", [], [], ["bool"]),
+];
+
+
+  // Get handles to HTML elements
+  let codeSelect = document.getElementById("codeSelect");
   let args = document.getElementById("args");  
   let submitButton = document.getElementById("submitButton");
+  let responseDiv = document.getElementById("responseDiv");
+  let argsTable = document.getElementById("argsTable");
 
-  // When form is submitted
-  submitButton.addEventListener("click", async () => 
+  // On page load, create list of commands to choose from
+  commands.forEach((command) => {
+    const optionElement = document.createElement("option");
+    optionElement.value = command.code.toString();
+    optionElement.textContent = command.name;
+    codeSelect.appendChild(optionElement);
+  });
+  codeSelect.value = "0";
+
+  // Callback when form is submitted
+  submitButton.onclick = submit
+  async function submit()
   {
 
   // Get the selected code
@@ -170,12 +256,9 @@
   let responseJSON = await SendCommand(code)
   
   // Display response value (if there is one)
-  if (codeReturnType[code].length != 0)
-  {
-    const responseDiv = document.getElementById("responseDiv");
+  if (commands[code].retType.length != 0)
     responseDiv.textContent = JSON.stringify(responseJSON, null, 2);
-  }
-  });
+  };
 
   async function SendCommand(code) 
   {
@@ -184,14 +267,16 @@
     let requestData = {};
 
     // Create an array to store input elements
-    const inputList = [];
+    let inputList = [];
 
     // Iterate through form elements
     for (let i = 0; i < args.elements.length; i++) 
     {
       const element = args.elements[i];
-      if (element.tagName === "INPUT") {
-        inputList.push(convertType(element.value, codeParameterTypes[code][i]));
+      if (element.tagName === "INPUT" || element.tagName === "SELECT")
+      {
+        try {inputList.push(element.value);} 
+        catch (e) {return e.message;}
       }
     }
 
@@ -207,14 +292,14 @@
     return json;
 }
 
-
 function convertType(value, type) 
 {
     let convertedValue;
     if (type === "bool") 
     {
-      if (value.toLowerCase() === 'true' || value === '1' || value.toLowerCase() === 't') {convertedValue = true;}
-      else {convertedValue = false;}     
+      if (value.toLowerCase() === 'true' || value.toLowerCase() === 't') {convertedValue = true;}
+      else if (value.toLowerCase() === 'false' || value.toLowerCase() === 'f') {convertedValue = false;}
+      else {throw new Error('Error: ' + value + ' is not true or false');}     
     } 
     else if (type === "int") {convertedValue = parseInt(value);} 
     else  // Bytes 
@@ -225,59 +310,66 @@ function convertType(value, type)
     return convertedValue;
 }
 
-  const codeSelect = document.getElementById("codeSelect");
-  const argsBody = document.getElementById("argsBody");
-
   // Triggers when an option is changed
-  codeSelect.addEventListener("change", function() 
+  codeSelect.onchange = updateCodeSelect
+
+  async function updateCodeSelect(value, type) 
   {
     const code = parseInt(codeSelect.value);
 
+    // Load OD
+    await readAllObjects();
+
     // Clear existing rows
-    argsBody.innerHTML = "";
+    argsTable.innerHTML = "";
 
     // Create a new row for the description
-    const descriptionRow = document.createElement("tr");
-    const descriptionCell = document.createElement("td");
-    descriptionCell.textContent = optionDescriptions[code];
-    descriptionCell.colSpan = codeParameterNames[code].length; // Span the entire row
+    let descriptionRow = document.createElement("tr");
+    let descriptionCell = document.createElement("td");
+    descriptionCell.textContent = commands[code].desc;
+    descriptionCell.colSpan = commands[code].paramNames.length; // Span the entire row
     descriptionRow.appendChild(descriptionCell);
-    argsBody.appendChild(descriptionRow);
+    argsTable.appendChild(descriptionRow);
 
     // If the selected option has parameters, add another row for them
-    if (codeParameterNames[code].length > 0) 
+    if (commands[code].paramNames.length > 0) 
     {
       const parametersRow = document.createElement("tr");
-      for (let i = 0; i < codeParameterNames[code].length; i++) 
+      for (let i = 0; i < commands[code].paramNames.length; i++) 
       {
-        const argument = codeParameterNames[code][i];
-        const argumentCell = document.createElement("td");
-        argumentCell.classList.add("parameter-cell");
-        const argumentTextbox = document.createElement("input");
-        argumentTextbox.type = "text";
-        argumentTextbox.placeholder = argument;
-        argumentTextbox.classList.add("argument-textbox");
-
-        argumentTextbox.addEventListener("input", function () 
+        let paramCell = document.createElement("td");
+        paramCell.classList.add("parameter-cell");
+        if (commands[code].paramCtors[i] === getIntTextInput || commands[code] === getTextInput)
         {
-          if (argumentTextbox.value === argument) 
-          {
-            argumentTextbox.value = "";
-            argumentTextbox.classList.remove("placeholder");
-          }
-        });
+          let paramElement = commands[code].paramCtors[i](commands[code].paramNames[i])  // Pass in param name
+          paramCell.appendChild(paramElement)
+          parametersRow.appendChild(paramCell);
+        }
+        else if (commands[code].paramCtors[i] === getIndexSelect)
+        {
+          let paramElement = commands[code].paramCtors[i]()
+          paramCell.appendChild(paramElement[0])
+          parametersRow.appendChild(paramCell);
 
-        argumentCell.appendChild(argumentTextbox);
-        parametersRow.appendChild(argumentCell);
+          paramCell.appendChild(paramElement[1])
+          parametersRow.appendChild(paramCell);
+        }
+        else
+        {
+          let paramElement = commands[code].paramCtors[i]()
+          paramCell.appendChild(paramElement)
+          parametersRow.appendChild(paramCell);
+        }
       }
-      
 
       // Set the custom property for parameter count
-      parametersRow.style.setProperty("--parameter-count", codeParameterNames[code].length);
+      parametersRow.style.setProperty("--parameter-count", commands[code].paramNames.length);
 
-      argsBody.appendChild(parametersRow);
+      argsTable.appendChild(parametersRow);
+      //updateSubindexSelect();
+
     }
-  });
+  };
 
   // Trigger the event to display the first option when the page loads
   codeSelect.dispatchEvent(new Event("change"));

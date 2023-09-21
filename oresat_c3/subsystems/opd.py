@@ -408,6 +408,10 @@ class Opd:
     _SYS_RESET_DELAY_S = 10
     _RESET_ATTEMPTS = 3
 
+    # values for getting opd current value from ADC pin
+    _R_SET = 23_700  # ohms
+    _MAX982L_CUR_RATIO = 965  # curret ratio
+
     def __init__(self, not_enable_pin: int, not_fault_pin: int, current_pin: int, bus: int,
                  mock: bool = False):
         '''
@@ -598,6 +602,6 @@ class Opd:
 
     @property
     def current(self) -> int:
-        '''int: OPD current.'''
+        '''int: OPD current in milliamps.'''
 
-        return self._adc.value
+        return int(self._adc.value * self._MAX982L_CUR_RATIO / self._R_SET * 1000)

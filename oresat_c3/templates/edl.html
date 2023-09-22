@@ -34,7 +34,6 @@
     width: 100%;
     max-width: calc(100% - 10px);
     border: 0px solid #ddd;
-    
   }
 
   #submitButton {
@@ -51,8 +50,7 @@
 <button id="submitButton" type="submit">Send</button>
 
 <script>
-  class Command 
-  {
+  class Command {
     constructor(code, name, desc, paramNames, paramCtors, retType) {
       this.code = code;
       this.name = name;
@@ -63,41 +61,47 @@
     }
   } 
 
-  function getNodeSelect() 
-  {
-        const NODES = {
-        0x18: 'Battery 1',
-        0x19: 'GPS',
-        0x1A: 'ACS',
-        0x1B: 'DxWiFi',
-        0x1C: 'Star Tracker',
-        0x1D: 'CFC Processor',
-        0x1E: 'CFC Sensor',
-        0x1F: 'Battery 2',
-        0x20: 'Reaction Wheel 1',
-        0x21: 'Reaction Wheel 2',
-        0x22: 'Reaction Wheel 3',
-        0x23: 'Reaction Wheel 4',
-      };
+  function getNodeSelect() {
+    const NODES = {
+      0x18: 'Battery 1',
+      0x19: 'GPS',
+      0x1A: 'ACS',
+      0x1B: 'DxWiFi',
+      0x1C: 'Star Tracker',
+      0x1D: 'CFC Processor',
+      0x1E: 'CFC Sensor',
+      0x1F: 'Battery 2',
+      0x20: 'Reaction Wheel 1',
+      0x21: 'Reaction Wheel 2',
+      0x22: 'Reaction Wheel 3',
+      0x23: 'Reaction Wheel 4',
+    };
 
-      const selectElement = document.createElement("select");
-      selectElement.classList.add("param");
+    const selectElement = document.createElement("select");
+    selectElement.classList.add("param");
 
-    // add options to the select element
-    for (const [value, text] of Object.entries(NODES)) 
-    {
+    // Add options to the select element
+    for (const [value, text] of Object.entries(NODES)) {
       const optionElement = document.createElement("option");
       optionElement.value = value;
       optionElement.textContent = text;
       selectElement.appendChild(optionElement);
     }
+    
+    // Store proper type
+    selectElement.addEventListener("change", function() {
+      // Convert value to int
+      let intValue = parseInt(selectElement.value);
+      selectElement.typedValue = intValue;
+    })
+    selectElement.dispatchEvent(new Event("change"));
+
     return selectElement;
   };
   
   let objects;
 
-  async function readAllObjects() 
-  {
+  async function readAllObjects() {
     objects = await fetch(`http://${window.location.host}/od-all`)
       .then(response => response.json())
       .then(data => {
@@ -108,35 +112,31 @@
       });
   }
 
-
-  function getIndexSelect() 
-  {
-    const indexSelect = document.createElement("select");
-    indexSelect.setAttribute("id", "indexSelect");
-    indexSelect.onchange = updateSubindexSelect
-    for (const index in objects) {
+  function getIndexSelect() {
+  const indexSelect = document.createElement("select");
+  indexSelect.setAttribute("id", "indexSelect");
+  // Set index options
+  for (const index in objects) {
       let indexHex = "0x" + parseInt(index).toString(16).toUpperCase();
       let opt = document.createElement("option");
       opt.value = indexHex;
       opt.innerHTML = `${indexHex} - ${objects[index].name}`;
       indexSelect.appendChild(opt);
     }
+  
+  const subindexSelect = document.createElement("select");
+  subindexSelect.setAttribute("id", "subindexSelect");
 
-    const subindexSelect = document.createElement("select");
-    subindexSelect.setAttribute("id", "subindexSelect");
+  // Add a single event listener to handle changes in both select elements
+  indexSelect.addEventListener("change", function() {
+    // Convert value to int
+    let intValue = parseInt(indexSelect.value);
+    indexSelect.typedValue = intValue;
 
-    return [indexSelect, subindexSelect];
-  };
+    const obj = objects[intValue];
 
-  function updateSubindexSelect() 
-  {
-    const indexSelect = document.getElementById("indexSelect");
-    const subindexSelect = document.getElementById("subindexSelect");
-    const index = parseInt(indexSelect.value, 16);
-    const obj = objects[index];
-
-    // clear select options
-    subindexSelect.options.length = 0
+    // Clear select options
+    subindexSelect.options.length = 0;
 
     let opt = document.createElement("option");
     opt.value = "";
@@ -145,21 +145,25 @@
 
     if (obj.subindexes === undefined)
       subindexSelect.disabled = true;
-    else 
-    {
+    else {
       subindexSelect.disabled = false;
-      for (const subindex in objects[index].subindexes) {
+      for (const subindex in obj.subindexes) {
         let subindexHex = "0x" + parseInt(subindex).toString(16).toUpperCase();
         let opt = document.createElement("option");
         opt.value = subindexHex;
-        opt.innerHTML = `${subindexHex} - ${objects[index].subindexes[subindex].name}`;
+        opt.innerHTML = `${subindexHex} - ${obj.subindexes[subindex].name}`;
         subindexSelect.appendChild(opt);
       }
     }
-  }
+  });
 
-  function getBoolSelect() 
-  {
+  // Trigger the initial change event to set the typedValue
+  indexSelect.dispatchEvent(new Event("change"));
+
+  return [indexSelect, subindexSelect];
+}
+
+  function getBoolSelect() {
     const selectElement = document.createElement("select");
     const trueOption = document.createElement("option");
     trueOption.value = true;
@@ -173,37 +177,52 @@
     selectElement.appendChild(falseOption);
     selectElement.classList.add("param");
 
+    // Add proper type
+    selectElement.addEventListener("change", function() {
+      // Convert value to bool
+      let boolValue = JSON.parse(selectElement.value);
+      selectElement.typedValue = boolValue;
+    })
+    selectElement.dispatchEvent(new Event("change"));
+
+
     return selectElement;
   }
 
-  function getIntTextInput(name) 
-  {
+  function getIntTextInput(name) {
     const paramTextbox = document.createElement("input");
     paramTextbox.type = "text";
     paramTextbox.placeholder = name;
     paramTextbox.classList.add("param");
 
+    // Add proper type
     paramTextbox.addEventListener("input", function() {
+      // Attempt to convert the user's input to an integer
+      let intValue = parseInt(paramTextbox.value);
+      paramTextbox.typedValue = intValue;
     
-    // Attempt to convert the user's input to an integer
-    paramTextbox.value = parseInt(paramTextbox.value);
-    
-    // Check if the conversion was successful
-    if (!isNaN(paramTextbox.value))
-      console.log("Converted integer value:", paramTextbox.value);
-    else
-      console.log("Invalid input, not an integer");
+      // Check if the conversion was successful
+      if (!isNaN(intValue))
+        console.log("Converted integer value:", intValue);
+      else
+        console.log("Invalid input, not an integer");
     })
 
     return paramTextbox;
   }
 
-  function getTextInput(name) 
-  {
+  function getTextInput(name) {
     const paramTextbox = document.createElement("input");
     paramTextbox.type = "text";
     paramTextbox.placeholder = name;
     paramTextbox.classList.add("param");
+
+    // Add proper type
+    paramTextbox.addEventListener("input", function() {
+      // Cconvert the user's input to an 64 bit string
+      let string = btoa(paramTextbox.value);
+      paramTextbox.typedValue = string;
+    })
     return paramTextbox;
   }
 
@@ -224,8 +243,7 @@
     new Command(13, "OPD_STATUS", "Get the status of a node on the OPD. Parameters: node_id - The id of the OPD node to get the status of. Returns: OPD node status.", ["node_id: uint8"], [getNodeSelect], ["int"]),
     new Command(14, "RTC_SET_TIME", "Set the RTC time. Parameters: time - The unix time in seconds. Returns: The RTC time was set successfully.", ["time: uint32"], [getIntTextInput], ["bool"]),
     new Command(15, "TIME_SYNC", "C3 will send OreSat's Time Sync TPDO over the CAN bus (all nodes that are powered on and care about time will sync to it). Returns: Time sync was sent.", [], [], ["bool"]),
-];
-
+  ];
 
   // Get handles to HTML elements
   let codeSelect = document.getElementById("codeSelect");
@@ -244,24 +262,21 @@
   codeSelect.value = "0";
 
   // Callback when form is submitted
-  submitButton.onclick = submit
-  async function submit()
-  {
-
-  // Get the selected code
-  let code = document.getElementById("codeSelect").value;
+  submitButton.onclick = submit;
+  async function submit() {
+    // Get the selected code
+    let code = document.getElementById("codeSelect").value;
   
-  // TODO: Check the args here
+    // TODO: Check the args here
 
-  let responseJSON = await SendCommand(code)
+    let responseJSON = await SendCommand(code);
   
-  // Display response value (if there is one)
-  if (commands[code].retType.length != 0)
-    responseDiv.textContent = JSON.stringify(responseJSON, null, 2);
-  };
+    // Display response value (if there is one)
+    if (commands[code].retType.length != 0)
+      responseDiv.textContent = JSON.stringify(responseJSON, null, 2);
+  }
 
-  async function SendCommand(code) 
-  {
+  async function SendCommand(code) {
     const url = `http://${window.location.host}/static/edl/c3-cmd/${code}`;
     
     let requestData = {};
@@ -270,13 +285,14 @@
     let inputList = [];
 
     // Iterate through form elements
-    for (let i = 0; i < args.elements.length; i++) 
-    {
+    for (let i = 0; i < args.elements.length; i++) {
       const element = args.elements[i];
-      if (element.tagName === "INPUT" || element.tagName === "SELECT")
-      {
-        try {inputList.push(element.value);} 
-        catch (e) {return e.message;}
+      if (element.tagName === "INPUT" || element.tagName === "SELECT") {
+        try {
+          inputList.push(element.typedValue);
+        } catch (e) {
+          return e.message;
+        }
       }
     }
 
@@ -290,31 +306,12 @@
 
     let json = await response.json();
     return json;
-}
-
-function convertType(value, type) 
-{
-    let convertedValue;
-    if (type === "bool") 
-    {
-      if (value.toLowerCase() === 'true' || value.toLowerCase() === 't') {convertedValue = true;}
-      else if (value.toLowerCase() === 'false' || value.toLowerCase() === 'f') {convertedValue = false;}
-      else {throw new Error('Error: ' + value + ' is not true or false');}     
-    } 
-    else if (type === "int") {convertedValue = parseInt(value);} 
-    else  // Bytes 
-    { 
-      convertedValue = btoa(value);
-    } 
-
-    return convertedValue;
-}
+  }
 
   // Triggers when an option is changed
-  codeSelect.onchange = updateCodeSelect
+  codeSelect.onchange = updateCodeSelect;
 
-  async function updateCodeSelect(value, type) 
-  {
+  async function updateCodeSelect(value, type) {
     const code = parseInt(codeSelect.value);
 
     // Load OD
@@ -330,46 +327,37 @@ function convertType(value, type)
     descriptionCell.colSpan = commands[code].paramNames.length; // Span the entire row
     descriptionRow.appendChild(descriptionCell);
     argsTable.appendChild(descriptionRow);
-
-    // If the selected option has parameters, add another row for them
-    if (commands[code].paramNames.length > 0) 
-    {
+    
+    // Add parameter rows
+    for (let i = 0; i < commands[code].paramNames.length; i++) {
       const parametersRow = document.createElement("tr");
-      for (let i = 0; i < commands[code].paramNames.length; i++) 
-      {
-        let paramCell = document.createElement("td");
-        paramCell.classList.add("parameter-cell");
-        if (commands[code].paramCtors[i] === getIntTextInput || commands[code] === getTextInput)
-        {
-          let paramElement = commands[code].paramCtors[i](commands[code].paramNames[i])  // Pass in param name
-          paramCell.appendChild(paramElement)
-          parametersRow.appendChild(paramCell);
-        }
-        else if (commands[code].paramCtors[i] === getIndexSelect)
-        {
-          let paramElement = commands[code].paramCtors[i]()
-          paramCell.appendChild(paramElement[0])
-          parametersRow.appendChild(paramCell);
+      const paramCell = document.createElement("td");
+      paramCell.classList.add("parameter-cell");
+      let paramElement;
 
-          paramCell.appendChild(paramElement[1])
-          parametersRow.appendChild(paramCell);
-        }
-        else
-        {
-          let paramElement = commands[code].paramCtors[i]()
-          paramCell.appendChild(paramElement)
-          parametersRow.appendChild(paramCell);
-        }
+      if (commands[code].paramCtors[i] === getIndexSelect) {
+        const [paramElement1, paramElement2] = commands[code].paramCtors[i]();
+        paramCell.appendChild(paramElement1);
+        paramCell.appendChild(paramElement2);
+      } else if (
+        commands[code].paramCtors[i] === getIntTextInput ||
+        commands[code].paramCtors[i] === getTextInput
+      ) {
+        paramElement = commands[code].paramCtors[i](commands[code].paramNames[i]);
+        paramCell.appendChild(paramElement);
+      } else {
+        paramElement = commands[code].paramCtors[i]();
+        paramCell.appendChild(paramElement);
       }
+
+      parametersRow.appendChild(paramCell);
 
       // Set the custom property for parameter count
       parametersRow.style.setProperty("--parameter-count", commands[code].paramNames.length);
 
       argsTable.appendChild(parametersRow);
-      //updateSubindexSelect();
-
     }
-  };
+  }
 
   // Trigger the event to display the first option when the page loads
   codeSelect.dispatchEvent(new Event("change"));

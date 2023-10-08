@@ -9,8 +9,8 @@ from time import time
 
 import canopen
 from olaf import Service, logger, NodeStop
+from oresat_od_db import NodeId
 
-from .. import NodeId
 from ..protocols.edl_packet import EdlPacket, EdlPacketError, SRC_DEST_UNICLOGS
 from ..protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
 from ..subsystems.opd import Opd, OpdNode
@@ -35,17 +35,28 @@ class EdlService(Service):
         logger.info(f'EDL downlink socket: {self._DOWNLINK_ADDR}')
         self._downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+        self._hmac_key = b''
+        self._seq_num = 0
+
+        self._tx_enable_obj: canopen.objectdictionary.Variable = None
+        self._last_tx_enable_obj: canopen.objectdictionary.Variable = None
+        self._edl_sequence_count_obj: canopen.objectdictionary.Variable = None
+        self._edl_rejected_count_obj: canopen.objectdictionary.Variable = None
+        self._last_edl_obj: canopen.objectdictionary.Variable = None
+
     def on_start(self):
 
-        self._hmac_key = self.node.od['Crypto Key'].value
-        self._seq_num = self.node.od['Persistent State']['EDL Sequence Count'].value
+        edl_rec = self.node.od['edl']
+        tx_rec = self.node.od['tx_control']
 
-        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
-        persist_state_rec = self.node.od['Persistent State']
-        self._last_tx_enabled_obj = persist_state_rec['Last TX Enable']
-        self._edl_sequence_count_obj = persist_state_rec['EDL Sequence Count']
-        self._edl_rejected_count_obj = persist_state_rec['EDL Rejected Count']
-        self._last_edl_obj = persist_state_rec['Last EDL']
+        self._hmac_key = b'\x00' * 32  # TODO edl_rec['crypto_key'].value
+        self._seq_num = edl_rec['sequence_count'].value
+
+        self._tx_enable_obj = tx_rec['enable']
+        self._last_tx_enable_obj = tx_rec['last_enable_timestamp']
+        self._edl_sequence_count_obj = edl_rec['sequence_count']
+        self._edl_rejected_count_obj = edl_rec['rejected_count']
+        self._last_edl_obj = edl_rec['last_timestamp']
 
     def on_loop(self):
 
@@ -101,13 +112,13 @@ class EdlService(Service):
         if request.code == EdlCommandCode.TX_CTRL:
             if request.args[0] == b'\x00':
                 logger.info('EDL disabling Tx')
-                self._tx_enabled_obj.value = False
-                self._last_tx_enabled_obj.value = 0
+                self._tx_enable_obj.value = False
+                self._last_tx_enable_obj.value = 0
                 ret = False
             else:
                 logger.info('EDL enabling Tx')
-                self._tx_enabled_obj.value = True
-                self._last_tx_enabled_obj.value = int(time())
+                self._tx_enable_obj.value = True
+                self._last_tx_enable_obj.value = int(time())
                 ret = True
         elif request.code == EdlCommandCode.C3_SOFT_RESET:
             logger.info('EDL soft reset')
@@ -119,11 +130,11 @@ class EdlService(Service):
             logger.info('EDL factory reset')
             self.node.stop(NodeStop.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
-            node = NodeId.from_bytes(request.args[0])
+            node = NodeId(int(request.args[0]))
             logger.info(f'EDL enabling CANopen node {node.name}')
             # TODO
         elif request.code == EdlCommandCode.CO_NODE_STATUS:
-            node = NodeId.from_bytes(request.args[0])
+            node = NodeId(int(request.args[0]))
             logger.info(f'EDL getting CANopen node {node.name} status')
             ret = self.node.node_status[node.value]
         elif request.code == EdlCommandCode.CO_SDO_WRITE:

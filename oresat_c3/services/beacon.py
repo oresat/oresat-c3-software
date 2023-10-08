@@ -5,192 +5,70 @@ Handles the beaconing.
 '''
 
 import socket
+from time import time
 
-from olaf import Service, logger
+from olaf import Service, logger, scet_int_from_time
 
 from .. import C3State
 from ..protocols.ax25 import ax25_pack
-
-BEACON_FIELDS = [
-    # C3
-    ('APRS', 'Start Chars'),
-    ('APRS', 'Satellite ID'),
-    ('APRS', 'Beacon Revision'),
-    ('C3 State', None),
-    ('C3 Telemetry', 'Uptime'),
-    ('APRS', 'Unix Time'),
-    ('Persistent State', 'Power Cycles'),
-    ('C3 Telemetry', 'eMMC Usage'),
-    ('Persistent State', 'LBand RX Bytes'),
-    ('Persistent State', 'LBand RX Packets'),
-    ('C3 Telemetry', 'LBand RSSI'),
-    ('Persistent State', 'UHF RX Bytes'),
-    ('Persistent State', 'UHF RX Packets'),
-    ('C3 Telemetry', 'UHF RSSI'),
-    ('C3 Telemetry', 'Bank State'),
-    ('Persistent State', 'EDL Sequence Count'),
-    ('Persistent State', 'EDL Rejected Count'),
-    # Battery 0
-    ('Battery 0', 'VBatt BP1'),
-    ('Battery 0', 'VCell BP1'),
-    ('Battery 0', 'VCell max BP1'),
-    ('Battery 0', 'VCell min BP1'),
-    ('Battery 0', 'VCell1 BP1'),
-    ('Battery 0', 'VCell2 BP1'),
-    ('Battery 0', 'VCell avg BP1'),
-    ('Battery 0', 'Temperature BP1'),
-    ('Battery 0', 'Temperature avg BP1'),
-    ('Battery 0', 'Temperature max BP1'),
-    ('Battery 0', 'Temperature min BP1'),
-    ('Battery 0', 'Current BP1'),
-    ('Battery 0', 'Current avg BP1'),
-    ('Battery 0', 'Current max BP1'),
-    ('Battery 0', 'Current min BP1'),
-    ('Battery 0', 'State BP1'),
-    ('Battery 0', 'Reported State of Charge BP1'),
-    ('Battery 0', 'Full Capacity BP1'),
-    ('Battery 0', 'Reported Capacity BP1'),
-    ('Battery 0', 'VBatt BP2'),
-    ('Battery 0', 'VCell BP2'),
-    ('Battery 0', 'VCell max BP2'),
-    ('Battery 0', 'VCell min BP2'),
-    ('Battery 0', 'VCell1 BP2'),
-    ('Battery 0', 'VCell2 BP2'),
-    ('Battery 0', 'VCell avg BP2'),
-    ('Battery 0', 'Temperature BP2'),
-    ('Battery 0', 'Temperature avg BP2'),
-    ('Battery 0', 'Temperature max BP2'),
-    ('Battery 0', 'Temperature min BP2'),
-    ('Battery 0', 'Current BP2'),
-    ('Battery 0', 'Current avg BP2'),
-    ('Battery 0', 'Current max BP2'),
-    ('Battery 0', 'Current min BP2'),
-    ('Battery 0', 'State BP2'),
-    ('Battery 0', 'Reported State of Charge BP2'),
-    ('Battery 0', 'Full Capacity BP2'),
-    ('Battery 0', 'Reported Capacity BP2'),
-    # Solar Panel 0
-    ('Solar Panel 0', 'Voltage Avg'),
-    ('Solar Panel 0', 'Current Avg'),
-    ('Solar Panel 0', 'Power Avg'),
-    ('Solar Panel 0', 'Voltage Max'),
-    ('Solar Panel 0', 'Current Max'),
-    ('Solar Panel 0', 'Power Max'),
-    ('Solar Panel 0', 'Energy'),
-    # Solar Panel 1
-    ('Solar Panel 1', 'Voltage Avg'),
-    ('Solar Panel 1', 'Current Avg'),
-    ('Solar Panel 1', 'Power Avg'),
-    ('Solar Panel 1', 'Voltage Max'),
-    ('Solar Panel 1', 'Current Max'),
-    ('Solar Panel 1', 'Power Max'),
-    ('Solar Panel 1', 'Energy'),
-    # Solar Panel 2
-    ('Solar Panel 2', 'Voltage Avg'),
-    ('Solar Panel 2', 'Current Avg'),
-    ('Solar Panel 2', 'Power Avg'),
-    ('Solar Panel 2', 'Voltage Max'),
-    ('Solar Panel 2', 'Current Max'),
-    ('Solar Panel 2', 'Power Max'),
-    ('Solar Panel 2', 'Energy'),
-    # Solar Panel 3
-    ('Solar Panel 3', 'Voltage Avg'),
-    ('Solar Panel 3', 'Current Avg'),
-    ('Solar Panel 3', 'Power Avg'),
-    ('Solar Panel 3', 'Voltage Max'),
-    ('Solar Panel 3', 'Current Max'),
-    ('Solar Panel 3', 'Power Max'),
-    ('Solar Panel 3', 'Energy'),
-    # Star Tracker
-    ('Star Tracker 0', 'Root Partition Percent'),
-    ('Star Tracker 0', 'Fread cache length'),
-    ('Star Tracker 0', 'Updater Status'),
-    ('Star Tracker 0', 'Updates available'),
-    ('Star Tracker 0', 'Right Ascension'),
-    ('Star Tracker 0', 'Declination'),
-    ('Star Tracker 0', 'Roll'),
-    ('Star Tracker 0', 'Timestamp Short'),
-    # GPS
-    ('GPS', 'Root Partition Percent'),
-    ('GPS', 'Fread cache length'),
-    ('GPS', 'Updater Status'),
-    ('GPS', 'Updates available'),
-    ('GPS', 'GPS Status'),
-    ('GPS', 'Satellites Locked'),
-    ('GPS', 'Position X'),
-    ('GPS', 'Position Y'),
-    ('GPS', 'Position Z'),
-    ('GPS', 'Velocity X'),
-    ('GPS', 'Velocity Y'),
-    ('GPS', 'Velocity Z'),
-    ('GPS', 'Timestamp Short'),
-    # ACS
-    ('ACS', 'Gyro roll'),
-    ('ACS', 'Gyro pitch'),
-    ('ACS', 'Gyro yaw'),
-    ('ACS', 'IMU temp'),
-    # DxWiFi
-    ('DxWiFi', 'Root Partition Percent'),
-    ('DxWiFi', 'Fread cache length'),
-    ('DxWiFi', 'Updater Status'),
-    ('DxWiFi', 'Updates available'),
-    ('DxWiFi', 'Transmitting'),
-]
-'''
-List of OD locations for the beacon fields.
-
-Field location must be list of tuples with one value and None for a Variables at a index or
-two values for Variables at a index and subindex.
-
-NOTE: Do not include leading APRS header or trailing CRC32.
-'''
 
 
 class BeaconService(Service):
 
     _DOWNLINK_ADDR = ('localhost', 10015)
 
-    def __init__(self):
+    def __init__(self, beacon_def: dict):
         super().__init__()
 
+        self._beacon_def = beacon_def
         logger.info(f'Beacon socket: {self._DOWNLINK_ADDR}')
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
+        self._ts = 0.0
 
     def on_start(self):
 
+        beacon_rec = self.node.od['beacon']
+
         # objects
-        self._c3_state_obj = self.node.od['C3 State']
-        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
+        self._c3_state_obj = self.node.od['status']
+        self._tx_enabled_obj = self.node.od['tx_control']['enable']
+        self._delay_obj = beacon_rec['delay']
 
         # contants
-        self._aprs_dest = self.node.od['APRS']['Dest Callsign'].value
-        self._aprs_src = self.node.od['APRS']['Src Callsign'].value
+        self._dest_callsign = beacon_rec['dest_callsign'].value
+        self._src_callsign = beacon_rec['src_callsign'].value
+        self._start_chars = beacon_rec['start_chars'].value.encode()
 
-        self.node.add_sdo_write_callback(0x8000, self._on_write)
-
-        self.interval_obj = self.node.od['TX Control']['Beacon Interval']
+        self.node.add_sdo_callbacks('beacon', 'send_now', None, self._on_write_send_now)
+        self.node.add_sdo_callbacks('beacon', 'last_timestamp', self._on_read_last_ts, None)
 
     def on_loop(self):
+
+        if self._delay_obj.value <= 0:
+            self.sleep(1)
+            return  # do nothing
 
         if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
             self._send_beacon()
 
-        self.sleep(self.interval_obj.value)
+        self.sleep(self._delay_obj.value)
 
     def _send_beacon(self):
 
-        payload = bytes()
-        for field in BEACON_FIELDS:
-            if field[1] is None:
-                obj = self.node.od[field[0]]
+        payload = self._start_chars
+        for field in self._beacon_def['fields']:
+            index = field[0]
+            subindex = field[1]
+            if len(field) == 1:
+                obj = self.node.od[index]
             else:
-                obj = self.node.od[field[0]][field[1]]
+                obj = self.node.od[index][subindex]
             payload += obj.encode_raw(obj.value)
 
         packet = ax25_pack(
-            dest=self._aprs_dest,
+            dest=self._src_callsign,
             dest_ssid=0,
-            src=self._aprs_src,
+            src=self._dest_callsign,
             src_ssid=0,
             control=0,
             pid=0,
@@ -199,8 +77,16 @@ class BeaconService(Service):
         )
 
         logger.debug('beaconing')
+        self._ts = time()
         self._socket.sendto(packet, self._DOWNLINK_ADDR)
 
-    def _on_write(self, index: int, subindex: int, value):
+    def _on_read_last_ts(self) -> int:
+        '''SDO read callback to get the SCET timestamp of the last beacon.'''
 
-        self._send_beacon()
+        return scet_int_from_time(self._ts)
+
+    def _on_write_send_now(self, value: bool):
+        '''SDO write callback to send a beacon immediately.'''
+
+        if value:
+            self._send_beacon()

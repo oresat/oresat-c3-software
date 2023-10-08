@@ -49,7 +49,7 @@
     const NODES = {
        0x18: "Battery 1",
        0x19: "GPS",
-       0x1A: "ACS",
+       0x1A: "IMU",
        0x1B: "DxWiFi",
        0x1C: "Star Tracker",
        0x1D: "CFC Processor",
@@ -99,9 +99,9 @@
 
     /** Enable / disable a node button callback */
     async function nodeOnClick(nodeId) {
-      await writeValue("0x8001", "0x3", nodeId);
+      await writeValue("opd", "node_select", nodeId);
       const enable = document.getElementById(`node${nodeId}Button`).innerText === "Enable";
-      let data = await writeValue("0x8001", "0x4", enable);
+      let data = await writeValue("opd", "node_enable", enable);
       updateNode(nodeId, data.value);
     }
 
@@ -136,13 +136,13 @@
       const enableButton = document.getElementById("enableSystemButton");
       const spanButton = document.getElementById("scanNodesButton");
       const div = document.getElementById("opdTableDiv");
-      let systemData = await readValue("0x8001","0x1");
-      let systemFault = await readValue("0x8001","0x6");
-      let systemCurrent = await readValue("0x7000","0x6");
+      let systemEnable = await readValue("opd","enable");
+      let systemFault = await readValue("opd","has_fault");
+      let systemCurrent = await readValue("opd","current");
       let data;
 
-      if (systemData.value) { // only update if system is enabled
-        data = await readValue("0x8001","0x2");
+      if (systemEnable.value) { // only update if system is enabled
+        data = await readValue("opd","nodes_status_json");
         const json = JSON.parse(data.value);
         for (const key in json) {
           updateNode(key, json[key]);
@@ -159,7 +159,7 @@
 
       // do this after the node updates to get the correct values before
       // showning table
-      if (systemData.value === true) {
+      if (systemEnable.value === true) {
         statusSpan.innerText = "ENABLED";
         enableButton.innerText = "Disable System";
         div.style.display = "";
@@ -175,13 +175,13 @@
     /** Enable / disable the OPD subsystem button callback */
     async function enableSystem() {
       const enable = document.getElementById("systemStatus").innerText !== "ENABLED";
-      const data = await writeValue("0x8001", "0x1", enable);
+      const data = await writeValue("opd", "enable", enable);
       updateStatus();
     }
 
     /** Scan button callback */
     async function scan() {
-      const data = await writeValue("0x8001", "0x5", true);
+      const data = await writeValue("opd", "scan", true);
       updateStatus();
     }
 

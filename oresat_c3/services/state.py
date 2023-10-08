@@ -24,46 +24,48 @@ class StateService(Service):
         self._attempts = 0
 
         self._boot_time = time()
+        self._fram_entry_co_objs = {}
 
     def on_start(self):
 
-        self._attempts_obj = self.node.od['Deployment Control']['Attempts']
-        persist_state_rec = self.node.od['Persistent State']
-        self._deployed_obj = persist_state_rec['Deployed']
-        self._last_edl_obj = persist_state_rec['Last EDL']
-        self._c3_state_obj = self.node.od['C3 State']
-        self._tx_timeout_obj = self.node.od['TX Control']['Timeout']
-        self._tx_enabled_obj = self.node.od['TX Control']['Enabled']
-        self._last_tx_enable_obj = persist_state_rec['Last TX Enable']
-        self._edl_timeout_obj = self.node.od['State Control']['EDL Timeout']
-        self._pre_deploy_timeout_obj = self.node.od['Deployment Control']['Timeout']
-        self._vbatt_bp1_obj = self.node.od['Battery 0']['VBatt BP1']
-        self._vbatt_bp2_obj = self.node.od['Battery 0']['VBatt BP2']
-        self._reset_timeout_obj = self.node.od['State Control']['Reset Timeout']
+        edl_rec = self.node.od['edl']
+        antennas_rec = self.node.od['antennas']
+        tx_control_rec = self.node.od['tx_control']
+        bat_1_rec = self.node.od['battery_1']
+
+        self._c3_state_obj = self.node.od['status']
+        self._reset_timeout_obj = self.node.od['reset_timeout']
+        self._attempts_obj = antennas_rec['attempts']
+        self._deployed_obj = antennas_rec['deployed']
+        self._pre_deploy_timeout_obj = antennas_rec['pre_attempt_timeout']
+        self._deploy_timeout_obj = antennas_rec['attempt_timeout']
+        self._tx_timeout_obj = tx_control_rec['timeout']
+        self._tx_enabled_obj = tx_control_rec['enable']
+        self._last_tx_enable_obj = tx_control_rec['last_enable_timestamp']
+        self._last_edl_obj = edl_rec['last_timestamp']
+        self._edl_timeout_obj = edl_rec['timeout']
+        self._vbatt_bp1_obj = bat_1_rec['pack_1_vbatt']
+        self._vbatt_bp2_obj = bat_1_rec['pack_2_vbatt']
 
         self._fram_entry_co_objs = {
             FramKey.C3_STATE: self._c3_state_obj,
-            FramKey.LAST_TIME_STAMP: persist_state_rec['Timestamp'],
-            FramKey.ALARM_A: persist_state_rec['Alarm A'],
-            FramKey.ALARM_B: persist_state_rec['Alarm B'],
-            FramKey.WAKEUP: persist_state_rec['Wakeup'],
             FramKey.LAST_TX_ENABLE: self._last_tx_enable_obj,
             FramKey.LAST_EDL: self._last_edl_obj,
             FramKey.DEPLOYED: self._deployed_obj,
-            FramKey.POWER_CYCLES: persist_state_rec['Power Cycles'],
-            FramKey.LBAND_RX_BYTES: persist_state_rec['LBand RX Bytes'],
-            FramKey.LBAND_RX_PACKETS: persist_state_rec['LBand RX Packets'],
-            FramKey.VC1_SEQUENCE_COUNT: persist_state_rec['VC1 Sequence Count'],
-            FramKey.VC1_EXPEDITE_COUNT: persist_state_rec['VC1 Expedite Count'],
-            FramKey.EDL_SEQUENCE_COUNT: persist_state_rec['EDL Sequence Count'],
-            FramKey.EDL_REJECTED_COUNT: persist_state_rec['EDL Rejected Count'],
-            FramKey.CRYTO_KEY: self.node.od['Crypto Key'],
+            FramKey.POWER_CYCLES: self.node.od['system']['power_cycles'],
+            FramKey.LBAND_RX_BYTES: self.node.od['lband']['rx_bytes'],
+            FramKey.LBAND_RX_PACKETS: self.node.od['lband']['rx_packets'],
+            FramKey.VC1_SEQUENCE_COUNT: edl_rec['vc1_sequence_count'],
+            FramKey.VC1_EXPEDITE_COUNT: edl_rec['vc1_expedite_count'],
+            FramKey.EDL_SEQUENCE_COUNT: edl_rec['sequence_count'],
+            FramKey.EDL_REJECTED_COUNT: edl_rec['rejected_count'],
+            #FramKey.CRYTO_KEY: edl_rec['crypto_key'],
         }  # F-RAM entries for CANopen objects
 
         self._restore_state()
 
-        self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
-        self.node.add_sdo_read_callback(0x7000, self._on_c3_telemetery_read)
+        # TODO
+        # self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
 
         # make sure the initial state is valid (will be invalid on a cleared F-RAM)
         if self._c3_state_obj.value not in list(C3State):
@@ -198,6 +200,8 @@ class StateService(Service):
 
     def _store_state(self):
 
+        # TODO re-enable
+        '''
         if self._c3_state_obj.value == C3State.PRE_DEPLOY:
             return  # Do not store state in PRE_DEPLOY state
 
@@ -208,14 +212,13 @@ class StateService(Service):
                 self._fram[key] = int(time())
             else:
                 self._fram[key] = self._fram_entry_co_objs[key].value
+        '''
+        return
 
     def _restore_state(self):
 
-        values = self._fram.get_all()
-        for key in list(FramKey):
-            self._fram_entry_co_objs[key].value = values[key]
-
-    def _on_c3_telemetery_read(self, index: int, subindex: int):
-
-        if subindex == 1:
-            return int(time() - self._boot_time)
+        # TODO re-enable
+        # values = self._fram.get_all()
+        # for key in list(FramKey):
+        #    self._fram_entry_co_objs[key].value = values[key]
+        return

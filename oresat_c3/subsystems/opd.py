@@ -7,7 +7,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 from enum import IntEnum
 from time import sleep
 
-from olaf import logger, Gpio, Adc, GPIO_IN
+from olaf import logger, Gpio, Adc
 
 from ..drivers.max7310 import Max7310, Max7310Error
 
@@ -21,7 +21,7 @@ class OpdNodeId(IntEnum):
 
     BATTERY_1 = 0x18
     GPS = 0x19
-    ACS = 0x1A
+    IMU = 0x1A
     DXWIFI = 0x1B
     STAR_TRACKER_1 = 0x1C
     CFC_PROCESSOR = 0x1D
@@ -430,7 +430,7 @@ class Opd:
         '''
 
         self._not_enable_pin = Gpio(not_enable_pin, mock)
-        self._not_fault_pin = Gpio(not_fault_pin, mock, mode=GPIO_IN)
+        self._not_fault_pin = Gpio(not_fault_pin, mock)
         self._not_fault_pin._mock_value = 1  # fix default for mocking
         self._adc = Adc(current_pin, mock)
         self._not_enable_pin.high()  # make sure OPD disable initially

@@ -1,6 +1,7 @@
 import os
 
 from olaf import olaf_setup, olaf_run, app, rest_api, render_olaf_template
+from oresat_od_db import OD_DB, NodeId, BEACON_DEF_DB, OreSatId
 
 from . import __version__
 from .subsystems.opd import Opd
@@ -30,16 +31,18 @@ def main():
 
     path = os.path.dirname(os.path.abspath(__file__))
 
-    args = olaf_setup(f'{path}/data/oresat_c3.dcf', master_node=True)
+    args = olaf_setup(OD_DB, NodeId.C3)
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = 'opd' in mock_args or 'all' in mock_args
     mock_fram = 'fram' in mock_args or 'all' in mock_args
 
-    app.node.od['Manufacturer software version'].value = __version__
+    app.od['versions']['sw_version'].value = __version__
+    oresat_id = app.od['satellite_id'].value
 
+    beacon_def = BEACON_DEF_DB[OreSatId(oresat_id)]
     i2c_bus_num = 2
-    opd_not_enable_pin = 116
-    opd_not_fault_pin = 115
+    opd_not_enable_pin = 'OPD_nENABLE'
+    opd_not_fault_pin = 'OPD_nFAULT'
     opd_adc_current_pin = 2
     fram_i2c_addr = 0x50
 
@@ -48,7 +51,7 @@ def main():
     fram = Fram(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
 
     app.add_service(StateService(fram))  # add state first to restore state from F-RAM
-    app.add_service(BeaconService())
+    app.add_service(BeaconService(beacon_def))
     app.add_service(EdlService(opd))
     app.add_service(OpdService(opd))
 

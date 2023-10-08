@@ -25,12 +25,12 @@
 
     async function changeState() {
       const c = document.getElementById("newState").value;
-      const data = await writeValue("0x6000", null, c.charCodeAt(0));
+      const data = await writeValue("status", null, c.charCodeAt(0));
       getState();
     }
 
     async function getState() {
-      const data = await readValue("0x6000", null);
+      const data = await readValue("status", null);
       document.getElementById("state").innerHTML = states[data.value];
     }
 

@@ -49,16 +49,17 @@ class OpdService(Service):
     def on_start(self):
 
         self._flight_mode_obj = self.node.od['flight_mode']
+        self.node.od['opd']['nodes_status_json'].value = '{}'
 
         self.node.add_sdo_callbacks('opd', 'current', self._on_read_current, None)
-
-        self.node.od['opd']['nodes_status_json'].value = '{}'
-        self.node.add_sdo_callbacks('opd', 'enable', self._on_read_enable,
-                                    self._on_write_enable)
+        self.node.add_sdo_callbacks('opd', 'enable', self._on_read_enable, self._on_write_enable)
         self.node.add_sdo_callbacks('opd', 'scan', None, self._on_write_scan)
-        self.node.add_sdo_callbacks('opd', 'status_json', self._on_read_enable, None)
-        self.node.add_sdo_callbacks('opd', 'node_select', self._on_read_node_select, None)
-        self.node.add_sdo_callbacks('opd', 'node_enable', self._on_read_node_enable, None)
+        self.node.add_sdo_callbacks('opd', 'status_json', self._on_read_enable,
+                                    self._on_write_enable)
+        self.node.add_sdo_callbacks('opd', 'node_select', self._on_read_node_select,
+                                    self._on_write_node_select)
+        self.node.add_sdo_callbacks('opd', 'node_enable', self._on_read_node_enable,
+                                    self._on_write_node_enable)
         self.node.add_sdo_callbacks('opd', 'has_fault', self._on_read_has_fault, None)
 
     def on_loop(self):
@@ -140,9 +141,9 @@ class OpdService(Service):
 
     def _on_write_node_enable(self, value: bool):
 
-        if value == 1:
+        if value:
             self.opd[self.cur_node].enable()
-        elif value == 0:
+        else:
             self.opd[self.cur_node].disable()
 
     def _on_write_scan(self, value: bool):

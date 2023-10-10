@@ -3,34 +3,31 @@ import unittest
 
 from oresat_c3.drivers.fm24cl64b import Fm24cl64b, Fm24cl64bError
 
-from .. import MOCK_HW, I2C_BUS_NUM, FRAM_ADDR
+from .. import FRAM_ADDR, I2C_BUS_NUM, MOCK_HW
 
 
 class TestFm24cl64b(unittest.TestCase):
-
     def setUp(self):
-
         if os.path.isfile(Fm24cl64b._MOCK_FILE):
             os.remove(Fm24cl64b._MOCK_FILE)
 
     def tearDown(self):
-
         if os.path.isfile(Fm24cl64b._MOCK_FILE):
             os.remove(Fm24cl64b._MOCK_FILE)
 
     def test_addresses(self):
-        '''Test valid and invalid i2c addresses'''
+        """Test valid and invalid i2c addresses"""
 
         for addr in Fm24cl64b.ADDRESSES:
             Fm24cl64b(I2C_BUS_NUM, addr, MOCK_HW)
 
         for addr in [-1, 0x100, 0x49, 0x60]:
-            with self.assertRaises(Fm24cl64bError,
-                                   msg=f'Fm24cl64b obj was made with invalid addr {addr}'):
+            with self.assertRaises(
+                Fm24cl64bError, msg=f"Fm24cl64b obj was made with invalid addr {addr}"
+            ):
                 Fm24cl64b(I2C_BUS_NUM, addr, MOCK_HW)
 
     def test_read(self):
-
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # valid
@@ -50,7 +47,6 @@ class TestFm24cl64b(unittest.TestCase):
             fram.read(0, -1)  # size must be greater than 1
 
     def test_write(self):
-
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # valid, should raise no errors
@@ -63,16 +59,15 @@ class TestFm24cl64b(unittest.TestCase):
         with self.assertRaises(Fm24cl64bError):
             fram.write(0, [1] * 5)  # invalid data type
         with self.assertRaises(Fm24cl64bError):
-            fram.write(0, 'abc')  # invalid data type
+            fram.write(0, "abc")  # invalid data type
         with self.assertRaises(Fm24cl64bError):
             fram.write(7500, bytes([0] * 1000))  # F-RAM only has 8KB
         with self.assertRaises(Fm24cl64bError):
-            fram.write(-1, b'\x10')  # cannot do negative offsets
+            fram.write(-1, b"\x10")  # cannot do negative offsets
         with self.assertRaises(Fm24cl64bError):
-            fram.write(0, b'')  # no data
+            fram.write(0, b"")  # no data
 
     def test_read_write(self):
-
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # make sure data is actually written
@@ -82,17 +77,16 @@ class TestFm24cl64b(unittest.TestCase):
         self.assertEqual(fram.read(offset, len(data)), data)
 
         # overwrite a couple bytes
-        new_bytes = b'\x12\x34'
+        new_bytes = b"\x12\x34"
         offset = 1
         tmp = bytearray(data)
-        tmp[offset: offset + len(new_bytes)] = new_bytes
+        tmp[offset : offset + len(new_bytes)] = new_bytes
         new_data = bytes(tmp)
         fram.write(offset, new_bytes)
         self.assertEqual(fram.read(offset, len(new_bytes)), new_bytes)
         self.assertEqual(fram.read(0, len(new_data)), new_data)
 
     def test_reload(self):
-
         data = bytes([1] * 5)
         offset = 0
 

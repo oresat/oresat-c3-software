@@ -1,26 +1,26 @@
 from enum import Enum, IntEnum
 
-__version__ = '0.1.0'
+__version__ = "0.1.0"
 
 
 class C3State(IntEnum):
-    '''All valid C3 states'''
+    """All valid C3 states"""
 
-    OFFLINE = ord('A')
-    '''This state is never actually reachable by the device. Reset vector is ``PRE_DEPLOY``.'''
-    PRE_DEPLOY = ord('B')
-    '''Holding state after deployment of satellite but before deployment of antennas. Ensures a
-    minimum amount of time passes before attempting to deploy antennas and going active.'''
-    DEPLOY = ord('C')
-    '''Antenna deployment state. Attempts to deploy antennas several times before moving to
-    Standby.'''
-    STANDBY = ord('D')
-    '''Satellite is functional but in standby state. Battery level is too low or tx is disabled.'''
-    BEACON = ord('E')
-    '''Active beaconing state. Broadcasts telemetry packets via radio periodically.'''
-    EDL = ord('F')
-    '''Currently receiving and/or transmitting engineering data link packets with a ground
-    station.'''
+    OFFLINE = ord("A")
+    """This state is never actually reachable by the device. Reset vector is ``PRE_DEPLOY``."""
+    PRE_DEPLOY = ord("B")
+    """Holding state after deployment of satellite but before deployment of antennas. Ensures a
+    minimum amount of time passes before attempting to deploy antennas and going active."""
+    DEPLOY = ord("C")
+    """Antenna deployment state. Attempts to deploy antennas several times before moving to
+    Standby."""
+    STANDBY = ord("D")
+    """Satellite is functional but in standby state. Battery level is too low or tx is disabled."""
+    BEACON = ord("E")
+    """Active beaconing state. Broadcasts telemetry packets via radio periodically."""
+    EDL = ord("F")
+    """Currently receiving and/or transmitting engineering data link packets with a ground
+    station."""
 
     @staticmethod
     def from_char(value: str):
@@ -31,7 +31,7 @@ class C3State(IntEnum):
 
 
 class NodeId(Enum):
-    '''All the CANopen Node ID for OreSat boards.'''
+    """All the CANopen Node ID for OreSat boards."""
 
     C3 = 0x01
     BATTERY_1 = 0x04
@@ -57,4 +57,4 @@ class NodeId(Enum):
 
     @staticmethod
     def from_bytes(value: bytes):
-        return NodeId(int.from_bytes(value, 'little'))
+        return NodeId(int.from_bytes(value, "little"))

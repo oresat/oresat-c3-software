@@ -1,8 +1,11 @@
 bitstring
+black
 build
 eds-utils
-flake8
-oresat-olaf>=2.2.0
+isort
+oresat-olaf>=3.0.0
+pylama[all]
+pylama[toml]
 setuptools
 smbus2
 spacepackets

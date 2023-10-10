@@ -1,8 +1,8 @@
-''''
+"""'
 OPD (OreSat Power Domain) Service
 
 Handle powering OreSat cards on and off.
-'''
+"""
 
 import json
 from time import time
@@ -12,7 +12,6 @@ from olaf import Service, logger
 from oresat_od_db import NodeId
 
 from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState
-
 
 OPD_NODE_TO_CO_NODE = {
     OpdNodeId.BATTERY_1: NodeId.BATTERY_1,
@@ -31,7 +30,7 @@ OPD_NODE_TO_CO_NODE = {
 
 
 class OpdService(Service):
-    '''OPD service.'''
+    """OPD service."""
 
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 60
@@ -47,23 +46,25 @@ class OpdService(Service):
         self._flight_mode_obj: canopen.objectdictionary.Variable = None
 
     def on_start(self):
+        self._flight_mode_obj = self.node.od["flight_mode"]
+        self.node.od["opd"]["nodes_status_json"].value = "{}"
 
-        self._flight_mode_obj = self.node.od['flight_mode']
-        self.node.od['opd']['nodes_status_json'].value = '{}'
-
-        self.node.add_sdo_callbacks('opd', 'current', self._on_read_current, None)
-        self.node.add_sdo_callbacks('opd', 'enable', self._on_read_enable, self._on_write_enable)
-        self.node.add_sdo_callbacks('opd', 'scan', None, self._on_write_scan)
-        self.node.add_sdo_callbacks('opd', 'status_json', self._on_read_enable,
-                                    self._on_write_enable)
-        self.node.add_sdo_callbacks('opd', 'node_select', self._on_read_node_select,
-                                    self._on_write_node_select)
-        self.node.add_sdo_callbacks('opd', 'node_enable', self._on_read_node_enable,
-                                    self._on_write_node_enable)
-        self.node.add_sdo_callbacks('opd', 'has_fault', self._on_read_has_fault, None)
+        self.node.add_sdo_callbacks("opd", "current", self._on_read_current, None)
+        self.node.add_sdo_callbacks("opd", "enable", self._on_read_enable, self._on_write_enable)
+        self.node.add_sdo_callbacks("opd", "scan", None, self._on_write_scan)
+        self.node.add_sdo_callbacks(
+            "opd", "status_json", self._on_read_enable, self._on_write_enable
+        )
+        self.node.add_sdo_callbacks(
+            "opd", "node_select", self._on_read_node_select, self._on_write_node_select
+        )
+        self.node.add_sdo_callbacks(
+            "opd", "node_enable", self._on_read_node_enable, self._on_write_node_enable
+        )
+        self.node.add_sdo_callbacks("opd", "has_fault", self._on_read_has_fault, None)
 
     def on_loop(self):
-        '''Monitor all OPD nodes and check that nodes that are on are sending heartbeats.'''
+        """Monitor all OPD nodes and check that nodes that are on are sending heartbeats."""
 
         self.sleep(self._MONITOR_DELAY_S)
 
@@ -86,67 +87,59 @@ class OpdService(Service):
                 continue  # not a valid node for this mission
 
             if self._co_resets[node.id] >= self._MAX_CO_RESETS:
-                logger.critical(f'CANopen node {node.id.name} has sent no heartbeats in '
-                                f'{self._MONITOR_DELAY_S}s after {self._MAX_CO_RESETS} resets, '
-                                'now is now flagged as DEAD')
+                logger.critical(
+                    f"CANopen node {node.id.name} has sent no heartbeats in "
+                    f"{self._MONITOR_DELAY_S}s after {self._MAX_CO_RESETS} resets, "
+                    "now is now flagged as DEAD"
+                )
                 node.set_as_dead()
             elif node.status == OpdNodeState.ON and co_status[1] + self._RESET_TIMEOUT_S < time():
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it
-                logger.error(f'CANopen node {node.id.name} has sent no heartbeats in 60s, '
-                             'resetting it')
+                logger.error(
+                    f"CANopen node {node.id.name} has sent no heartbeats in 60s, " "resetting it"
+                )
                 node.reset()
                 self._co_resets[node.id] += 1
             else:
                 self._co_resets[node.id] = 0
 
     def on_stop(self):
-
         self.opd.stop_loop = True
 
     def _on_read_current(self) -> int:
-
         return self.opd.current
 
     def _on_read_enable(self) -> bool:
-
         return self.opd.is_subsystem_enabled
 
     def _on_read_status_json(self) -> str:
-
         raw = {node.id.value: node.status.value for node in self.opd}
         return json.dumps(raw)
 
     def _on_read_node_select(self) -> int:
-
         return self.cur_node.value
 
     def _on_read_node_enable(self) -> bool:
-
         return self.opd[self.cur_node].status.value
 
     def _on_read_has_fault(self) -> bool:
-
         return self.opd.has_fault
 
     def _on_write_enable(self, value: bool):
-
         if value:
             self.opd.enable()
         else:
             self.opd.disable()
 
     def _on_write_node_select(self, value: int):
-
         self.cur_node = OpdNodeId(value)
 
     def _on_write_node_enable(self, value: bool):
-
         if value:
             self.opd[self.cur_node].enable()
         else:
             self.opd[self.cur_node].disable()
 
     def _on_write_scan(self, value: bool):
-
         if value:
             self.opd.scan(False)

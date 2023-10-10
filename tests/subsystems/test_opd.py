@@ -1,14 +1,12 @@
 import unittest
 
-from oresat_c3.subsystems.opd import Opd, OpdNodeState, OpdNodeId, OpdNode
+from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeId, OpdNodeState
 
 from .. import I2C_BUS_NUM
 
 
 class TestOpd(unittest.TestCase):
-
     def test_opd(self):
-
         opd = Opd(10, 12, 2, I2C_BUS_NUM, mock=True)
 
         for node in opd:
@@ -38,9 +36,7 @@ class TestOpd(unittest.TestCase):
 
 
 class TestOpdNode(unittest.TestCase):
-
     def test_node_enable(self):
-
         node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_1, mock=True)
         node.configure()
         self.assertEqual(node._status, OpdNodeState.OFF)

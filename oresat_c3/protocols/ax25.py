@@ -8,12 +8,20 @@ AX25_PAYLOAD_MAX_LEN = 255
 
 
 class Ax25Error(Exception):
-    '''Error with ax25_pack'''
+    """Error with ax25_pack"""
 
 
-def ax25_pack(dest: str, dest_ssid: int, src: str, src_ssid: int, control: int,
-              pid: int, payload: bytes, crc32: bool = True) -> bytes:
-    '''
+def ax25_pack(
+    dest: str,
+    dest_ssid: int,
+    src: str,
+    src_ssid: int,
+    control: int,
+    pid: int,
+    payload: bytes,
+    crc32: bool = True,
+) -> bytes:
+    """
     Generate a AX25 packet.
 
     Parameters
@@ -46,32 +54,37 @@ def ax25_pack(dest: str, dest_ssid: int, src: str, src_ssid: int, control: int,
     -------
     bytes
         The AX25 packet.
-    '''
+    """
 
     if len(dest) > AX25_CALLSIGN_LEN:
-        raise Ax25Error('dest callsign must be less than 6 chars')
+        raise Ax25Error("dest callsign must be less than 6 chars")
     if dest_ssid < 0 or dest_ssid > 15:
-        raise Ax25Error('dest_ssid must be between 0 and 15')
+        raise Ax25Error("dest_ssid must be between 0 and 15")
     if len(src) > AX25_CALLSIGN_LEN:
-        raise Ax25Error('src callsign must be less than 6 chars')
+        raise Ax25Error("src callsign must be less than 6 chars")
     if src_ssid < 0 or src_ssid > 15:
-        raise Ax25Error('src_ssid must be between 0 and 15')
+        raise Ax25Error("src_ssid must be between 0 and 15")
     if len(payload) > AX25_PAYLOAD_MAX_LEN:
-        raise Ax25Error(f'payload must be less than {AX25_PAYLOAD_MAX_LEN} bytes')
+        raise Ax25Error(f"payload must be less than {AX25_PAYLOAD_MAX_LEN} bytes")
 
     # callsigns must be 6 chars, add trailing spaces as padding
-    src += ' ' * (AX25_CALLSIGN_LEN - len(src))
-    dest += ' ' * (AX25_CALLSIGN_LEN - len(dest))
+    src += " " * (AX25_CALLSIGN_LEN - len(src))
+    dest += " " * (AX25_CALLSIGN_LEN - len(dest))
 
     # make AX25 packet header
-    header = dest.encode() + dest_ssid.to_bytes(1, 'little') + \
-        src.encode() + src_ssid.to_bytes(1, 'little') + \
-        control.to_bytes(1, 'little') + pid.to_bytes(1, 'little')
+    header = (
+        dest.encode()
+        + dest_ssid.to_bytes(1, "little")
+        + src.encode()
+        + src_ssid.to_bytes(1, "little")
+        + control.to_bytes(1, "little")
+        + pid.to_bytes(1, "little")
+    )
     header = (bitstring.BitArray(header) << 1).bytes
 
     packet = header + payload
 
     if crc32:
-        packet += zlib.crc32(packet, 0).to_bytes(4, 'little')
+        packet += zlib.crc32(packet, 0).to_bytes(4, "little")
 
     return packet

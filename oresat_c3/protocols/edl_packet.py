@@ -1,6 +1,6 @@
-'''
+"""
 Anything dealing with packing and unpacking EDL (Engineering Data Link) packets.
-'''
+"""
 
 import binascii
 import hashlib
@@ -8,45 +8,54 @@ import hmac
 from enum import IntEnum
 
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen
-from spacepackets.uslp.frame import TransferFrame, TransferFrameDataField, TfdzConstructionRules, \
-    UslpProtocolIdentifier, VarFrameProperties, FrameType
-from spacepackets.uslp.header import PrimaryHeader, SourceOrDestField, ProtocolCommandFlag, \
-    BypassSequenceControlFlag
+from spacepackets.uslp.frame import (
+    FrameType,
+    TfdzConstructionRules,
+    TransferFrame,
+    TransferFrameDataField,
+    UslpProtocolIdentifier,
+    VarFrameProperties,
+)
+from spacepackets.uslp.header import (
+    BypassSequenceControlFlag,
+    PrimaryHeader,
+    ProtocolCommandFlag,
+    SourceOrDestField,
+)
 
-from .edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse, EdlCommandError
+from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
 
 SRC_DEST_ORESAT = SourceOrDestField.SOURCE
 SRC_DEST_UNICLOGS = SourceOrDestField.DEST
 
 
 class EdlPacketError(Exception):
-    '''Error with EdlPacket'''
+    """Error with EdlPacket"""
 
 
 class EdlVcid(IntEnum):
-    '''USLP virtual channel IDs for EDL packets'''
+    """USLP virtual channel IDs for EDL packets"""
 
     C3_COMMAND = 0
     FILE_TRANSFER = 1
 
 
 def crc16_bytes(data: bytes) -> bytes:
-    '''Helper function for generating the crc16 of a message as bytes'''
+    """Helper function for generating the crc16 of a message as bytes"""
 
-    return binascii.crc_hqx(data, 0).to_bytes(2, 'little')
+    return binascii.crc_hqx(data, 0).to_bytes(2, "little")
 
 
 def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:
-
     return hmac.digest(hmac_key, message, hashlib.sha3_256)
 
 
 class EdlPacket:
-    '''
+    """
     An EDL (Engineering Data Link) packet.
 
     Only packs and unpacks the packet (does not process/run it).
-    '''
+    """
 
     SPACECRAFT_ID = 0x4F53  # aka "OS" in ascii
 
@@ -65,9 +74,13 @@ class EdlPacket:
         fecf_len=FECF_LEN,
     )
 
-    def __init__(self, payload: EdlCommandRequest or EdlCommandResponse, seq_num: int,
-                 src_dest: SourceOrDestField) -> bytes:
-        '''
+    def __init__(
+        self,
+        payload: EdlCommandRequest or EdlCommandResponse,
+        seq_num: int,
+        src_dest: SourceOrDestField,
+    ) -> bytes:
+        """
         Parameters
         ----------
         payload: EdlCommandRequest or EdlCommandResponse
@@ -76,12 +89,12 @@ class EdlPacket:
             The sequence number for packet.
         src_dest: SourceOrDestFiedld
             Origin of packet, use `SRC_DEST_ORESAT` or `SRC_DEST_UNICLOGS`.
-        '''
+        """
 
         if isinstance(payload, EdlCommandRequest) or isinstance(payload, EdlCommandResponse):
             vcid = EdlVcid.C3_COMMAND
         else:
-            raise EdlCommandCode(f'unknown payload object: {type(payload)}')
+            raise EdlCommandCode(f"unknown payload object: {type(payload)}")
 
         self.vcid = vcid
         self.src_dest = src_dest
@@ -89,23 +102,24 @@ class EdlPacket:
         self.payload = payload
 
     def __eq__(self, other) -> bool:
-
         if not isinstance(other, EdlPacket):
             return False
-        return self.vcid == other.vcid \
-            and self.src_dest == other.src_dest \
-            and self.seq_num == other.seq_num \
+        return (
+            self.vcid == other.vcid
+            and self.src_dest == other.src_dest
+            and self.seq_num == other.seq_num
             and self.payload == other.payload
+        )
 
     def pack(self, hmac_key: bytes) -> bytes:
-        '''
+        """
         Pack the EDL packet.
 
         Parameters
         ----------
         hmac_key: bytes
             The HMAC key to use.
-        '''
+        """
 
         try:
             payload_raw = self.payload.pack()
@@ -135,7 +149,7 @@ class EdlPacket:
             bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
         )
 
-        seq_num_bytes = self.seq_num.to_bytes(self.SEQ_NUM_LEN, 'little')
+        seq_num_bytes = self.seq_num.to_bytes(self.SEQ_NUM_LEN, "little")
         frame = TransferFrame(header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes)
         packet = frame.pack(frame_type=FrameType.VARIABLE)
         packet += crc16_bytes(packet)
@@ -144,34 +158,34 @@ class EdlPacket:
 
     @classmethod
     def unpack(cls, hmac_key: bytes, raw: bytes):
-        '''
+        """
         Unpack the EDL packet.
 
         Parameters
         ----------
         raw: bytes
             The raw data to unpack.
-        '''
+        """
 
         if len(raw) < cls._TC_MIN_LEN:
-            raise EdlPacketError(f'EDL packet too short: {len(raw)}')
+            raise EdlPacketError(f"EDL packet too short: {len(raw)}")
 
-        crc16_raw = raw[-cls.FECF_LEN:]
-        crc16_raw_calc = crc16_bytes(raw[:-cls.FECF_LEN])
+        crc16_raw = raw[-cls.FECF_LEN :]
+        crc16_raw_calc = crc16_bytes(raw[: -cls.FECF_LEN])
         if crc16_raw_calc != crc16_raw:
-            raise EdlPacketError(f'invalid FECF: {crc16_raw} vs {crc16_raw_calc}')
+            raise EdlPacketError(f"invalid FECF: {crc16_raw} vs {crc16_raw_calc}")
 
         try:
             frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
         except UslpInvalidRawPacketOrFrameLen:
-            raise EdlPacketError('USLP invalid packet or frame length')
+            raise EdlPacketError("USLP invalid packet or frame length")
 
-        payload_raw = frame.tfdf.tfdz[:-cls.HMAC_LEN]
-        hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN:]
+        payload_raw = frame.tfdf.tfdz[: -cls.HMAC_LEN]
+        hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN :]
         hmac_bytes_calc = gen_hmac(hmac_key, payload_raw)
 
         if hmac_bytes != hmac_bytes_calc:
-            raise EdlPacketError(f'invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}')
+            raise EdlPacketError(f"invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}")
 
         if frame.header.vcid == EdlVcid.C3_COMMAND:
             try:
@@ -182,8 +196,8 @@ class EdlPacket:
             except EdlCommandError as e:
                 raise EdlPacketError(e)
         else:
-            raise EdlPacketError(f'unknown vcid {frame.header.vcid}')
+            raise EdlPacketError(f"unknown vcid {frame.header.vcid}")
 
-        seq_num = int.from_bytes(frame.insert_zone, 'little')
+        seq_num = int.from_bytes(frame.insert_zone, "little")
 
         return EdlPacket(payload, seq_num, frame.header.src_dest)

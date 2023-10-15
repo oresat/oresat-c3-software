@@ -9,6 +9,7 @@ from time import time
 from olaf import NodeStop, Service, logger
 
 from .. import C3State
+from ..subsystems.antennas import Antennas
 from ..subsystems.fram import Fram, FramKey
 
 
@@ -17,10 +18,11 @@ class StateService(Service):
 
     BAT_LEVEL_LOW = 6_500  # in mV
 
-    def __init__(self, fram: Fram):
+    def __init__(self, fram: Fram, antennas: Antennas):
         super().__init__()
 
         self._fram = fram
+        self._antennas = antennas
         self._attempts = 0
         self._loops = 0
         self._last_state = C3State.OFFLINE
@@ -115,7 +117,7 @@ class StateService(Service):
                 and self._bat_lvl_good
             ):
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
-                # TODO deploy
+                self._antennas.deploy(self._ant_attempt_timeout_obj.value)
                 self._last_antennas_deploy = time()
                 self._attempts += 1
             # wait for battery to be at a good level

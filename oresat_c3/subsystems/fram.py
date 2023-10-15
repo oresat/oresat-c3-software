@@ -37,7 +37,11 @@ class FramKey(Enum):
     VC1_EXPEDITE_COUNT = auto()
     EDL_SEQUENCE_COUNT = auto()
     EDL_REJECTED_COUNT = auto()
-    CRYTO_KEY = auto()
+    CRYTO_KEY_0 = auto()
+    CRYTO_KEY_1 = auto()
+    CRYTO_KEY_2 = auto()
+    CRYTO_KEY_3 = auto()
+    CRYTO_ACTIVE_KEY = auto()
 
 
 class FramError(Exception):
@@ -77,11 +81,15 @@ class Fram:
         self._add_entry(FramKey.VC1_EXPEDITE_COUNT, "Q")
         self._add_entry(FramKey.EDL_SEQUENCE_COUNT, "I")
         self._add_entry(FramKey.EDL_REJECTED_COUNT, "I")
-        self._add_entry(FramKey.CRYTO_KEY, 128)  # bytes
+        self._add_entry(FramKey.CRYTO_KEY_0, 32)  # bytes
+        self._add_entry(FramKey.CRYTO_KEY_1, 32)
+        self._add_entry(FramKey.CRYTO_KEY_2, 32)
+        self._add_entry(FramKey.CRYTO_KEY_3, 32)
+        self._add_entry(FramKey.CRYTO_ACTIVE_KEY, "B")
 
         self._init = False
 
-    def _add_entry(self, key: str, fmt: [str, int]):
+    def _add_entry(self, key: FramKey, fmt: [str, int]):
         """
         Parameters
         -----------

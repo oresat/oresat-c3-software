@@ -52,9 +52,7 @@ class OpdService(Service):
         self.node.add_sdo_callbacks("opd", "current", self._on_read_current, None)
         self.node.add_sdo_callbacks("opd", "enable", self._on_read_enable, self._on_write_enable)
         self.node.add_sdo_callbacks("opd", "scan", None, self._on_write_scan)
-        self.node.add_sdo_callbacks(
-            "opd", "status_json", self._on_read_enable, self._on_write_enable
-        )
+        self.node.add_sdo_callbacks("opd", "nodes_status_json", self._on_read_status_json, None)
         self.node.add_sdo_callbacks(
             "opd", "node_select", self._on_read_node_select, self._on_write_node_select
         )
@@ -96,7 +94,7 @@ class OpdService(Service):
             elif node.status == OpdNodeState.ON and co_status[1] + self._RESET_TIMEOUT_S < time():
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it
                 logger.error(
-                    f"CANopen node {node.id.name} has sent no heartbeats in 60s, " "resetting it"
+                    f"CANopen node {node.id.name} has sent no heartbeats in 60s, resetting it"
                 )
                 node.reset()
                 self._co_resets[node.id] += 1

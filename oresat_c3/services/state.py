@@ -16,7 +16,7 @@ from ..subsystems.fram import Fram, FramKey
 class StateService(Service):
     """C3 State Service."""
 
-    BAT_LEVEL_LOW = 6_500  # in mV
+    BAT_LEVEL_LOW = 6500  # in mV
 
     def __init__(self, fram: Fram, antennas: Antennas):
         super().__init__()
@@ -44,7 +44,7 @@ class StateService(Service):
         self._ant_attempt_timeout_obj = antennas_rec["attempt_timeout"]
         self._ant_reattempt_timeout_obj = antennas_rec["reattempt_timeout"]
         self._tx_timeout_obj = tx_control_rec["timeout"]
-        self._tx_enabled_obj = tx_control_rec["enable"]
+        self._tx_enable_obj = tx_control_rec["enable"]
         self._last_tx_enable_obj = tx_control_rec["last_enable_timestamp"]
         self._last_edl_obj = edl_rec["last_timestamp"]
         self._edl_timeout_obj = edl_rec["timeout"]
@@ -78,6 +78,7 @@ class StateService(Service):
 
         # TODO
         # self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
+        self.node.add_sdo_callbacks('tx_control', 'enable', None, self._on_write_tx_enable)
 
         # make sure the initial state is valid (will be invalid on a cleared F-RAM)
         if self._c3_state_obj.value not in list(C3State):
@@ -88,6 +89,17 @@ class StateService(Service):
 
     def on_stop(self):
         self._store_state()
+
+    def _on_write_tx_enable(self, data: bool):
+        """On SDO write set tx enable and last enable timestamp objects."""
+
+        self._tx_enable_obj.value = data
+        if data:
+            logger.info('enabling tx')
+            self._last_tx_enable_obj.value = int(time())
+        else:
+            logger.info('disabling tx')
+            self._last_tx_enable_obj.value = 0
 
     def _on_cryto_key_write(self, data: bytes):
         """On SDO write set the crypto key in OD and F-RAM"""
@@ -100,8 +112,8 @@ class StateService(Service):
         """PRE_DEPLOY state method."""
 
         if (self._boot_time + self._pre_deploy_timeout_obj.value) > time():
-            if not self._tx_enabled_obj.value:
-                self._tx_enabled_obj.value = True  # start beacons
+            if not self._tx_enable_obj.value:
+                self._tx_enable_obj.value = True  # start beacons
                 self._last_tx_enable_obj.value = int(time())
         else:
             logger.info("pre-deploy timeout reached")
@@ -114,7 +126,7 @@ class StateService(Service):
         if not self._deployed_obj.value and self._attempts < self._attempts_obj.value:
             if (
                 time() > self._last_antennas_deploy + self._ant_reattempt_timeout_obj.value
-                and self._bat_lvl_good
+                and self.is_bat_lvl_good
             ):
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
                 self._antennas.deploy(self._ant_attempt_timeout_obj.value)
@@ -130,28 +142,28 @@ class StateService(Service):
     def _standby(self):
         """STANDBY state method."""
 
-        if self._is_edl_enabled:
+        if self.has_edl_timed_out:
             self._c3_state_obj.value = C3State.EDL.value
-        elif self._trigger_reset:
+        elif self.has_reset_timed_out:
             self.node.stop(NodeStop.HARD_RESET)
-        elif self._is_tx_enabled and self._bat_lvl_good:
+        elif self.has_tx_timed_out and self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.BEACON.value
 
     def _beacon(self):
         """BEACON state method."""
 
-        if self._is_edl_enabled:
+        if self.has_edl_timed_out:
             self._c3_state_obj.value = C3State.EDL.value
-        elif self._trigger_reset:
+        elif self.has_reset_timed_out:
             self.node.stop(NodeStop.HARD_RESET)
-        elif not self._is_tx_enabled or not self._bat_lvl_good:
+        elif not self.has_tx_timed_out or not self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.STANDBY.value
 
     def _edl(self):
         """EDL state method."""
 
-        if not self._is_edl_enabled:
-            if self._is_tx_enabled and self._bat_lvl_good:
+        if not self.has_edl_timed_out:
+            if self.has_tx_timed_out and self.is_bat_lvl_good:
                 self._c3_state_obj.value = C3State.BEACON.value
             else:
                 self._c3_state_obj.value = C3State.STANDBY.value
@@ -159,6 +171,7 @@ class StateService(Service):
     def on_loop(self):
         state_a = self._c3_state_obj.value
         if state_a != self._last_state:  # incase of change thru REST API
+            logger.info(f"tx en: {self._tx_enable_obj.value} | bat good: {self.is_bat_lvl_good}")
             logger.info(
                 f"C3 state change: {C3State(self._last_state).name} -> {C3State(state_a).name}"
             )
@@ -181,6 +194,7 @@ class StateService(Service):
 
         self._last_state = self._c3_state_obj.value
         if state_a != self._last_state:
+            logger.info(f"tx en: {self._tx_enable_obj.value} | bat good: {self.is_bat_lvl_good}")
             logger.info(
                 f"C3 state change: {C3State(state_a).name} -> {C3State(self._last_state).name}"
             )
@@ -194,19 +208,19 @@ class StateService(Service):
         self.sleep(0.1)
 
     @property
-    def _is_tx_enabled(self) -> bool:
+    def has_tx_timed_out(self) -> bool:
         """bool: Helper property to check if the tx timeout has been reached."""
 
         return (time() - self._last_tx_enable_obj.value) < self._tx_timeout_obj.value
 
     @property
-    def _is_edl_enabled(self) -> bool:
+    def has_edl_timed_out(self) -> bool:
         """bool: Helper property to check if the edl timeout has been reached."""
 
         return (time() - self._last_edl_obj.value) < self._edl_timeout_obj.value
 
     @property
-    def _bat_lvl_good(self) -> bool:
+    def is_bat_lvl_good(self) -> bool:
         """bool: Helper property to check if the battery levels are good."""
 
         return (
@@ -215,7 +229,7 @@ class StateService(Service):
         )
 
     @property
-    def _trigger_reset(self) -> bool:
+    def has_reset_timed_out(self) -> bool:
         """bool: Helper property to check if the reset timeout has been reached."""
 
         return (time() - self._boot_time) >= self._reset_timeout_obj.value

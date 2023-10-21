@@ -28,33 +28,3 @@ class C3State(IntEnum):
 
     def to_char(self) -> str:
         return chr(self.value)
-
-
-class NodeId(Enum):
-    """All the CANopen Node ID for OreSat boards."""
-
-    C3 = 0x01
-    BATTERY_1 = 0x04
-    BATTERY_2 = 0x08
-    SOLAR_PANEL_1 = 0x0C
-    SOLAR_PANEL_2 = 0x10
-    SOLAR_PANEL_3 = 0x14
-    SOLAR_PANEL_4 = 0x18
-    SOLAR_PANEL_5 = 0x1C
-    SOLAR_PANEL_6 = 0x20
-    SOLAR_PANEL_7 = 0x24
-    SOLAR_PANEL_8 = 0x28
-    STAR_TRACKER_1 = 0x2C
-    STAR_TRACKER_2 = 0x30
-    GPS = 0x34
-    ACS = 0x38
-    RW_1 = 0x3C
-    RW_2 = 0x40
-    RW_3 = 0x44
-    RW_4 = 0x48
-    DXWIFI = 0x4C
-    CFC_PROCESSOR = 0x50
-
-    @staticmethod
-    def from_bytes(value: bytes):
-        return NodeId(int.from_bytes(value, "little"))

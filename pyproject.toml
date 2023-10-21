@@ -65,6 +65,11 @@ path = "*/__init__.py"
 # W0611: imported but unused
 ignore = "W0611"
 
+[[tool.pylama.files]]
+path = "tests/*"
+# W0212: Access to a protected member of a class
+ignore = "W0212"
+
 [[tool.mypy.overrides]]
 module = "canopen,yaml"
 ignore_missing_imports = true

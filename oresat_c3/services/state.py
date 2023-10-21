@@ -6,11 +6,12 @@ This handles the main C3 state machine.
 
 from time import time
 
+import canopen
 from olaf import NodeStop, Service, logger
 
 from .. import C3State
+from ..drivers.fm24cl64b import Fm24cl64b
 from ..subsystems.antennas import Antennas
-from ..subsystems.fram import Fram, FramKey
 
 
 class StateService(Service):
@@ -18,17 +19,17 @@ class StateService(Service):
 
     BAT_LEVEL_LOW = 6500  # in mV
 
-    def __init__(self, fram: Fram, antennas: Antennas):
+    def __init__(self, fram: Fm24cl64b, fram_objs: list, antennas: Antennas):
         super().__init__()
 
         self._fram = fram
+        self._fram_objs = fram_objs
         self._antennas = antennas
         self._attempts = 0
         self._loops = 0
         self._last_state = C3State.OFFLINE
         self._last_antennas_deploy = 0
         self._boot_time = time()
-        self._fram_entry_co_objs = {}
 
     def on_start(self):
         edl_rec = self.node.od["edl"]
@@ -51,34 +52,11 @@ class StateService(Service):
         self._vbatt_bp1_obj = bat_1_rec["pack_1_vbatt"]
         self._vbatt_bp2_obj = bat_1_rec["pack_2_vbatt"]
 
-        self._fram_entry_co_objs = {
-            FramKey.C3_STATE: self._c3_state_obj,
-            FramKey.LAST_TIME_STAMP: None,
-            FramKey.ALARM_A: None,
-            FramKey.ALARM_B: None,
-            FramKey.WAKEUP: None,
-            FramKey.LAST_TX_ENABLE: self._last_tx_enable_obj,
-            FramKey.LAST_EDL: self._last_edl_obj,
-            FramKey.DEPLOYED: self._deployed_obj,
-            FramKey.POWER_CYCLES: self.node.od["system"]["power_cycles"],
-            FramKey.LBAND_RX_BYTES: self.node.od["lband"]["rx_bytes"],
-            FramKey.LBAND_RX_PACKETS: self.node.od["lband"]["rx_packets"],
-            FramKey.VC1_SEQUENCE_COUNT: edl_rec["vc1_sequence_count"],
-            FramKey.VC1_EXPEDITE_COUNT: edl_rec["vc1_expedite_count"],
-            FramKey.EDL_SEQUENCE_COUNT: edl_rec["sequence_count"],
-            FramKey.EDL_REJECTED_COUNT: edl_rec["rejected_count"],
-            FramKey.CRYTO_KEY_0: edl_rec["key0"],
-            FramKey.CRYTO_KEY_1: edl_rec["key1"],
-            FramKey.CRYTO_KEY_2: edl_rec["key2"],
-            FramKey.CRYTO_KEY_3: edl_rec["key3"],
-            FramKey.CRYTO_ACTIVE_KEY: edl_rec["active_key"],
-        }  # F-RAM entries for CANopen objects
-
         self._restore_state()
 
         # TODO
         # self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
-        self.node.add_sdo_callbacks('tx_control', 'enable', None, self._on_write_tx_enable)
+        self.node.add_sdo_callbacks("tx_control", "enable", None, self._on_write_tx_enable)
 
         # make sure the initial state is valid (will be invalid on a cleared F-RAM)
         if self._c3_state_obj.value not in list(C3State):
@@ -95,18 +73,17 @@ class StateService(Service):
 
         self._tx_enable_obj.value = data
         if data:
-            logger.info('enabling tx')
+            logger.info("enabling tx")
             self._last_tx_enable_obj.value = int(time())
         else:
-            logger.info('disabling tx')
+            logger.info("disabling tx")
             self._last_tx_enable_obj.value = 0
 
     def _on_cryto_key_write(self, data: bytes):
         """On SDO write set the crypto key in OD and F-RAM"""
 
         if len(data) == 32:
-            # self._cryto_key_obj.value = data
-            self._fram[FramKey.CRYTO_KEY_0] = data
+            self._cryto_key_obj.value = data
 
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""
@@ -118,7 +95,6 @@ class StateService(Service):
         else:
             logger.info("pre-deploy timeout reached")
             self._c3_state_obj.value = C3State.DEPLOY.value
-            self._fram[FramKey.C3_STATE] = C3State.DEPLOY.value
 
     def _deploy(self):
         """DEPLOY state method."""
@@ -235,27 +211,39 @@ class StateService(Service):
         return (time() - self._boot_time) >= self._reset_timeout_obj.value
 
     def _store_state(self):
-        """store the state in F-RAM."""
+        """Store the state in F-RAM."""
 
         if self._c3_state_obj.value == C3State.PRE_DEPLOY:
             return  # Do not store state in PRE_DEPLOY state
 
-        for key in list(FramKey):
-            if self._fram_entry_co_objs[key] is None or key in [
-                FramKey.CRYTO_KEY_0,
-                FramKey.CRYTO_KEY_1,
-                FramKey.CRYTO_KEY_2,
-                FramKey.CRYTO_KEY_3,
-            ]:
-                continue  # deprecated or static, skip these
+        offset = 0
+        for obj in self._fram_objs:
+            if obj.data_type == canopen.objectdictionary.DOMAIN:
+                continue
 
-            self._fram[key] = self._fram_entry_co_objs[key].value
+            if obj.data_type == canopen.objectdictionary.OCTET_STRING:
+                raw = obj.value
+                raw_len = len(obj.default)
+            else:
+                raw = obj.encode_raw(obj.value)
+                raw_len = len(raw)
+
+            self._fram.write(offset, raw)
+            offset += raw_len
 
     def _restore_state(self):
-        """restore the state from F-RAM."""
+        """Restore the state from F-RAM."""
 
-        values = self._fram.get_all()
-        for key in list(FramKey):
-            if self._fram_entry_co_objs[key] is None:
-                continue  # deprecated, skip these
-            self._fram_entry_co_objs[key].value = values[key]
+        offset = 0
+        for obj in self._fram_objs:
+            if obj.data_type == canopen.objectdictionary.DOMAIN:
+                continue
+
+            if obj.data_type == canopen.objectdictionary.OCTET_STRING:
+                size = len(obj.default)
+                obj.value = self._fram.read(offset, size)
+            else:
+                size = len(obj.encode_raw(obj.default))
+                raw = self._fram.read(offset, size)
+                obj.value = obj.decode_raw(raw)
+            offset += size

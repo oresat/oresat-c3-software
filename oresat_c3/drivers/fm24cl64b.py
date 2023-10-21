@@ -143,3 +143,8 @@ class Fm24cl64b:
                     bus.i2c_rdwr(write)
             except OSError:
                 raise Fm24cl64bError(f"FM24CL64B at address 0x{self._addr:02X} does not exist")
+
+    def clear(self):
+        """Clear the bytes in the F-RAM."""
+
+        self.write(0, b"\x00" * self.SIZE)

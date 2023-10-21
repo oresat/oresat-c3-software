@@ -1,131 +1,140 @@
 import unittest
-from os.path import abspath, dirname
 from time import time
 
 import canopen
 from olaf import MasterNode, NodeStop
+from oresat_od_db import FRAM_DEF_DB, OD_DB, NodeId, OreSatId
 
 from oresat_c3 import C3State
+from oresat_c3.drivers.fm24cl64b import Fm24cl64b
 from oresat_c3.services.state import StateService
-from oresat_c3.subsystems.fram import Fram
+from oresat_c3.subsystems.antennas import Antennas
 
 
 class TestState(unittest.TestCase):
-    def setUp(self):
-        eds = abspath(dirname(__file__)) + "/../../oresat_c3/data/oresat_c3.dcf"
-        self.od = canopen.objectdictionary.eds.import_eds(eds, 0x10)
-        self.node = MasterNode(self.od, "vcan0")
+    """Test the C3 state service."""
 
-        fram = Fram(2, 0x50, True)
-        self.res = StateService(fram)
+    def setUp(self):
+        self.od = OD_DB[OreSatId.ORESAT0_5][NodeId.C3]
+        fram_def = FRAM_DEF_DB[OreSatId.ORESAT0_5]
+        self.node = MasterNode(self.od, "vcan0", OD_DB[OreSatId.ORESAT0_5])
+
+        antennas = Antennas(True)
+        fram = Fm24cl64b(2, 0x50, True)
+        self.service = StateService(fram, fram_def, antennas)
 
         self.node._setup_node()
         self.node._destroy_node()
 
         # initial the service, but stop the thread
-        self.res._event.set()
-        self.res.start(self.node)
-        self.res.stop()
+        self.service._event.set()
+        self.service.start(self.node)
+        self.service.stop()
 
     def test_pre_deploy(self):
         """Test state transistion(s) from PRE_DEPLOY state"""
 
         # initial state for this test
-        self.res._c3_state_obj.value = C3State.PRE_DEPLOY.value
-        self.res._tx_enabled_obj.value = False
+        self.service._c3_state_obj.value = C3State.PRE_DEPLOY.value
+        self.service._tx_enable_obj.value = False
 
         # test PRE_DEPLOY -> PRE_DEPLOY
-        self.assertEqual(self.res._c3_state_obj.value, C3State.PRE_DEPLOY)
-        self.res._pre_deploy()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.PRE_DEPLOY)
-        self.assertTrue(self.res._tx_enabled_obj.value)
+        self.assertEqual(self.service._c3_state_obj.value, C3State.PRE_DEPLOY)
+        self.service._pre_deploy()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.PRE_DEPLOY)
+        self.assertTrue(self.service._tx_enable_obj.value)
 
         # test PRE_DEPLOY -> DEPLOY; timeout has ended
-        self.res._boot_time = 0
-        self.assertEqual(self.res._c3_state_obj.value, C3State.PRE_DEPLOY)
-        self.res._pre_deploy()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
+        self.service._boot_time = 0
+        self.assertEqual(self.service._c3_state_obj.value, C3State.PRE_DEPLOY)
+        self.service._pre_deploy()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
 
     def test_deploy(self):
         """Test state transistion(s) from DEPLOY state"""
 
         # initial state for this test
-        self.res._c3_state_obj.value = C3State.DEPLOY.value
+        self.service._c3_state_obj.value = C3State.DEPLOY.value
 
         # test DEPLOY -> DEPLOY; battery level is too low for deployment
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
-        for i in range(10):
-            self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
-            self.res._deploy()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
+        for _ in range(10):
+            self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
+            self.service._deploy()
+
+        # speed up tests
+        self.service._ant_attempt_timeout_obj.value = 0
+        self.service._tx_enable_obj.value = True
+        self.service._ant_reattempt_timeout_obj.value = 0
 
         # test DEPLOY -> STANDBY; good battery level
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
-        self.res._deploy()  # attempt 0
-        self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
-        self.res._deploy()  # attempt 1
-        self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
-        self.res._deploy()  # attempt 2
-        self.assertEqual(self.res._c3_state_obj.value, C3State.DEPLOY)
-        self.res._deploy()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
+        self.service._deploy()  # attempt 0
+        self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
+        self.service._deploy()  # attempt 1
+        self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
+        self.service._deploy()  # attempt 2
+        self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
+        self.service._deploy()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
 
     def test_standby(self):
         """Test state transistion(s) from STANDBY state"""
 
         # initial state for this test
-        self.res._c3_state_obj.value = C3State.STANDBY.value
-        self.res._last_tx_enable_obj.value = 0
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
+        self.service._c3_state_obj.value = C3State.STANDBY.value
+        self.service._last_tx_enable_obj.value = 0
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.node._reset = NodeStop.SOFT_RESET
 
         # test STANDBY -> STANDBY; battery level is too low for deployment and tx disabled
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY -> STANDBY; battery level is too low for deployment and tx enabled
-        self.res._last_tx_enable_obj.value = time()
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._last_tx_enable_obj.value = time()
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY -> STANDBY; battery level is good for deployment and tx disabled
-        self.res._last_tx_enable_obj.value = 0
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._last_tx_enable_obj.value = 0
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY -> BEACON; battery level is good for deployment and tx enabled
-        self.res._c3_state_obj.value = C3State.STANDBY
-        self.res._last_tx_enable_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.BEACON)
+        self.service._c3_state_obj.value = C3State.STANDBY
+        self.service._last_tx_enable_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY -> EDL; EDL is received
-        self.res._c3_state_obj.value = C3State.STANDBY
-        self.res._last_edl_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.EDL)
+        self.service._c3_state_obj.value = C3State.STANDBY
+        self.service._last_edl_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.EDL)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY hard reset
-        self.res._c3_state_obj.value = C3State.STANDBY
-        self.res._last_edl_obj.value = 0
+        self.service._c3_state_obj.value = C3State.STANDBY
+        self.service._last_edl_obj.value = 0
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.res._boot_time = 0
-        self.res._standby()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._boot_time = 0
+        self.service._standby()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.HARD_RESET)
 
     def test_beacon(self):
@@ -133,39 +142,39 @@ class TestState(unittest.TestCase):
 
         # initial state for this test
         self.node._reset = NodeStop.SOFT_RESET
-        self.res._c3_state_obj.value = C3State.BEACON.value
-        self.res._last_tx_enable_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._c3_state_obj.value = C3State.BEACON.value
+        self.service._last_tx_enable_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.node._reset = NodeStop.SOFT_RESET
 
         # test BEACON -> BEACON; battery level is good and tx enabled
-        self.res._beacon()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.BEACON)
+        self.service._beacon()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test BEACON -> BEACON; battery level is good and tx disabled
-        self.res._last_tx_enable_obj.value = 0
-        self.res._beacon()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._last_tx_enable_obj.value = 0
+        self.service._beacon()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test BEACON -> EDL; EDL is received
-        self.res._c3_state_obj.value = C3State.BEACON
-        self.res._last_edl_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._beacon()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.EDL)
+        self.service._c3_state_obj.value = C3State.BEACON
+        self.service._last_edl_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._beacon()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.EDL)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test BEACON hard reset
-        self.res._c3_state_obj.value = C3State.BEACON
-        self.res._last_edl_obj.value = 0
+        self.service._c3_state_obj.value = C3State.BEACON
+        self.service._last_edl_obj.value = 0
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.res._boot_time = 0
-        self.res._beacon()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.BEACON)
+        self.service._boot_time = 0
+        self.service._beacon()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
         self.assertEqual(self.node._reset, NodeStop.HARD_RESET)
 
     def test_edl(self):
@@ -173,37 +182,37 @@ class TestState(unittest.TestCase):
 
         # initial state for this test
         self.node._reset = NodeStop.SOFT_RESET
-        self.res._c3_state_obj.value = C3State.EDL.value
-        self.res._last_tx_enable_obj.value = time()
-        self.res._last_edl_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._c3_state_obj.value = C3State.EDL.value
+        self.service._last_tx_enable_obj.value = time()
+        self.service._last_edl_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.node._reset = NodeStop.SOFT_RESET
 
         # test EDL -> EDL; not timeout
-        self.res._edl()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.EDL)
+        self.service._edl()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.EDL)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test EDL -> BEACON; battery level is good and tx enabled
-        self.res._last_edl_obj.value = 0
-        self.res._last_tx_enable_obj.value = time()
-        self.res._edl()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.BEACON)
+        self.service._last_edl_obj.value = 0
+        self.service._last_tx_enable_obj.value = time()
+        self.service._edl()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test EDL -> STANDBY; battery level is good and tx disabled
-        self.res._last_edl_obj.value = 0
-        self.res._last_tx_enable_obj.value = 0
-        self.res._edl()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._last_edl_obj.value = 0
+        self.service._last_tx_enable_obj.value = 0
+        self.service._edl()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test EDL -> STANDBY; battery level is too low and tx enabled
-        self.res._last_edl_obj.value = 0
-        self.res._last_tx_enable_obj.value = time()
-        self.res._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
-        self.res._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
-        self.res._edl()
-        self.assertEqual(self.res._c3_state_obj.value, C3State.STANDBY)
+        self.service._last_edl_obj.value = 0
+        self.service._last_tx_enable_obj.value = time()
+        self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
+        self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
+        self.service._edl()
+        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)

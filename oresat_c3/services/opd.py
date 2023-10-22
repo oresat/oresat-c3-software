@@ -9,7 +9,7 @@ from time import time
 
 import canopen
 from olaf import Service, logger
-from oresat_od_db import NodeId
+from oresat_configs import NodeId
 
 from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState, OpdState
 

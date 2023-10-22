@@ -3,7 +3,7 @@ from time import time
 
 import canopen
 from olaf import MasterNode, NodeStop
-from oresat_od_db import FRAM_DEF_DB, OD_DB, NodeId, OreSatId
+from oresat_configs import FRAM_DEF_DB, OD_DB, NodeId, OreSatId
 
 from oresat_c3 import C3State
 from oresat_c3.drivers.fm24cl64b import Fm24cl64b

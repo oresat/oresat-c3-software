@@ -9,7 +9,7 @@ from time import time
 
 import canopen
 from olaf import NodeStop, Service, logger
-from oresat_od_db import NodeId
+from oresat_configs import NodeId
 
 from ..protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError

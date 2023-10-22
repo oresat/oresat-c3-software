@@ -1,7 +1,7 @@
 import os
 
 from olaf import app, olaf_run, olaf_setup, render_olaf_template, rest_api
-from oresat_od_db import BEACON_DEF_DB, FRAM_DEF_DB, OD_DB, NodeId, OreSatId
+from oresat_configs import BEACON_DEF_DB, FRAM_DEF_DB, OD_DB, NodeId, OreSatId
 
 from . import __version__
 from .drivers.fm24cl64b import Fm24cl64b

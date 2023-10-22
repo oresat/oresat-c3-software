@@ -11,22 +11,22 @@ class TestOpd(unittest.TestCase):
 
         for node in opd:
             if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
-                self.assertIn(node.status, [OpdNodeState.ON, OpdNodeState.NOT_FOUND])
+                self.assertIn(node.status, [OpdNodeState.ENABLED, OpdNodeState.NOT_FOUND])
             else:
-                self.assertIn(node.status, [OpdNodeState.OFF, OpdNodeState.NOT_FOUND])
+                self.assertIn(node.status, [OpdNodeState.DISABLED, OpdNodeState.NOT_FOUND])
 
         opd.enable()
 
         for node in opd:
             if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
-                self.assertIn(node.status, [OpdNodeState.ON, OpdNodeState.NOT_FOUND])
+                self.assertIn(node.status, [OpdNodeState.ENABLED, OpdNodeState.NOT_FOUND])
             else:
-                self.assertIn(node.status, [OpdNodeState.OFF, OpdNodeState.NOT_FOUND])
+                self.assertIn(node.status, [OpdNodeState.DISABLED, OpdNodeState.NOT_FOUND])
 
         opd.disable()
 
         for node in opd:
-            self.assertEqual(node.status, OpdNodeState.OFF)
+            self.assertEqual(node.status, OpdNodeState.DISABLED)
 
         opd._SYS_RESET_DELAY_S = 0  # just for testing lose the delay
         opd.reset()
@@ -39,12 +39,12 @@ class TestOpdNode(unittest.TestCase):
     def test_node_enable(self):
         node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_1, mock=True)
         node.configure()
-        self.assertEqual(node._status, OpdNodeState.OFF)
+        self.assertEqual(node._status, OpdNodeState.DISABLED)
 
         node.enable()
         self.assertTrue(node.is_enabled)
-        self.assertEqual(node._status, OpdNodeState.ON)
+        self.assertEqual(node._status, OpdNodeState.ENABLED)
 
         node.disable()
         self.assertFalse(node.is_enabled)
-        self.assertEqual(node._status, OpdNodeState.OFF)
+        self.assertEqual(node._status, OpdNodeState.DISABLED)

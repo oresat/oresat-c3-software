@@ -11,7 +11,7 @@ import canopen
 from olaf import Service, logger
 from oresat_od_db import NodeId
 
-from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState
+from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState, OpdState
 
 OPD_NODE_TO_CO_NODE = {
     OpdNodeId.BATTERY_1: NodeId.BATTERY_1,
@@ -50,14 +50,14 @@ class OpdService(Service):
         self.node.od["opd"]["nodes_status_json"].value = "{}"
 
         self.node.add_sdo_callbacks("opd", "current", self._on_read_current, None)
-        self.node.add_sdo_callbacks("opd", "enable", self._on_read_enable, self._on_write_enable)
+        self.node.add_sdo_callbacks("opd", "status", self._on_read_status, self._on_write_status)
         self.node.add_sdo_callbacks("opd", "scan", None, self._on_write_scan)
         self.node.add_sdo_callbacks("opd", "nodes_status_json", self._on_read_status_json, None)
         self.node.add_sdo_callbacks(
             "opd", "node_select", self._on_read_node_select, self._on_write_node_select
         )
         self.node.add_sdo_callbacks(
-            "opd", "node_enable", self._on_read_node_enable, self._on_write_node_enable
+            "opd", "node_status", self._on_read_node_status, self._on_write_node_status
         )
         self.node.add_sdo_callbacks("opd", "has_fault", self._on_read_has_fault, None)
 
@@ -66,10 +66,10 @@ class OpdService(Service):
 
         self.sleep(self._MONITOR_DELAY_S)
 
-        if self.opd.is_subsystem_dead:
+        if self.opd.status == OpdState.DEAD:
             return
 
-        self.opd.monitor_nodes()
+        self.opd.monitor_system()
 
         if not self._flight_mode_obj.value:
             return
@@ -91,7 +91,10 @@ class OpdService(Service):
                     "now is now flagged as DEAD"
                 )
                 node.set_as_dead()
-            elif node.status == OpdNodeState.ON and co_status[1] + self._RESET_TIMEOUT_S < time():
+            elif (
+                node.status == OpdNodeState.ENABLED
+                and co_status[1] + self._RESET_TIMEOUT_S < time()
+            ):
                 # card is on, but no CANopen heartbeat have been received in a minute, reset it
                 logger.error(
                     f"CANopen node {node.id.name} has sent no heartbeats in 60s, resetting it"
@@ -107,8 +110,8 @@ class OpdService(Service):
     def _on_read_current(self) -> int:
         return self.opd.current
 
-    def _on_read_enable(self) -> bool:
-        return self.opd.is_subsystem_enabled
+    def _on_read_status(self) -> int:
+        return self.opd.status.value
 
     def _on_read_status_json(self) -> str:
         raw = {node.id.value: node.status.value for node in self.opd}
@@ -117,25 +120,25 @@ class OpdService(Service):
     def _on_read_node_select(self) -> int:
         return self.cur_node.value
 
-    def _on_read_node_enable(self) -> bool:
+    def _on_read_node_status(self) -> int:
         return self.opd[self.cur_node].status.value
 
     def _on_read_has_fault(self) -> bool:
         return self.opd.has_fault
 
-    def _on_write_enable(self, value: bool):
-        if value:
+    def _on_write_status(self, value: int):
+        if value == OpdState.ENABLED:
             self.opd.enable()
-        else:
+        elif value == OpdState.DISABLED:
             self.opd.disable()
 
     def _on_write_node_select(self, value: int):
         self.cur_node = OpdNodeId(value)
 
-    def _on_write_node_enable(self, value: bool):
-        if value:
+    def _on_write_node_status(self, value: int):
+        if value == OpdState.ENABLED:
             self.opd[self.cur_node].enable()
-        else:
+        elif value == OpdState.DISABLED:
             self.opd[self.cur_node].disable()
 
     def _on_write_scan(self, value: bool):

@@ -61,10 +61,17 @@
        0x23: "Reaction Wheel 4",
     };
 
+    const STATES = {
+       0x00: "DISABLED",
+       0x01: "ENABLED",
+       0x02: "FAULT",
+       0x03: "DEAD",
+    };
+
     const NODE_STATES = {
-       0x00: "OFF",
-       0x01: "ON",
-       0x02: "ERROR",
+       0x00: "DISABLED",
+       0x01: "ENABLED",
+       0x02: "FAULT",
        0x03: "DEAD",
        0xFF: "NOT_FOUND",
     };
@@ -86,7 +93,7 @@
       let newCell2 = newRow.insertCell();
       let span = document.createElement("span");
       span.id = `node${key}`;
-      span.innerText = "OFF";
+      span.innerText = "DISABLED";
       newCell2.appendChild(span);
 
       let newCell3 = newRow.insertCell();
@@ -101,7 +108,7 @@
     async function nodeOnClick(nodeId) {
       await writeValue("opd", "node_select", nodeId);
       const enable = document.getElementById(`node${nodeId}Button`).innerText === "Enable";
-      let data = await writeValue("opd", "node_enable", enable);
+      let data = await writeValue("opd", "node_status", Number(enable));
       updateNode(nodeId, data.value);
     }
 
@@ -114,11 +121,11 @@
       span.innerText = state;
 
       switch (state) {
-      case "OFF":
+      case "DISABLED":
         button.innerText = "Enable";
         button.disabled = false;
         break;
-      case "ON":
+      case "ENABLED":
         button.innerText = "Disable";
         button.disabled = false;
         break;
@@ -136,12 +143,14 @@
       const enableButton = document.getElementById("enableSystemButton");
       const spanButton = document.getElementById("scanNodesButton");
       const div = document.getElementById("opdTableDiv");
-      let systemEnable = await readValue("opd","enable");
+      let systemEnable = await readValue("opd","status");
       let systemFault = await readValue("opd","has_fault");
       let systemCurrent = await readValue("opd","current");
       let data;
 
-      if (systemEnable.value) { // only update if system is enabled
+      const status = STATES[systemEnable.value]
+
+      if (status === "ENABLED" || status === "FAULT") { // only update if system is enabled
         data = await readValue("opd","nodes_status_json");
         const json = JSON.parse(data.value);
         for (const key in json) {
@@ -159,13 +168,12 @@
 
       // do this after the node updates to get the correct values before
       // showning table
-      if (systemEnable.value === true) {
-        statusSpan.innerText = "ENABLED";
+      statusSpan.innerText = status;
+      if (status === "ENABLED" || status === "FAULT") {
         enableButton.innerText = "Disable System";
         div.style.display = "";
         spanButton.disabled = false;
       } else {
-        statusSpan.innerText = "DISABLED";
         enableButton.innerText = "Enable System";
         div.style.display = "none";
         spanButton.disabled = true;
@@ -175,7 +183,7 @@
     /** Enable / disable the OPD subsystem button callback */
     async function enableSystem() {
       const enable = document.getElementById("systemStatus").innerText !== "ENABLED";
-      const data = await writeValue("opd", "enable", enable);
+      const data = await writeValue("opd", "status", Number(enable));
       updateStatus();
     }
 

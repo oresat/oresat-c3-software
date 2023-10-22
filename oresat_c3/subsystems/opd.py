@@ -67,14 +67,14 @@ class OpdNodeId(IntEnum):
 class OpdNodeState(IntEnum):
     """OPD node states"""
 
-    OFF = 0
+    DISABLED = 0
     """OPD Node is off"""
-    ON = 1
+    ENABLED = 1
     """OPD Node is on"""
-    ERROR = 2
+    FAULT = 2
     """Fault input is set for OPD node"""
     DEAD = 3
-    """The node is dead"""
+    """OPD node is consider dead (too many faults in a row)."""
     NOT_FOUND = 0xFF
     """OPD node is not found"""
 
@@ -125,7 +125,7 @@ class OpdNode:
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
             self._max7310._mock_input_set(self._NOT_FAULT_PIN)
-        self._status = OpdNodeState.OFF
+        self._status = OpdNodeState.DISABLED
 
     def probe(self, reset: bool = False) -> bool:
         """
@@ -158,7 +158,7 @@ class OpdNode:
                     self._max7310.reset()
                     self.configure()
 
-                self._status = OpdNodeState.OFF
+                self._status = OpdNodeState.DISABLED
             else:
                 if self._status != OpdNodeState.NOT_FOUND:
                     logger.info(f"OPD node {self.id.name} (0x{self.id.value:02X}) was lost")
@@ -187,9 +187,9 @@ class OpdNode:
 
         try:
             self._max7310.output_set(self._ENABLE_PIN)
-            self._status = OpdNodeState.ON
+            self._status = OpdNodeState.ENABLED
         except Max7310Error:
-            self._status = OpdNodeState.ERROR
+            self._status = OpdNodeState.FAULT
 
         return self._status
 
@@ -210,9 +210,9 @@ class OpdNode:
 
         try:
             self._max7310.output_clear(self._ENABLE_PIN)
-            self._status = OpdNodeState.OFF
+            self._status = OpdNodeState.DISABLED
         except Max7310Error:
-            self._status = OpdNodeState.ERROR
+            self._status = OpdNodeState.FAULT
 
         return self._status
 
@@ -240,9 +240,9 @@ class OpdNode:
                     self._max7310._mock_input_set(self._NOT_FAULT_PIN)
 
                 if self.fault:
-                    self._status = OpdNodeState.ERROR
+                    self._status = OpdNodeState.FAULT
                 else:
-                    self._status = OpdNodeState.ON
+                    self._status = OpdNodeState.ENABLED
                     reset = True
                     break
             except Max7310Error:
@@ -284,7 +284,7 @@ class OpdNode:
             enabled = self._max7310.output_status(self._ENABLE_PIN)
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
-                self._status = OpdNodeState.ERROR
+                self._status = OpdNodeState.FAULT
             raise OpdError(e)
 
         return enabled
@@ -297,7 +297,7 @@ class OpdNode:
             fault = not self._max7310.input_status(self._NOT_FAULT_PIN)
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
-                self._status = OpdNodeState.ERROR
+                self._status = OpdNodeState.FAULT
             raise OpdError(e)
 
         return fault
@@ -332,7 +332,7 @@ class OpdStm32Node(OpdNode):
             else:
                 self._max7310.output_clear(self._BOOT_PIN)
         except Max7310Error:
-            self._status = OpdNodeState.ERROR
+            self._status = OpdNodeState.FAULT
             return self._status
 
         return super().enable()
@@ -344,7 +344,7 @@ class OpdStm32Node(OpdNode):
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
             self._max7310._mock_input_set(self._NOT_FAULT_PIN)
-        self._status = OpdNodeState.OFF
+        self._status = OpdNodeState.DISABLED
 
     def enable_uart(self):
         """Connect the node the C3's UART"""
@@ -360,7 +360,7 @@ class OpdStm32Node(OpdNode):
     def is_uart_enabled(self) -> bool:
         """bool: Check if the UART pin is connected"""
 
-        self._max7310.output_status(self._UART_PIN)
+        return self._max7310.output_status(self._UART_PIN)
 
 
 class OpdOctavoNode(OpdNode):
@@ -390,7 +390,7 @@ class OpdOctavoNode(OpdNode):
             else:
                 self._max7310.output_clear(self._BOOT_PIN)
         except Max7310Error:
-            self._status = OpdNodeState.ERROR
+            self._status = OpdNodeState.FAULT
             return self._status
 
         return super().enable()
@@ -409,7 +409,20 @@ class OpdOctavoNode(OpdNode):
     def is_uart_enabled(self) -> bool:
         """bool: Check if the UART pin is connected"""
 
-        self._max7310.output_status(self._UART_PIN)
+        return self._max7310.output_status(self._UART_PIN)
+
+
+class OpdState(IntEnum):
+    """OPD subsystem states."""
+
+    DISABLED = 0x0
+    """OPD subsystem is off."""
+    ENABLED = 0x1
+    """OPD subsystem is on (no faults)."""
+    FAULT = 0x2
+    """OPD subsystem is on and has one or more faults."""
+    DEAD = 0x3
+    """OPD subsystem is consider dead (too many faults in a row)."""
 
 
 class Opd:
@@ -462,8 +475,9 @@ class Opd:
 
             self._nodes[node_id] = node
 
-        self._dead = False
+        self._status = OpdState.DISABLED
         self.stop_loop = True
+        self._resets = 0
 
         self.enable()
 
@@ -477,13 +491,14 @@ class Opd:
     def enable(self):
         """Enable the OPD subsystem, will also do a scan."""
 
-        if self._dead:
+        if self._status == OpdState.DEAD:
             raise OpdError("OPD subsystem is consider dead")
-        if self.is_subsystem_enabled:
+        if self._status in [OpdState.ENABLED, OpdState.FAULT]:
             return  # already enabled
 
         logger.info("starting OPD subsystem")
         self._not_enable_pin.low()
+        self._status = OpdState.ENABLED
 
         self.scan(True)
 
@@ -497,6 +512,8 @@ class Opd:
                 node.disable()
 
         self._not_enable_pin.high()
+        self._status = OpdState.DISABLED
+        self._resets = 0
 
     def reset(self):
         """Restart the OPD subsystem with a delay between stop and start."""
@@ -505,7 +522,7 @@ class Opd:
         sleep(self._SYS_RESET_DELAY_S)
         self.enable()
 
-    def scan(self, reset: bool = False):
+    def scan(self, reset: bool = False) -> int:
         """
         Scan / probe for all nodes. This will turn on all battery cards found.
 
@@ -527,12 +544,45 @@ class Opd:
                 count += 1
 
         # Turn on any battery cards found
-        if self._nodes[OpdNodeId.BATTERY_1].status == OpdNodeState.OFF:
+        if self._nodes[OpdNodeId.BATTERY_1].status == OpdNodeState.DISABLED:
             self._nodes[OpdNodeId.BATTERY_1].enable()
-        if self._nodes[OpdNodeId.BATTERY_2].status == OpdNodeState.OFF:
+        if self._nodes[OpdNodeId.BATTERY_2].status == OpdNodeState.DISABLED:
             self._nodes[OpdNodeId.BATTERY_2].enable()
 
         return count
+
+    def monitor_system(self):
+        """
+        Check the system and all nodes for faults. If system or batteries are dead after X
+        subsystem resets, this will mark the subsystem as dead.
+
+        This should be called periodically in a loop.
+
+        Calls :py:func:`monitor_nodes`.
+        """
+
+        if self._status in [OpdState.DEAD, OpdState.DISABLED]:
+            return  # nothing to monitor
+
+        if self.has_fault and self._status != OpdState.DEAD:
+            self._status = OpdState.FAULT
+
+        self.monitor_nodes()
+
+        # if batteries are dead, try to reset subsystem to fix
+        if self._status == OpdState.FAULT:
+            self._resets += 1
+            logger.info(f"reseting OPD subsystem, try {self._resets}")
+            self.reset()
+        elif self._resets > self._RESET_ATTEMPTS:
+            logger.critical(
+                f"OPD monitor failed fix subsystem after {self._RESET_ATTEMPTS} "
+                "resets, subsystem is now consider dead"
+            )
+            self.disable()
+            self._status = OpdState.DEAD
+        else:
+            self._resets = 0
 
     def monitor_nodes(self):
         """
@@ -543,75 +593,42 @@ class Opd:
         This should be called periodically in a loop.
         """
 
-        if self.is_subsystem_dead or not self.is_subsystem_enabled:
-            return  # nothing to monitor
-
-        good_states = [OpdNodeState.ON, OpdNodeState.OFF]
+        good_states = [OpdNodeState.ENABLED, OpdNodeState.DISABLED]
         bat0_node = self._nodes[OpdNodeId.BATTERY_1]
         bat1_node = self._nodes[OpdNodeId.BATTERY_2]
 
-        for i in range(self._RESET_ATTEMPTS):
-            # batteries should always be on and are used to see if the subsystem is working
-            bat0_was_alive = bat0_node.status in good_states
-            bat1_was_alive = bat1_node.status in good_states
+        # batteries should always be on and are used to see if the subsystem is working
+        bat0_was_alive = bat0_node.status in good_states
+        bat1_was_alive = bat1_node.status in good_states
 
-            # loop thru all node and reset any nodes with a fault
-            for node in self._nodes.values():
-                if self.stop_loop:
-                    return  # these loop are time consuming, helps speed up service stop time
+        # loop thru all node and reset any nodes with a fault
+        for node in self._nodes.values():
+            if self.stop_loop:
+                return  # this loop is time consuming, helps speed up service stop time
 
-                if node.status not in [OpdNodeState.ON, OpdNodeState.ERROR]:
-                    continue  # only can monitor nodes that are on
+            if node.status not in [OpdNodeState.ENABLED, OpdNodeState.FAULT]:
+                continue  # only can monitor nodes that are on
 
-                try:
-                    fault = node.fault
-                except Max7310Error:
-                    continue
+            try:
+                fault = node.fault
+            except Max7310Error:
+                node.status = OpdNodeState.FAULT
+                continue
 
-                if fault:
-                    logger.error(
-                        f"OPD node {node.id.name} (0x{node.id.value:02X}) circuit "
-                        f"breaker has tripped (in state {node.status.name})"
-                    )
-                    node.reset()
+            if fault:
+                logger.error(
+                    f"OPD node {node.id.name} (0x{node.id.value:02X}) circuit "
+                    f"breaker has tripped (in state {node.status.name})"
+                )
+                node.reset()
 
-            # batteries should still be alive, after check for node faults
-            reset = False
-            if bat0_was_alive and bat0_node.status == OpdNodeState.DEAD:
-                reset = True
-                logger.error(f"OPD node {bat0_node.id.name} (0x{bat0_node.id.value:02X}) died")
-            if bat1_was_alive and bat1_node.status == OpdNodeState.DEAD:
-                reset = True
-                logger.error(f"OPD node {bat1_node.id.name} (0x{bat1_node.id.value:02X}) died")
-
-            # if batteries are dead, try to reset subsystem to fix
-            if reset:
-                logger.info(f"reseting OPD subsystem, try {i + 1}")
-                self.reset()
-            else:
-                break  # opd subsystem is all good, no need to loop reset attempts
-
-        if (bat0_was_alive and bat0_node.status == OpdNodeState.DEAD) or (
-            bat1_was_alive and bat1_node.status == OpdNodeState.DEAD
-        ):
-            logger.critical(
-                f"OPD monitor failed fix subsystem after {self._RESET_ATTEMPTS} "
-                "resets, subsystem is now consider dead"
-            )
-            self.disable()
-            self._dead = True
-
-    @property
-    def is_subsystem_dead(self) -> bool:
-        """bool: OPD is dead or not."""
-
-        return self._dead
-
-    @property
-    def is_subsystem_enabled(self) -> bool:
-        """bool: OPD is enabled or not."""
-
-        return not self._not_enable_pin.is_high
+        # batteries should still be alive, after check for node faults
+        if bat0_was_alive and bat0_node.status == OpdNodeState.DEAD:
+            self._status = OpdState.FAULT
+            logger.error(f"OPD node {bat0_node.id.name} (0x{bat0_node.id.value:02X}) died")
+        if bat1_was_alive and bat1_node.status == OpdNodeState.DEAD:
+            self._status = OpdState.FAULT
+            logger.error(f"OPD node {bat1_node.id.name} (0x{bat1_node.id.value:02X}) died")
 
     @property
     def has_fault(self) -> bool:
@@ -624,3 +641,9 @@ class Opd:
         """int: OPD current in milliamps."""
 
         return int(self._adc.value * self._MAX982L_CUR_RATIO / self._R_SET * 1000)
+
+    @property
+    def status(self) -> OpdState:
+        """OpdState: OPD subsystem status."""
+
+        return self._status

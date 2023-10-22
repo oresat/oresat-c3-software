@@ -37,7 +37,8 @@ enabling a UART connection.
 - **Boot Pin**: Is an output pin. When set high before being the Enable pin is set, will put the
   STM32 into bootloader
   mode.
-- **UART Pin**: Is a output pin. When set high, the cards will be connected to the C3's UART bus.
+- **UART ENABLE Pin**: Is a output pin. When set high, the cards will be connected to the C3's UART
+  bus.
 
 OPD on Ocatvo A8 Cards
 **********************
@@ -45,8 +46,50 @@ OPD on Ocatvo A8 Cards
 On top of the standard 3 pins, the STM32-based cards also utilizes pins for boot selection pin and
 enabling a UART connection.
 
-
 - **Boot Pin**: Is an output pin. When set high, the card will boot off of the eMMC; when set low,
   the card wil boot off of the SD card.
-- **UART Pin**: Is a output pin. When set high, the cards will be connected to the C3's UART bus.
-  This will allow the cards eMMC to be reflashed.
+- **UART ENABLE Pin**: Is a output pin. When set high, the cards will be connected to the C3's
+  UART bus. This will allow the cards eMMC to be reflashed.
+
+OPD State Machine
+-----------------
+
+.. autoclass:: oresat_c3.subsystems.opd.OpdState
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+.. mermaid::
+
+    stateDiagram-v2
+        [*] --> DISABLED
+        DISABLED --> ENABLED: Subsystem is enabled
+        ENABLED --> DISABLED: Subsystem is disabled
+        ENABLED --> FAULT: Subsystem has a fault
+        FAULT --> ENABLED: Subsystem was reset and then fault cleared
+        FAULT --> DISABLED: Subsystem is disabled
+        FAULT --> DEAD: Subsystem failed to reset multiple time in a row
+
+OPD Node State Machine
+----------------------
+
+.. autoclass:: oresat_c3.subsystems.opd.OpdNodeState
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
+.. mermaid::
+
+    stateDiagram-v2
+        [*] --> DISABLED: Node is found
+        [*] --> NOT_FOUND: Node is not found
+        NOT_FOUND --> DISABLED: Node is found
+        DISABLED --> ENABLED: Node is enabled
+        DISABLED --> NOT_FOUND: Node is lost
+        ENABLED --> FAULT: Node has a fault
+        ENABLED --> NOT_FOUND: Node is lost
+        ENABLED --> DISABLED: Node is disabled
+        FAULT --> ENABLED: Node was reset and then fault cleared
+        FAULT --> NOT_FOUND: Node is lost
+        FAULT --> DISABLED: Node is disabled
+        FAULT --> DEAD: Node failed to reset multiple time in a row

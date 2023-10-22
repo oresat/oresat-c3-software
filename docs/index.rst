@@ -5,7 +5,6 @@ Welcome to OreSat C3's documentation!
    :maxdepth: 2
 
    opd
-   co_nodes
    edl
    beacon
    state

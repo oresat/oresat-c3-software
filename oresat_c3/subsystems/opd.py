@@ -230,7 +230,7 @@ class OpdNode:
         reset = False
 
         for i in range(attempts):
-            logger.debug(f"reseting OPD node {self.id.name} (0x{self.id.value:02X}), try {i + 1}")
+            logger.debug(f"resetting OPD node {self.id.name} (0x{self.id.value:02X}), try {i + 1}")
             try:
                 self._max7310.output_set(self._CB_RESET_PIN)
                 sleep(self._RESET_DELAY_S)
@@ -540,6 +540,7 @@ class Opd:
         count = 0
 
         for node in self._nodes.values():
+
             if node.probe(reset):
                 count += 1
 
@@ -564,25 +565,27 @@ class Opd:
         if self._status in [OpdState.DEAD, OpdState.DISABLED]:
             return  # nothing to monitor
 
-        if self.has_fault and self._status != OpdState.DEAD:
+        if self.has_fault:
+            logger.info("OPD has a fault")
             self._status = OpdState.FAULT
+        else:
+            self.monitor_nodes()
 
-        self.monitor_nodes()
-
-        # if batteries are dead, try to reset subsystem to fix
-        if self._status == OpdState.FAULT:
-            self._resets += 1
-            logger.info(f"reseting OPD subsystem, try {self._resets}")
+        reset = 0
+        while self._status == OpdState.FAULT and reset < self._RESET_ATTEMPTS:
+            reset += 1
+            logger.info(f"resetting OPD subsystem, try {reset}")
             self.reset()
-        elif self._resets > self._RESET_ATTEMPTS:
+            if self.has_fault:
+                self._status = OpdState.FAULT
+
+        if self._status == OpdState.FAULT:
             logger.critical(
                 f"OPD monitor failed fix subsystem after {self._RESET_ATTEMPTS} "
                 "resets, subsystem is now consider dead"
             )
             self.disable()
             self._status = OpdState.DEAD
-        else:
-            self._resets = 0
 
     def monitor_nodes(self):
         """

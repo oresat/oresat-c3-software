@@ -1,6 +1,9 @@
-import os
+"""OreSat C3 app main."""
 
-from olaf import app, olaf_run, olaf_setup, render_olaf_template, rest_api
+import os
+from threading import Event, Thread
+
+from olaf import Gpio, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
 from oresat_configs import BEACON_DEF_DB, FRAM_DEF_DB, OD_DB, NodeId, OreSatId
 
 from . import __version__
@@ -14,21 +17,40 @@ from .subsystems.opd import Opd
 
 
 @rest_api.app.route("/beacon")
-def edl_template():
+def beacon_template():
+    """Render beacon template."""
     return render_olaf_template("beacon.html", name="Beacon")
 
 
 @rest_api.app.route("/opd")
 def opd_template():
+    """Render OPD template."""
     return render_olaf_template("opd.html", name="OPD (OreSat Power Domain)")
 
 
 @rest_api.app.route("/state")
 def state_template():
+    """Render state template."""
     return render_olaf_template("state.html", name="State")
 
 
+def watchdog_thread(event: Event, mock: bool):
+    """Watchdog Thread."""
+
+    gpio = Gpio("PET_WDT", mock)
+    logger.info("starting watchdog thread")
+
+    while not event.is_set():
+        gpio.high()
+        event.wait(0.1)
+        gpio.low()
+        event.wait(1)
+
+    logger.info("stoping watchdog thread")
+
+
 def main():
+    """OreSat C3 app main."""
     path = os.path.dirname(os.path.abspath(__file__))
 
     args = olaf_setup(OD_DB, NodeId.C3)
@@ -36,6 +58,11 @@ def main():
     mock_opd = "opd" in mock_args or "all" in mock_args
     mock_fram = "fram" in mock_args or "all" in mock_args
     mock_ant = "antennas" in mock_args or "all" in mock_args
+    mock_wdt = "watchdog" in mock_args or "all" in mock_args
+
+    wdt_event = Event()
+    wdt_thread = Thread(target=watchdog_thread, args=(wdt_event, mock_wdt))
+    wdt_thread.start()
 
     app.od["versions"]["sw_version"].value = __version__
     oresat_id = app.od["satellite_id"].value
@@ -70,6 +97,9 @@ def main():
     app.set_factory_reset_callback(fram.clear)
 
     olaf_run()
+
+    wdt_event.set()
+    wdt_thread.join()
 
 
 if __name__ == "__main__":

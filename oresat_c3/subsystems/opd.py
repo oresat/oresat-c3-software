@@ -540,7 +540,6 @@ class Opd:
         count = 0
 
         for node in self._nodes.values():
-
             if node.probe(reset):
                 count += 1
 

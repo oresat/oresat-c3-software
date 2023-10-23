@@ -1,8 +1,8 @@
 bitstring
 black
 build
-eds-utils
 isort
+oresat-configs
 oresat-olaf>=3.0.0
 pylama[all]
 pylama[toml]

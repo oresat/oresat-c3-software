@@ -52,13 +52,7 @@ class BeaconService(Service):
 
     def _send_beacon(self):
         payload = bytes()
-        for field in self._beacon_def["fields"]:
-            index = field[0]
-            if len(field) == 1:
-                obj = self.node.od[index]
-            else:
-                subindex = field[1]
-                obj = self.node.od[index][subindex]
+        for obj in self._beacon_def:
             payload += obj.encode_raw(obj.value)
 
         packet = ax25_pack(

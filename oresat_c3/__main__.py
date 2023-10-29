@@ -3,7 +3,7 @@
 import os
 
 from olaf import Gpio, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
-from oresat_configs import BEACON_DEF_DB, FRAM_DEF_DB, OD_DB, NodeId, OreSatId
+from oresat_configs import NodeId, OreSatConfig
 
 from . import __version__
 from .drivers.fm24cl64b import Fm24cl64b
@@ -37,17 +37,16 @@ def main():
     """OreSat C3 app main."""
     path = os.path.dirname(os.path.abspath(__file__))
 
-    args = olaf_setup(OD_DB, NodeId.C3)
+    args, config = olaf_setup(NodeId.C3)
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = "opd" in mock_args or "all" in mock_args
     mock_fram = "fram" in mock_args or "all" in mock_args
     mock_ant = "antennas" in mock_args or "all" in mock_args
 
     app.od["versions"]["sw_version"].value = __version__
-    oresat_id = app.od["satellite_id"].value
 
-    beacon_def = BEACON_DEF_DB[OreSatId(oresat_id)]
-    fram_def = FRAM_DEF_DB[OreSatId(oresat_id)]
+    beacon_def = config.beacon_def
+    fram_def = config.fram_def
 
     i2c_bus_num = 2
     opd_not_enable_pin = "OPD_nENABLE"

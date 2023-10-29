@@ -56,9 +56,9 @@ class BeaconService(Service):
             payload += obj.encode_raw(obj.value)
 
         packet = ax25_pack(
-            dest=self._src_callsign,
+            dest=self._dest_callsign,
             dest_ssid=0,
-            src=self._dest_callsign,
+            src=self._src_callsign,
             src_ssid=0,
             control=0,
             pid=0,

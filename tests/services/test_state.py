@@ -1,9 +1,10 @@
+"""Test the C3 state service."""
+
 import unittest
 from time import time
 
-import canopen
 from olaf import MasterNode, NodeStop
-from oresat_configs import FRAM_DEF_DB, OD_DB, NodeId, OreSatId
+from oresat_configs import OreSatConfig, NodeId, OreSatId
 
 from oresat_c3 import C3State
 from oresat_c3.drivers.fm24cl64b import Fm24cl64b
@@ -15,9 +16,10 @@ class TestState(unittest.TestCase):
     """Test the C3 state service."""
 
     def setUp(self):
-        self.od = OD_DB[OreSatId.ORESAT0_5][NodeId.C3]
-        fram_def = FRAM_DEF_DB[OreSatId.ORESAT0_5]
-        self.node = MasterNode(self.od, "vcan0", OD_DB[OreSatId.ORESAT0_5])
+        config = OreSatConfig(OreSatId.ORESAT0_5)
+        self.od = config.od_db[NodeId.C3]
+        fram_def = config.fram_def
+        self.node = MasterNode(self.od, "vcan0", config.od_db)
 
         antennas = Antennas(True)
         fram = Fm24cl64b(2, 0x50, True)

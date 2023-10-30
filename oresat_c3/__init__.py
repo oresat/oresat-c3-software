@@ -1,3 +1,5 @@
+"""C3 OLAF App."""
+
 from enum import Enum, IntEnum
 
 __version__ = "0.1.0"
@@ -24,7 +26,9 @@ class C3State(IntEnum):
 
     @staticmethod
     def from_char(value: str):
+        """Make an object from char value."""
         return C3State[ord(value)]
 
     def to_char(self) -> str:
+        """Get char value."""
         return chr(self.value)

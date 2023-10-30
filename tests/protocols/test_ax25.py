@@ -25,7 +25,7 @@ class TestAx25(unittest.TestCase):
         """Set destination ssid greater than 15"""
 
         dest_callsign = "DEST"
-        invalid_dest_ssid = 16
+        invalid_dest_ssid = 0x100
         src_callsign = "SRC"
         src_ssid = 1
         control = 1
@@ -78,7 +78,7 @@ class TestAx25(unittest.TestCase):
         dest_callsign = "DEST"
         dest_ssid = 1
         src_callsign = "SRC"
-        invalid_src_ssid = 16
+        invalid_src_ssid = 0x100
         control = 1
         pid = 1
         payload = b"\x01\x02\x03"

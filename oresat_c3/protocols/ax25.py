@@ -1,10 +1,8 @@
-import zlib
-
 import bitstring
 
 AX25_CALLSIGN_LEN = 6
 AX25_HEADER_LEN = 16
-AX25_PAYLOAD_MAX_LEN = 255
+AX25_PAYLOAD_MAX_LEN = 256
 
 
 class Ax25Error(Exception):
@@ -19,7 +17,6 @@ def ax25_pack(
     control: int,
     pid: int,
     payload: bytes,
-    crc32: bool = True,
 ) -> bytes:
     """
     Generate a AX25 packet.
@@ -30,20 +27,18 @@ def ax25_pack(
         The destination callsign. Must be 6 chars or less. If less that 6 chars, spaces will be
         appended as padding.
     dest_ssid: int
-        The destination SSID (Secondary Station Identifier). Must be between 0 and 15.
+        The destination SSID (Secondary Station Identifier).
     src: str
         The source callsign. Must be 6 chars or less. If less that 6 chars, spaces will be appended
         as padding.
     src_ssid: int
-        The source SSID (Secondary Station Identifier). Must be between 0 and 15.
+        The source SSID (Secondary Station Identifier).
     control: int
         Control field value, defines type of frame being sent.
     pid: int
         Protocol Identifier field. It defines which Layer 3 protocol is in use.
     payload: bytes
         Payload data
-    crc32: bool
-        Calculate and append CRC32 to end of packet. Enabled by default.
 
     Rasises
     -------
@@ -57,15 +52,19 @@ def ax25_pack(
     """
 
     if len(dest) > AX25_CALLSIGN_LEN:
-        raise Ax25Error("dest callsign must be less than 6 chars")
-    if dest_ssid < 0 or dest_ssid > 15:
-        raise Ax25Error("dest_ssid must be between 0 and 15")
+        raise Ax25Error(f"dest callsign must be less than {AX25_CALLSIGN_LEN} chars")
+    if dest_ssid < 0 or dest_ssid > 0xFF:
+        raise Ax25Error("dest callsign must fit in a uint8")
     if len(src) > AX25_CALLSIGN_LEN:
-        raise Ax25Error("src callsign must be less than 6 chars")
-    if src_ssid < 0 or src_ssid > 15:
-        raise Ax25Error("src_ssid must be between 0 and 15")
+        raise Ax25Error(f"src callsign must be less than {AX25_CALLSIGN_LEN} chars")
+    if src_ssid < 0 or src_ssid > 0xFF:
+        raise Ax25Error("src callsign must fit in a uint8")
     if len(payload) > AX25_PAYLOAD_MAX_LEN:
         raise Ax25Error(f"payload must be less than {AX25_PAYLOAD_MAX_LEN} bytes")
+    if control < 0 or control > 0xFF:
+        raise Ax25Error("control must fit in a uint8")
+    if pid < 0 or pid > 0xFF:
+        raise Ax25Error("pid must fit in a uint8")
 
     # callsigns must be 6 chars, add trailing spaces as padding
     src += " " * (AX25_CALLSIGN_LEN - len(src))
@@ -77,14 +76,12 @@ def ax25_pack(
         + dest_ssid.to_bytes(1, "little")
         + src.encode()
         + src_ssid.to_bytes(1, "little")
-        + control.to_bytes(1, "little")
-        + pid.to_bytes(1, "little")
     )
     header = (bitstring.BitArray(header) << 1).bytes
+    header = bytearray(header)
+    header[-1] |= 1
+    header += control.to_bytes(1, "little") + pid.to_bytes(1, "little")
 
     packet = header + payload
 
-    if crc32:
-        packet += zlib.crc32(packet, 0).to_bytes(4, "little")
-
-    return packet
+    return bytes(packet)

@@ -72,7 +72,7 @@ path = "tests/*"
 ignore = "W0212"
 
 [[tool.mypy.overrides]]
-module = "canopen,yaml"
+module = "canopen,yaml,olaf,oresat-configs"
 ignore_missing_imports = true
 
 [tool.isort]

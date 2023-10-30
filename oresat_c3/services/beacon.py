@@ -5,6 +5,7 @@ Handles the beaconing.
 """
 
 import socket
+import zlib
 from time import time
 
 from olaf import Service, logger, scet_int_from_time
@@ -54,16 +55,16 @@ class BeaconService(Service):
         payload = bytes()
         for obj in self._beacon_def:
             payload += obj.encode_raw(obj.value)
+        payload += zlib.crc32(payload, 0).to_bytes(4, "little")
 
         packet = ax25_pack(
             dest=self._dest_callsign,
             dest_ssid=0,
             src=self._src_callsign,
             src_ssid=0,
-            control=0,
-            pid=0,
+            control=3,
+            pid=0xF0,
             payload=payload,
-            crc32=True,
         )
 
         logger.debug("beaconing")

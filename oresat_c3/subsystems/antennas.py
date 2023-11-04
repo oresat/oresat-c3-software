@@ -27,42 +27,33 @@ class Antennas:
         self._adc_monopole = Adc(4, mock)
         self._adc_helical = Adc(5, mock)
 
-    def deploy(self, timeout: int):
-        """Deploy  helical and monopole antennas."""
+    def deploy(self, timeout: int, delay_between: int):
+        """
+        Deploy the monopole antenna and then the helical.
 
-        if (
-            self._gpio_helical_1 is None
-            or self._gpio_helical_2 is None
-            or self._gpio_monopole_1 is None
-            or self._gpio_monopole_2 is None
-        ):
-            return
+        Wrapper ontop of deploy_monopole and deploy_helical.
 
-        self._gpio_helical_1.mode = GPIO_OUT
-        self._gpio_helical_2.mode = GPIO_OUT
-        self._gpio_monopole_1.mode = GPIO_OUT
-        self._gpio_monopole_2.mode = GPIO_OUT
+        Parameters
+        ----------
+        timeout: int
+            How long the gpio lines are set high.
+        delay_between: int
+            Delay between the monopole and helical deployments.
+        """
 
-        self._gpio_helical_1.high()
-        self._gpio_helical_2.high()
-        self._gpio_monopole_1.high()
-        self._gpio_monopole_2.high()
-        sleep(timeout)
-        self._gpio_monopole_1.low()
-        self._gpio_monopole_2.low()
-        self._gpio_helical_1.low()
-        self._gpio_helical_2.low()
-
-        self._gpio_helical_1.mode = GPIO_IN
-        self._gpio_helical_2.mode = GPIO_IN
-        self._gpio_monopole_1.mode = GPIO_IN
-        self._gpio_monopole_2.mode = GPIO_IN
+        self.deploy_monopole(timeout)
+        sleep(delay_between)
+        self.deploy_helical(timeout)
 
     def deploy_helical(self, timeout: int):
-        """Deploy only the helical."""
+        """
+        Deploy only the helical.
 
-        if self._gpio_helical_1 is None or self._gpio_helical_2 is None:
-            return
+        Parameters
+        ----------
+        timeout: int
+            How long the gpio lines are set high.
+        """
 
         self._gpio_helical_1.mode = GPIO_OUT
         self._gpio_helical_2.mode = GPIO_OUT
@@ -77,10 +68,14 @@ class Antennas:
         self._gpio_helical_2.mode = GPIO_IN
 
     def deploy_monopole(self, timeout: int):
-        """Deploy only the monopole."""
+        """
+        Deploy only the monopole.
 
-        if self._gpio_monopole_1 is None or self._gpio_monopole_2 is None:
-            return
+        Parameters
+        ----------
+        timeout: int
+            How long the gpio lines are set high.
+        """
 
         self._gpio_monopole_1.mode = GPIO_OUT
         self._gpio_monopole_2.mode = GPIO_OUT
@@ -110,9 +105,6 @@ class Antennas:
             Helical is good.
         """
 
-        if self._adc_helical is None or self._gpio_test_helical is None:
-            return False
-
         self._gpio_test_helical.high()
         value = self._adc_helical.value
         self._gpio_test_helical.low()
@@ -133,9 +125,6 @@ class Antennas:
         bool
             Monopole is good.
         """
-
-        if self._adc_monopole is None or self._gpio_test_monopole is None:
-            return False
 
         self._gpio_test_monopole.high()
         value = self._adc_monopole.value

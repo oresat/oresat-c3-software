@@ -33,8 +33,11 @@ class BeaconService(Service):
         self._delay_obj: canopen.objectdictionary.Variable = None
 
         self._dest_callsign = ""
+        self._dest_ssid = 0
         self._src_callsign = ""
-        self._start_chars = b""
+        self._src_ssid = 0
+        self._control = 0
+        self._pid = 0
 
     def on_start(self):
         beacon_rec = self.node.od["beacon"]
@@ -46,8 +49,11 @@ class BeaconService(Service):
 
         # contants
         self._dest_callsign = beacon_rec["dest_callsign"].value
+        self._dest_ssid = beacon_rec["dest_ssid"].value
         self._src_callsign = beacon_rec["src_callsign"].value
-        self._start_chars = beacon_rec["start_chars"].value.encode()
+        self._src_ssid = beacon_rec["src_ssid"].value
+        self._control = beacon_rec["control"].value
+        self._pid = beacon_rec["pid"].value
 
         self.node.add_sdo_callbacks("beacon", "send_now", None, self._on_write_send_now)
         self.node.add_sdo_callbacks("beacon", "last_timestamp", self._on_read_last_ts, None)
@@ -70,11 +76,11 @@ class BeaconService(Service):
 
         packet = ax25_pack(
             dest=self._dest_callsign,
-            dest_ssid=0,
+            dest_ssid=self._dest_ssid,
             src=self._src_callsign,
-            src_ssid=0,
-            control=3,
-            pid=0xF0,
+            src_ssid=self._src_ssid,
+            control=self._control,
+            pid=self._pid,
             payload=payload,
         )
 

@@ -37,6 +37,7 @@ class StateService(Service):
         self._deployed_obj: canopen.objectdictionary.Variable = None
         self._pre_deploy_timeout_obj: canopen.objectdictionary.Variable = None
         self._ant_attempt_timeout_obj: canopen.objectdictionary.Variable = None
+        self._ant_attempt_between_timeout_obj: canopen.objectdictionary.Variable = None
         self._ant_reattempt_timeout_obj: canopen.objectdictionary.Variable = None
         self._tx_timeout_obj: canopen.objectdictionary.Variable = None
         self._tx_enable_obj: canopen.objectdictionary.Variable = None
@@ -58,6 +59,7 @@ class StateService(Service):
         self._deployed_obj = antennas_rec["deployed"]
         self._pre_deploy_timeout_obj = antennas_rec["pre_attempt_timeout"]
         self._ant_attempt_timeout_obj = antennas_rec["attempt_timeout"]
+        self._ant_attempt_between_timeout_obj = antennas_rec["attempt_between_timeout"]
         self._ant_reattempt_timeout_obj = antennas_rec["reattempt_timeout"]
         self._tx_timeout_obj = tx_control_rec["timeout"]
         self._tx_enable_obj = tx_control_rec["enable"]
@@ -112,7 +114,10 @@ class StateService(Service):
                 and self.is_bat_lvl_good
             ):
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
-                self._antennas.deploy(self._ant_attempt_timeout_obj.value)
+                self._antennas.deploy(
+                    self._ant_attempt_timeout_obj.value,
+                    self._ant_attempt_between_timeout_obj.value,
+                )
                 self._last_antennas_deploy = time()
                 self._attempts += 1
             # wait for battery to be at a good level

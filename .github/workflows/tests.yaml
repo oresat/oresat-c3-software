@@ -36,6 +36,9 @@ jobs:
         python -m build
         pip install dist/*.whl
 
+    - name: Clean up oresat-configs
+      run: rm -rf resources/oresat-configs
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip

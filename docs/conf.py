@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(".."))
-from oresat_c3 import __version__
+from oresat_c3 import __version__  # pylint: disable=E0401
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information

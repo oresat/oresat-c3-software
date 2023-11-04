@@ -6,6 +6,7 @@ import binascii
 import hashlib
 import hmac
 from enum import IntEnum
+from typing import Union
 
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
 from spacepackets.uslp.frame import (  # type: ignore
@@ -78,7 +79,7 @@ class EdlPacket:
 
     def __init__(
         self,
-        payload: type[EdlCommandRequest | EdlCommandResponse],
+        payload: Union[EdlCommandRequest, EdlCommandResponse],
         seq_num: int,
         src_dest: SourceOrDestField,
     ):

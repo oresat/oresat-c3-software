@@ -8,6 +8,7 @@ import socket
 import zlib
 from time import time
 
+import canopen
 from olaf import Service, logger, scet_int_from_time
 
 from .. import C3State
@@ -15,6 +16,8 @@ from ..protocols.ax25 import ax25_pack
 
 
 class BeaconService(Service):
+    """Beacon Service."""
+
     _DOWNLINK_ADDR = ("localhost", 10015)
 
     def __init__(self, beacon_def: dict):
@@ -24,6 +27,14 @@ class BeaconService(Service):
         logger.info(f"Beacon socket: {self._DOWNLINK_ADDR}")
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
         self._ts = 0.0
+
+        self._c3_state_obj: canopen.objectdictionary.Variable = None
+        self._tx_enabled_obj: canopen.objectdictionary.Variable = None
+        self._delay_obj: canopen.objectdictionary.Variable = None
+
+        self._dest_callsign = ""
+        self._src_callsign = ""
+        self._start_chars = b""
 
     def on_start(self):
         beacon_rec = self.node.od["beacon"]

@@ -31,6 +31,21 @@ class StateService(Service):
         self._last_antennas_deploy = 0
         self._boot_time = time()
 
+        self._c3_state_obj: canopen.objectdictionary.Variable = None
+        self._reset_timeout_obj: canopen.objectdictionary.Variable = None
+        self._attempts_obj: canopen.objectdictionary.Variable = None
+        self._deployed_obj: canopen.objectdictionary.Variable = None
+        self._pre_deploy_timeout_obj: canopen.objectdictionary.Variable = None
+        self._ant_attempt_timeout_obj: canopen.objectdictionary.Variable = None
+        self._ant_reattempt_timeout_obj: canopen.objectdictionary.Variable = None
+        self._tx_timeout_obj: canopen.objectdictionary.Variable = None
+        self._tx_enable_obj: canopen.objectdictionary.Variable = None
+        self._last_tx_enable_obj: canopen.objectdictionary.Variable = None
+        self._last_edl_obj: canopen.objectdictionary.Variable = None
+        self._edl_timeout_obj: canopen.objectdictionary.Variable = None
+        self._vbatt_bp1_obj: canopen.objectdictionary.Variable = None
+        self._vbatt_bp2_obj: canopen.objectdictionary.Variable = None
+
     def on_start(self):
         edl_rec = self.node.od["edl"]
         antennas_rec = self.node.od["antennas"]
@@ -54,8 +69,6 @@ class StateService(Service):
 
         self._restore_state()
 
-        # TODO
-        # self.node.add_sdo_write_callback(0x6005, self._on_cryto_key_write)
         self.node.add_sdo_callbacks("tx_control", "enable", None, self._on_write_tx_enable)
 
         # make sure the initial state is valid (will be invalid on a cleared F-RAM)
@@ -78,12 +91,6 @@ class StateService(Service):
         else:
             logger.info("disabling tx")
             self._last_tx_enable_obj.value = 0
-
-    def _on_cryto_key_write(self, data: bytes):
-        """On SDO write set the crypto key in OD and F-RAM"""
-
-        if len(data) == 32:
-            self._cryto_key_obj.value = data
 
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""

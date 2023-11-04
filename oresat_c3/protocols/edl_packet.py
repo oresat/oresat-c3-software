@@ -7,8 +7,8 @@ import hashlib
 import hmac
 from enum import IntEnum
 
-from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen
-from spacepackets.uslp.frame import (
+from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
+from spacepackets.uslp.frame import (  # type: ignore
     FrameType,
     TfdzConstructionRules,
     TransferFrame,
@@ -16,7 +16,7 @@ from spacepackets.uslp.frame import (
     UslpProtocolIdentifier,
     VarFrameProperties,
 )
-from spacepackets.uslp.header import (
+from spacepackets.uslp.header import (  # type: ignore
     BypassSequenceControlFlag,
     PrimaryHeader,
     ProtocolCommandFlag,
@@ -41,12 +41,14 @@ class EdlVcid(IntEnum):
 
 
 def crc16_bytes(data: bytes) -> bytes:
-    """Helper function for generating the crc16 of a message as bytes"""
+    """Helper function to generate the crc16 of a message as bytes"""
 
     return binascii.crc_hqx(data, 0).to_bytes(2, "little")
 
 
 def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:
+    """Helper function to generate HMAC value from HMAC key and the message."""
+
     return hmac.digest(hmac_key, message, hashlib.sha3_256)
 
 
@@ -64,7 +66,7 @@ class EdlPacket:
     DFH_LEN = 1
     HMAC_LEN = 32
     FECF_LEN = 2
-    _TC_MIN_LEN = PRIMARY_HEADER_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
+    TC_MIN_LEN = PRIMARY_HEADER_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
 
     FRAME_PROPS = VarFrameProperties(
         has_insert_zone=True,
@@ -76,10 +78,10 @@ class EdlPacket:
 
     def __init__(
         self,
-        payload: EdlCommandRequest or EdlCommandResponse,
+        payload: type[EdlCommandRequest | EdlCommandResponse],
         seq_num: int,
         src_dest: SourceOrDestField,
-    ) -> bytes:
+    ):
         """
         Parameters
         ----------
@@ -91,7 +93,7 @@ class EdlPacket:
             Origin of packet, use `SRC_DEST_ORESAT` or `SRC_DEST_UNICLOGS`.
         """
 
-        if isinstance(payload, EdlCommandRequest) or isinstance(payload, EdlCommandResponse):
+        if isinstance(payload, (EdlCommandRequest, EdlCommandResponse)):
             vcid = EdlVcid.C3_COMMAND
         else:
             raise EdlCommandCode(f"unknown payload object: {type(payload)}")
@@ -124,7 +126,7 @@ class EdlPacket:
         try:
             payload_raw = self.payload.pack()
         except EdlCommandError as e:
-            raise EdlPacketError(e)
+            raise EdlPacketError(e) from e
 
         tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
 
@@ -135,7 +137,7 @@ class EdlPacket:
         )
 
         # USLP transfer frame total length - 1
-        frame_len = len(payload_raw) + self._TC_MIN_LEN - 1
+        frame_len = len(payload_raw) + self.TC_MIN_LEN - 1
 
         frame_header = PrimaryHeader(
             scid=self.SPACECRAFT_ID,
@@ -167,13 +169,13 @@ class EdlPacket:
             The raw data to unpack.
         """
 
-        if len(raw) < cls._TC_MIN_LEN:
+        if len(raw) < cls.TC_MIN_LEN:
             raise EdlPacketError(f"EDL packet too short: {len(raw)}")
 
         crc16_raw = raw[-cls.FECF_LEN :]
         crc16_raw_calc = crc16_bytes(raw[: -cls.FECF_LEN])
         if crc16_raw_calc != crc16_raw:
-            raise EdlPacketError(f"invalid FECF: {crc16_raw} vs {crc16_raw_calc}")
+            raise EdlPacketError(f"invalid FECF: {crc16_raw.hex()} vs {crc16_raw_calc.hex()}")
 
         try:
             frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
@@ -194,7 +196,7 @@ class EdlPacket:
                 else:
                     payload = EdlCommandResponse.unpack(payload_raw)
             except EdlCommandError as e:
-                raise EdlPacketError(e)
+                raise EdlPacketError(e) from e
         else:
             raise EdlPacketError(f"unknown vcid {frame.header.vcid}")
 

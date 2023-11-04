@@ -27,7 +27,7 @@ class C3State(IntEnum):
     @staticmethod
     def from_char(value: str):
         """Make an object from char value."""
-        return C3State[ord(value)]
+        return C3State(ord(value))
 
     def to_char(self) -> str:
         """Get char value."""

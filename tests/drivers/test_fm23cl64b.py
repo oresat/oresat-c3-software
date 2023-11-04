@@ -1,3 +1,5 @@
+"""Unit tests for the FM23CL64B driver."""
+
 import os
 import unittest
 
@@ -7,13 +9,15 @@ from .. import FRAM_ADDR, I2C_BUS_NUM, MOCK_HW
 
 
 class TestFm24cl64b(unittest.TestCase):
+    """Test the Fm24cl64b driver."""
+
     def setUp(self):
-        if os.path.isfile(Fm24cl64b._MOCK_FILE):
-            os.remove(Fm24cl64b._MOCK_FILE)
+        if os.path.isfile(Fm24cl64b.MOCK_FILE):
+            os.remove(Fm24cl64b.MOCK_FILE)
 
     def tearDown(self):
-        if os.path.isfile(Fm24cl64b._MOCK_FILE):
-            os.remove(Fm24cl64b._MOCK_FILE)
+        if os.path.isfile(Fm24cl64b.MOCK_FILE):
+            os.remove(Fm24cl64b.MOCK_FILE)
 
     def test_addresses(self):
         """Test valid and invalid i2c addresses"""
@@ -28,6 +32,8 @@ class TestFm24cl64b(unittest.TestCase):
                 Fm24cl64b(I2C_BUS_NUM, addr, MOCK_HW)
 
     def test_read(self):
+        """Test reading from fram."""
+
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # valid
@@ -47,6 +53,8 @@ class TestFm24cl64b(unittest.TestCase):
             fram.read(0, -1)  # size must be greater than 1
 
     def test_write(self):
+        """Test writeing to fram."""
+
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # valid, should raise no errors
@@ -68,6 +76,8 @@ class TestFm24cl64b(unittest.TestCase):
             fram.write(0, b"")  # no data
 
     def test_read_write(self):
+        """Test reads and writes work."""
+
         fram = Fm24cl64b(I2C_BUS_NUM, FRAM_ADDR, MOCK_HW)
 
         # make sure data is actually written
@@ -87,6 +97,8 @@ class TestFm24cl64b(unittest.TestCase):
         self.assertEqual(fram.read(0, len(new_data)), new_data)
 
     def test_reload(self):
+        """Test on a remake of of the Fm24cl64b obj the data still exist."""
+
         data = bytes([1] * 5)
         offset = 0
 

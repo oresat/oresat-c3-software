@@ -246,7 +246,7 @@ class EdlCommandCode(IntEnum):
 
 def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
     res = struct.unpack("<2BHI", request_raw[:8])
-    res += request_raw[8:]
+    res += (request_raw[8:],)
 
     return res
 
@@ -295,7 +295,7 @@ class EdlCommandRequest:
         if not isinstance(args, tuple) and args is not None:
             raise EdlCommandError("EdlCommandRequest args must be a tuple or None")
 
-        self.code = code
+        self.code: EdlCommandCode = code
         self.command = EDL_COMMANDS[code]
         self.args = args
 
@@ -340,7 +340,7 @@ class EdlCommandRequest:
         elif command.req_func is not None:
             args = command.req_func(raw[1:])
         else:
-            args = None
+            args = tuple()
 
         return EdlCommandRequest(code, args)
 
@@ -407,6 +407,6 @@ class EdlCommandResponse:
         elif command.req_func is not None:
             values = command.req_func(raw[1:])
         else:
-            values = None
+            values = tuple()
 
         return EdlCommandResponse(code, values)

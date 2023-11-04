@@ -1,3 +1,5 @@
+"""Anything dealing with packing AX.25 packets."""
+
 import bitstring
 
 AX25_CALLSIGN_LEN = 6
@@ -77,9 +79,12 @@ def ax25_pack(
         + src.encode()
         + src_ssid.to_bytes(1, "little")
     )
-    header = (bitstring.BitArray(header) << 1).bytes
+    header = (bitstring.BitArray(header) << 1).bytes  # callsigns and ssids are bitshifted by 1
+
+    # flip last bit
     header = bytearray(header)
     header[-1] |= 1
+
     header += control.to_bytes(1, "little") + pid.to_bytes(1, "little")
 
     packet = header + payload

@@ -6,7 +6,6 @@ Welcome to OreSat C3's documentation!
 
    opd
    edl
-   beacon
    state
 
 

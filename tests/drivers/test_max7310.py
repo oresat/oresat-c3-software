@@ -1,3 +1,5 @@
+"""Unit tests for the MAX7310 driver."""
+
 import unittest
 
 from oresat_c3.drivers.max7310 import Max7310, Max7310Error
@@ -6,6 +8,8 @@ from .. import I2C_BUS_NUM, MAX7310_ADDR, MOCK_HW
 
 
 class TestMax7310(unittest.TestCase):
+    """Test the MAX7310 driver."""
+
     def test_addresses(self):
         """Test valid and invalid i2c addresses"""
 
@@ -19,6 +23,8 @@ class TestMax7310(unittest.TestCase):
                 Max7310(I2C_BUS_NUM, addr, MOCK_HW)
 
     def test_configure(self):
+        """Test the configure register works."""
+
         max7310 = Max7310(I2C_BUS_NUM, MAX7310_ADDR, MOCK_HW)
 
         self.assertTrue(max7310.is_valid)
@@ -49,6 +55,8 @@ class TestMax7310(unittest.TestCase):
             max7310.configure(0, 0, 0, 0x100)
 
     def test_pin(self):
+        """Test the pin set and clear methods work."""
+
         max7310 = Max7310(I2C_BUS_NUM, MAX7310_ADDR, MOCK_HW)
         max7310.configure(0, 0, 4, 1)
         self.assertFalse(max7310.output_status(3))

@@ -1,3 +1,5 @@
+"""Unit test for the Opd and OpdNode classes."""
+
 import unittest
 
 from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeId, OpdNodeState
@@ -6,7 +8,11 @@ from .. import I2C_BUS_NUM
 
 
 class TestOpd(unittest.TestCase):
+    """Test the Opd subsystem."""
+
     def test_opd(self):
+        """Test enable/disable works."""
+
         opd = Opd(10, 12, 2, I2C_BUS_NUM, mock=True)
 
         for node in opd:
@@ -36,7 +42,10 @@ class TestOpd(unittest.TestCase):
 
 
 class TestOpdNode(unittest.TestCase):
+    """Test the Opd node class."""
+
     def test_node_enable(self):
+        """Test enable/disable works."""
         node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_1, mock=True)
         node.configure()
         self.assertEqual(node._status, OpdNodeState.DISABLED)

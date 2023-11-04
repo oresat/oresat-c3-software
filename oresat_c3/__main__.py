@@ -2,8 +2,8 @@
 
 import os
 
-from olaf import Gpio, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
-from oresat_configs import NodeId, OreSatConfig
+from olaf import app, olaf_run, olaf_setup, render_olaf_template, rest_api
+from oresat_configs import NodeId
 
 from . import __version__
 from .drivers.fm24cl64b import Fm24cl64b

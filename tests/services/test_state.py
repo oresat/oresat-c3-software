@@ -4,7 +4,7 @@ import unittest
 from time import time
 
 from olaf import MasterNode, NodeStop
-from oresat_configs import OreSatConfig, NodeId, OreSatId
+from oresat_configs import NodeId, OreSatConfig, OreSatId
 
 from oresat_c3 import C3State
 from oresat_c3.drivers.fm24cl64b import Fm24cl64b

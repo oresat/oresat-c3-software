@@ -1,3 +1,5 @@
+"""Unit tests for EdlPacket."""
+
 import unittest
 from enum import IntEnum
 
@@ -11,6 +13,8 @@ from oresat_c3.protocols.edl_packet import (
 
 
 class TestEdlPacket(unittest.TestCase):
+    """Test the EdlPacket."""
+
     def setUp(self):
         self.hmac_key = b"\x00" * 128
         self.seq_num = 0
@@ -34,7 +38,7 @@ class TestEdlPacket(unittest.TestCase):
         """Test unpacking an message that is to short to be a valid EDL packet."""
 
         # Preparing a packet that is shorter than the minimum length
-        short_packet = b"\x00" * (EdlPacket._TC_MIN_LEN - 1)
+        short_packet = b"\x00" * (EdlPacket.TC_MIN_LEN - 1)
 
         # Test if EdlPacketError "EDL packet too short" exception is thrown
         with self.assertRaises(EdlPacketError):

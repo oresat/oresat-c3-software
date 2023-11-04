@@ -58,21 +58,25 @@ linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
 # C0206:    Consider iterating dictionaries with .items()
 # R1716:    Simplify chained comparison between the operands
 # W1514:    Using open without explicitly specifying an encoding
-ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514"
+# R0902:    Too many instance attributes
+# R0913:    Too many arguments
+# W0707:    Consider explicitly re-raising
+ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R0902,R0913,W0707"
 max_line_length = 100
 
 [[tool.pylama.files]]
 path = "*/__init__.py"
-# W0611: imported but unused
-ignore = "W0611"
+# W0611:    Imported but unused
+# C0114:    Missing module docstring
+ignore = "W0611,C0114"
 
 [[tool.pylama.files]]
 path = "tests/*"
-# W0212: Access to a protected member of a class
+# W0212:    Access to a protected member of a class
 ignore = "W0212"
 
 [[tool.mypy.overrides]]
-module = "canopen,yaml,olaf,oresat-configs"
+module = "canopen,olaf,oresat_configs,spacepackets"
 ignore_missing_imports = true
 
 [tool.isort]

@@ -108,7 +108,6 @@ arbitrary octets for data.
    :members:
    :undoc-members:
    :member-order: bysource
-   :exclude-members: from_bytes, to_bytes
 
 EDL File Transfer Packet
 ------------------------

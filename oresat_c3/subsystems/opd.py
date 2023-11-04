@@ -32,10 +32,6 @@ class OpdNodeId(IntEnum):
     RW_3 = 0x22
     RW_4 = 0x23
 
-    @staticmethod
-    def from_bytes(value: bytes):
-        return OpdNodeId(int.from_bytes(value, "little"))
-
     @property
     def is_stm32_card(self) -> bool:
         """bool: Flag for if the OPD node is a STM32-based card."""
@@ -124,7 +120,7 @@ class OpdNode:
         inputs = 1 << self._NOT_FAULT_PIN
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
-            self._max7310._mock_input_set(self._NOT_FAULT_PIN)
+            self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
         self._status = OpdNodeState.DISABLED
 
     def probe(self, reset: bool = False) -> bool:
@@ -237,7 +233,7 @@ class OpdNode:
                 self._max7310.output_clear(self._CB_RESET_PIN)
 
                 if self._mock:
-                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)
+                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
 
                 if self.fault:
                     self._status = OpdNodeState.FAULT
@@ -285,7 +281,7 @@ class OpdNode:
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.FAULT
-            raise OpdError(e)
+            raise OpdError(e) from e
 
         return enabled
 
@@ -298,7 +294,7 @@ class OpdNode:
         except Max7310Error as e:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.FAULT
-            raise OpdError(e)
+            raise OpdError(e) from e
 
         return fault
 
@@ -343,7 +339,7 @@ class OpdStm32Node(OpdNode):
         inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
         self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
         if self._mock:
-            self._max7310._mock_input_set(self._NOT_FAULT_PIN)
+            self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
         self._status = OpdNodeState.DISABLED
 
     def enable_uart(self):
@@ -466,12 +462,12 @@ class Opd:
 
         self._nodes = {}
         for node_id in list(OpdNodeId):
-            if node_id.is_stm32_card:
+            if not node_id.is_stm32_card and not node_id.is_octavo_card:
+                node = OpdNode(bus, node_id, mock)
+            elif node_id.is_stm32_card:
                 node = OpdStm32Node(bus, node_id, mock)
             elif node_id.is_octavo_card:
                 node = OpdOctavoNode(bus, node_id, mock)
-            else:
-                node = OpdNode(bus, node_id, mock)
 
             self._nodes[node_id] = node
 

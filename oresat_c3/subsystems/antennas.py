@@ -2,7 +2,7 @@
 
 from time import sleep
 
-from olaf import GPIO_IN, GPIO_OUT, Adc, Gpio, GpioError, logger
+from olaf import GPIO_IN, GPIO_OUT, Adc, Gpio
 
 
 class Antennas:

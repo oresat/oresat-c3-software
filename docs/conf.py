@@ -1,5 +1,5 @@
-# Configuration file for the Sphinx documentation builder.
-#
+"""Configuration file for the Sphinx documentation builder."""
+
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
@@ -10,14 +10,11 @@ from datetime import datetime
 sys.path.insert(0, os.path.abspath(".."))
 from oresat_c3 import __version__
 
-# sys.path.insert(0, os.path.abspath("scripts"))
-# from gen_beacon_rst import gen_beacon_rst
-
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "OreSat C3"
-copyright = f"{datetime.now().year}, Portland State Aerospace Society"
+copyright = f"{datetime.now().year}, Portland State Aerospace Society"  # pylint: disable=W0622
 author = "PSAS"
 release = __version__
 
@@ -34,7 +31,6 @@ extensions = [
     "sphinxcontrib.mermaid",
 ]
 
-templates_path = []
 exclude_patterns = ["build", "Thumbs.db", ".DS_Store"]
 
 
@@ -51,8 +47,3 @@ html_css_files = ["custom.css"]
 # Example configuration for intersphinx: refer to the Python standard library.
 # To add links to stand python type definitions.
 intersphinx_mapping = {"python": ("https://docs.python.org/3/", None)}
-
-
-# -- Generate rst files -----------------------------------------------------
-
-# gen_beacon_rst()

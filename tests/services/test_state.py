@@ -21,8 +21,9 @@ class TestState(unittest.TestCase):
         fram_def = config.fram_def
         self.node = MasterNode(self.od, "vcan0", config.od_db)
 
-        antennas = Antennas(True)
-        fram = Fm24cl64b(2, 0x50, True)
+        mock = True
+        antennas = Antennas(mock)
+        fram = Fm24cl64b(2, 0x50, mock)
         self.service = StateService(fram, fram_def, antennas)
 
         self.node._setup_node()
@@ -69,6 +70,7 @@ class TestState(unittest.TestCase):
         self.service._ant_attempt_timeout_obj.value = 0
         self.service._tx_enable_obj.value = True
         self.service._ant_reattempt_timeout_obj.value = 0
+        self.service._ant_attempt_between_timeout_obj.value = 0
 
         # test DEPLOY -> STANDBY; good battery level
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1

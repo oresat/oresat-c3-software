@@ -2,7 +2,7 @@
 
 import os
 
-from olaf import app, olaf_run, olaf_setup, render_olaf_template, rest_api
+from olaf import Gpio, GpioError, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
 from oresat_configs import NodeId
 
 from . import __version__
@@ -33,6 +33,23 @@ def state_template():
     return render_olaf_template("state.html", name="State")
 
 
+def get_hw_id(mock: bool) -> int:
+    """
+    Get the hardware ID of the C3 card.
+
+    There are 5 gpio pins used to get the unique hardware of the card.
+    """
+
+    hw_id = 0
+    try:
+        for i in range(5):
+            hw_id |= Gpio(f"HW_ID_BIT_{i}", mock).value << i
+    except GpioError:
+        pass
+    logger.info(f"hardware id is 0x{hw_id:X}")
+    return hw_id
+
+
 def main():
     """OreSat C3 app main."""
     path = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +61,7 @@ def main():
     mock_ant = "antennas" in mock_args or "all" in mock_args
 
     app.od["versions"]["sw_version"].value = __version__
+    app.od["hw_id"].value = get_hw_id("all" in mock_args)
 
     beacon_def = config.beacon_def
     fram_def = config.fram_def

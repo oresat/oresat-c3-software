@@ -101,7 +101,7 @@ class TestState(unittest.TestCase):
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
         # test STANDBY -> STANDBY; battery level is too low for deployment and tx enabled
-        self.service._last_tx_enable_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
         self.service._standby()
         self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
@@ -116,7 +116,7 @@ class TestState(unittest.TestCase):
 
         # test STANDBY -> BEACON; battery level is good for deployment and tx enabled
         self.service._c3_state_obj.value = C3State.STANDBY
-        self.service._last_tx_enable_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._standby()
@@ -125,7 +125,7 @@ class TestState(unittest.TestCase):
 
         # test STANDBY -> EDL; EDL is received
         self.service._c3_state_obj.value = C3State.STANDBY
-        self.service._last_edl_obj.value = time()
+        self.service._last_edl_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._standby()
@@ -147,7 +147,7 @@ class TestState(unittest.TestCase):
         # initial state for this test
         self.node._reset = NodeStop.SOFT_RESET
         self.service._c3_state_obj.value = C3State.BEACON.value
-        self.service._last_tx_enable_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.node._reset = NodeStop.SOFT_RESET
@@ -165,7 +165,7 @@ class TestState(unittest.TestCase):
 
         # test BEACON -> EDL; EDL is received
         self.service._c3_state_obj.value = C3State.BEACON
-        self.service._last_edl_obj.value = time()
+        self.service._last_edl_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._beacon()
@@ -187,8 +187,8 @@ class TestState(unittest.TestCase):
         # initial state for this test
         self.node._reset = NodeStop.SOFT_RESET
         self.service._c3_state_obj.value = C3State.EDL.value
-        self.service._last_tx_enable_obj.value = time()
-        self.service._last_edl_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
+        self.service._last_edl_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW + 1
         self.node._reset = NodeStop.SOFT_RESET
@@ -200,7 +200,7 @@ class TestState(unittest.TestCase):
 
         # test EDL -> BEACON; battery level is good and tx enabled
         self.service._last_edl_obj.value = 0
-        self.service._last_tx_enable_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
         self.service._edl()
         self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
@@ -214,7 +214,7 @@ class TestState(unittest.TestCase):
 
         # test EDL -> STANDBY; battery level is too low and tx enabled
         self.service._last_edl_obj.value = 0
-        self.service._last_tx_enable_obj.value = time()
+        self.service._last_tx_enable_obj.value = int(time())
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.service._edl()

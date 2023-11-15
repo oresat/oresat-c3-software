@@ -38,7 +38,8 @@ class BeaconService(Service):
         self._src_ssid = 0
         self._control = 0
         self._pid = 0
-        self._command = True
+        self._command = False
+        self._response = False
 
     def on_start(self):
         beacon_rec = self.node.od["beacon"]
@@ -56,6 +57,7 @@ class BeaconService(Service):
         self._control = beacon_rec["control"].value
         self._pid = beacon_rec["pid"].value
         self._command = beacon_rec["command"].value
+        self._response = beacon_rec["response"].value
 
         self.node.add_sdo_callbacks("beacon", "send_now", None, self._on_write_send_now)
         self.node.add_sdo_callbacks("beacon", "last_timestamp", self._on_read_last_ts, None)
@@ -84,6 +86,7 @@ class BeaconService(Service):
             self._control,
             self._pid,
             self._command,
+            self._response,
             payload,
         )
 

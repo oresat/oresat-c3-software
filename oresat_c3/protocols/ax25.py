@@ -19,6 +19,7 @@ def ax25_pack(
     control: int,
     pid: int,
     command: bool,
+    response: bool,
     payload: bytes,
 ) -> bytes:
     """
@@ -41,7 +42,9 @@ def ax25_pack(
     pid: int
         Protocol Identifier field. It defines which Layer 3 protocol is in use.
     command: bool
-        True to set the extension address feild in src or False to set it dest
+        Set the c-bit in dest
+    response: bool
+        Set the c-bit in src
     payload: bytes
         Payload data
 
@@ -84,9 +87,9 @@ def ax25_pack(
     src_ssid |= reserve_bits
     dest_ssid |= reserve_bits
 
-    # set extension address bit
-    src_ssid |= int(command)
-    dest_ssid |= int(not command)
+    # set the c-bits
+    src_ssid |= int(response) << 7
+    dest_ssid |= int(command) << 7
 
     # make AX25 packet header
     # callsigns are bitshifted by 1

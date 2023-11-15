@@ -21,6 +21,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -37,6 +38,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -53,6 +55,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -69,6 +72,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -85,6 +89,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -101,6 +106,7 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x01\x02\x03",
             )
 
@@ -117,5 +123,6 @@ class TestAx25(unittest.TestCase):
                 control=1,
                 pid=1,
                 command=True,
+                response=True,
                 payload=b"\x00" * (AX25_PAYLOAD_MAX_LEN + 1),
             )

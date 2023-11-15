@@ -12,12 +12,13 @@ class Ax25Error(Exception):
 
 
 def ax25_pack(
-    dest: str,
+    dest_callsign: str,
     dest_ssid: int,
-    src: str,
+    src_callsign: str,
     src_ssid: int,
     control: int,
     pid: int,
+    command: bool,
     payload: bytes,
 ) -> bytes:
     """
@@ -25,12 +26,12 @@ def ax25_pack(
 
     Parameters
     ----------
-    dest: str
+    dest_callsing: str
         The destination callsign. Must be 6 chars or less. If less that 6 chars, spaces will be
         appended as padding.
     dest_ssid: int
         The destination SSID (Secondary Station Identifier).
-    src: str
+    src_callsign: str
         The source callsign. Must be 6 chars or less. If less that 6 chars, spaces will be appended
         as padding.
     src_ssid: int
@@ -39,6 +40,8 @@ def ax25_pack(
         Control field value, defines type of frame being sent.
     pid: int
         Protocol Identifier field. It defines which Layer 3 protocol is in use.
+    command: bool
+        True to set the extension address feild in src or False to set it dest
     payload: bytes
         Payload data
 
@@ -53,40 +56,47 @@ def ax25_pack(
         The AX25 packet.
     """
 
-    if len(dest) > AX25_CALLSIGN_LEN:
+    if len(dest_callsign) > AX25_CALLSIGN_LEN:
         raise Ax25Error(f"dest callsign must be less than {AX25_CALLSIGN_LEN} chars")
-    if dest_ssid < 0 or dest_ssid > 0xFF:
-        raise Ax25Error("dest callsign must fit in a uint8")
-    if len(src) > AX25_CALLSIGN_LEN:
+    if dest_ssid < 0 or dest_ssid > 15:
+        raise Ax25Error("dest callsign must be between 0 and 15")
+    if len(src_callsign) > AX25_CALLSIGN_LEN:
         raise Ax25Error(f"src callsign must be less than {AX25_CALLSIGN_LEN} chars")
-    if src_ssid < 0 or src_ssid > 0xFF:
-        raise Ax25Error("src callsign must fit in a uint8")
+    if src_ssid < 0 or src_ssid > 15:
+        raise Ax25Error("src callsign must be between 0 and 15")
     if len(payload) > AX25_PAYLOAD_MAX_LEN:
         raise Ax25Error(f"payload must be less than {AX25_PAYLOAD_MAX_LEN} bytes")
     if control < 0 or control > 0xFF:
-        raise Ax25Error("control must fit in a uint8")
+        raise Ax25Error("control must fit into a uint8")
     if pid < 0 or pid > 0xFF:
-        raise Ax25Error("pid must fit in a uint8")
+        raise Ax25Error("pid must fit into a uint8")
 
     # callsigns must be 6 chars, add trailing spaces as padding
-    src += " " * (AX25_CALLSIGN_LEN - len(src))
-    dest += " " * (AX25_CALLSIGN_LEN - len(dest))
+    src_callsign += " " * (AX25_CALLSIGN_LEN - len(src_callsign))
+    dest_callsign += " " * (AX25_CALLSIGN_LEN - len(dest_callsign))
+
+    # move ssid to bits 4-1
+    src_ssid <<= 1
+    dest_ssid <<= 1
+
+    # set reserve bits
+    reserve_bits = 0b0110_0000
+    src_ssid |= reserve_bits
+    dest_ssid |= reserve_bits
+
+    # set extension address bit
+    src_ssid |= int(command)
+    dest_ssid |= int(not command)
 
     # make AX25 packet header
+    # callsigns are bitshifted by 1
     header = (
-        dest.encode()
+        (bitstring.BitArray(dest_callsign.encode()) << 1).bytes
         + dest_ssid.to_bytes(1, "little")
-        + src.encode()
+        + (bitstring.BitArray(src_callsign.encode()) << 1).bytes
         + src_ssid.to_bytes(1, "little")
+        + control.to_bytes(1, "little")
+        + pid.to_bytes(1, "little")
     )
-    header = (bitstring.BitArray(header) << 1).bytes  # callsigns and ssids are bitshifted by 1
 
-    # flip last bit
-    header = bytearray(header)
-    header[-1] |= 1
-
-    header += control.to_bytes(1, "little") + pid.to_bytes(1, "little")
-
-    packet = header + payload
-
-    return bytes(packet)
+    return header + payload

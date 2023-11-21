@@ -18,7 +18,11 @@ Framework), which it built ontop of [CANopen for Python] project. See the
 
 ## Quickstart
 
-Install dependenies
+**For development**, install `oresat-configs` from the github repo at 
+https://github.com/oresat/oresat-configs (not from PyPI). That repo may have
+changes that are not apart of the latest release yet.
+
+Install dependencies
 
 ```bash
 $ pip3 install -r requirements.txt

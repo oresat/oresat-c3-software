@@ -9,7 +9,7 @@ from . import __version__
 from .drivers.fm24cl64b import Fm24cl64b
 from .services.beacon import BeaconService
 from .services.edl import EdlService
-from .services.opd import OpdService
+from .services.node_manager import NodeManagerService
 from .services.state import StateService
 from .subsystems.antennas import Antennas
 from .subsystems.opd import Opd
@@ -21,16 +21,16 @@ def beacon_template():
     return render_olaf_template("beacon.html", name="Beacon")
 
 
-@rest_api.app.route("/opd")
-def opd_template():
-    """Render OPD template."""
-    return render_olaf_template("opd.html", name="OPD (OreSat Power Domain)")
-
-
 @rest_api.app.route("/state")
 def state_template():
     """Render state template."""
     return render_olaf_template("state.html", name="State")
+
+
+@rest_api.app.route("/node-manager")
+def node_mgr_template():
+    """Render node manager template."""
+    return render_olaf_template("node_manager.html", name="Node Manager")
 
 
 def get_hw_id(mock: bool) -> int:
@@ -83,11 +83,11 @@ def main():
     )  # add state first to restore state from F-RAM
     app.add_service(BeaconService(beacon_def))
     app.add_service(EdlService(opd))
-    app.add_service(OpdService(opd))
+    app.add_service(NodeManagerService(opd))
 
     rest_api.add_template(f"{path}/templates/beacon.html")
-    rest_api.add_template(f"{path}/templates/opd.html")
     rest_api.add_template(f"{path}/templates/state.html")
+    rest_api.add_template(f"{path}/templates/node_manager.html")
 
     # on factory reset clear F-RAM
     app.set_factory_reset_callback(fram.clear)

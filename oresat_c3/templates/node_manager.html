@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+  </style>
+  <br />
+  <div id="nodeMgrTableDiv">
+    <table id="nodeMgrTable">
+      <thead>
+        <tr>
+          <td>Card</td>
+          <td>Node Id</td>
+          <td>Status</td>
+          <td>Control</td>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+  <script>
+    const NODES = {
+      C3: 0,
+      BATTERY_1: 0x4,
+      BATTERY_2: 0x8,
+      SOLAR_MODULE_1: 0xC,
+      SOLAR_MODULE_2: 0x10,
+      SOLAR_MODULE_3: 0x14,
+      SOLAR_MODULE_4: 0x18,
+      SOLAR_MODULE_5: 0x1C,
+      SOLAR_MODULE_6: 0x20,
+      SOLAR_MODULE_7: 0x24,
+      SOLAR_MODULE_8: 0x28,
+      STAR_TRACKER_1: 0x2C,
+      STAR_TRACKER_2: 0x30,
+      GPS: 0x34,
+      REACTION_WHEEL_1: 0x3C,
+      REACTION_WHEEL_2: 0x40,
+      REACTION_WHEEL_3: 0x44,
+      REACTION_WHEEL_4: 0x48,
+      DXWIFI: 0x4C,
+      CFC: 0x50,
+    };
+
+    const STATES = {
+      OFF: 0,
+      BOOT: 1,
+      ON: 2,
+      ERROR: 3,
+      NOT_FOUND: 4,
+      DEAD: 0xFF,
+    }
+
+    function inverse(obj){
+      let invObj = {};
+      for(let key in obj){
+        invObj[obj[key]] = key;
+      }
+      return invObj;
+    }
+
+    const STATES_INV = inverse(STATES);
+
+    /** Build the table */
+    async function buildTable() {
+      const data = await readValue("node_manager", "status_json");
+      let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
+      for (const status of JSON.parse(data.value)) {
+        let newRow = tbodyRef.insertRow();
+
+        let newCell = newRow.insertCell();
+        let newText = document.createTextNode(status.node_name);
+        newCell.appendChild(newText);
+
+        let newCell4 = newRow.insertCell();
+        let upperHex = parseInt(status.node_id).toString(16).toUpperCase()
+        let newText4 = document.createTextNode(`0x${upperHex}`);
+        newCell4.appendChild(newText4);
+
+        let newCell2 = newRow.insertCell();
+        let span = document.createElement("span");
+        span.id = `node${status.node_id}`;
+        span.innerText = status.node_status_name;
+        newCell2.appendChild(span);
+
+        let newCell3 = newRow.insertCell();
+        if (status.on_opd) {
+          let button = document.createElement("button");
+          button.addEventListener("click", function() {nodeOnClick(status.node_id)});
+          button.id = `node${status.node_id}Button`;
+          button.innerText = "Enable";
+          newCell3.appendChild(button);
+        }
+      }
+    }
+
+    /** Enable / disable a node button callback */
+    async function nodeOnClick(nodeId) {
+      let value = STATES["OFF"];
+      if (document.getElementById(`node${nodeId}Button`).innerText === "Enable") {
+        value = STATES["ON"];
+      }
+      const data = await writeValue("node_status", nodeId, value);
+      updateNode(nodeId, value);
+    }
+
+    /** Update a row in the table */
+    function updateNode(node, value) {
+      const span = document.getElementById(`node${node}`);
+      const button = document.getElementById(`node${node}Button`);
+
+      const state = STATES_INV[value];
+      span.innerText = state;
+
+      if (button === null) {
+        return;
+      }
+
+      switch (state) {
+      case "OFF":
+        button.innerText = "Enable";
+        button.disabled = false;
+        break;
+      case "BOOT":
+      case "ON":
+        button.innerText = "Disable";
+        button.disabled = false;
+        break;
+      default:
+        button.innerText = "Enable";
+        button.disabled = true;
+      }
+    }
+
+    /** Update data in the table */
+    async function updateStatus() {
+      const data = await readValue("node_manager", "status_json");
+      for (const status of JSON.parse(data.value)) {
+        updateNode(status.node_id, status.node_status);
+      }
+    }
+
+    buildTable();
+    const interval = setInterval(function() {
+      updateStatus();
+    }, 10000);
+  </script>
+{% endblock %}

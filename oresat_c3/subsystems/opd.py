@@ -223,8 +223,6 @@ class OpdNode:
             The times to attempt to reset.
         """
 
-        reset = False
-
         for i in range(attempts):
             logger.debug(f"resetting OPD node {self.id.name} (0x{self.id.value:02X}), try {i + 1}")
             try:
@@ -239,26 +237,11 @@ class OpdNode:
                     self._status = OpdNodeState.FAULT
                 else:
                     self._status = OpdNodeState.ENABLED
-                    reset = True
                     break
             except Max7310Error:
                 continue
 
-        if not reset:
-            self._status = OpdNodeState.DEAD
-            logger.critical(
-                f"OPD node {self.id.name} (0x{self.id.value:02X}) failed to reset 3 "
-                "times in a row, is now consider dead"
-            )
-
         return self._status
-
-    def set_as_dead(self):
-        """Set the node as DEAD. only used by :py:class:`OpdResource`."""
-
-        self.disable()
-        self._status = OpdNodeState.DEAD
-        logger.info(f"OPD node {self.id.name} (0x{self.id.value:02X}) is set to DEAD")
 
     @property
     def id(self) -> OpdNodeId:

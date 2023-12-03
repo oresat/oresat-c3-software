@@ -52,7 +52,12 @@ NODES_NOT_ON_OPD = [
     NodeId.SOLAR_MODULE_8,
 ]
 
-ORESAT1_NODES = ["STAR_TRACKER_2", "BATTERY_2", "SOLAR_MODULE_7", "SOLAR_MODULE_8"]
+ORESAT1_NODES = [
+    NodeId.STAR_TRACKER_2,
+    NodeId.BATTERY_2,
+    NodeId.SOLAR_MODULE_7,
+    NodeId.SOLAR_MODULE_8,
+]
 
 
 class NodeState(IntEnum):
@@ -125,7 +130,7 @@ class NodeManagerService(Service):
 
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         for node_id in list(NodeId):
-            if node_id.name in ["C3"] + ORESAT1_NODES:
+            if node_id in [NodeId.C3] + ORESAT1_NODES:
                 continue
             name = node_id.name.lower()
             self.node.add_sdo_callbacks(
@@ -139,6 +144,9 @@ class NodeManagerService(Service):
         """Get a CANopen node's state."""
 
         next_state = self._status[node_id]
+        if next_state == NodeState.DEAD:
+            return next_state
+
         last_hb = self.node.node_status[node_id][1]
         if self._flight_mode_obj.value and time() > last_hb + self._RESET_TIMEOUT_S:
             logger.error(
@@ -183,8 +191,8 @@ class NodeManagerService(Service):
                 next_state = NodeState.ERROR
             elif status == OpdNodeState.NOT_FOUND:
                 next_state = NodeState.NOT_FOUND
-            elif status == OpdNodeState.FAULT \
-                    and self._opd_resets[opd_node_id] > self._MAX_CO_RESETS:
+            elif prev_state == NodeState.ERROR \
+                    and self._opd_resets[opd_node_id] >= self._MAX_CO_RESETS:
                 next_state = NodeState.DEAD
             elif status == OpdNodeState.ENABLED:
                 next_state = self._check_co_node_state(node_id)
@@ -195,8 +203,8 @@ class NodeManagerService(Service):
             sen_status = self._opd[OpdNodeId.CFC_SENSOR].status
             if OpdNodeState.NOT_FOUND in [pro_status, sen_status]:
                 next_state = NodeState.NOT_FOUND
-            elif OpdNodeState.FAULT in [pro_status, sen_status] \
-                    and self._opd_resets[OpdNodeId.CFC_PROCESSOR] > self._MAX_CO_RESETS:
+            elif prev_state == NodeState.ERROR \
+                    and self._opd_resets[OpdNodeId.CFC_PROCESSOR] >= self._MAX_CO_RESETS:
                 next_state = NodeState.DEAD
             elif OpdNodeState.ENABLED in [pro_status, sen_status]:
                 next_state = self._check_co_node_state(node_id)
@@ -247,7 +255,7 @@ class NodeManagerService(Service):
 
         # reset nodes with errors and probe for nodes not found
         for node_id in list(NodeId):
-            if node_id in NODES_NOT_ON_OPD:
+            if node_id in NODES_NOT_ON_OPD + [NodeId.C3] + ORESAT1_NODES:
                 continue
 
             opd_node_id = CO_TO_OPD.get(node_id, None)
@@ -260,12 +268,18 @@ class NodeManagerService(Service):
                     self._opd[OpdNodeId.CFC_SENSOR].probe(True)
 
             if self._status[node_id] == NodeState.ERROR:
-                logger.error(f"resetting node {node_id.name}, try {self._opd_resets[node_id]}")
                 if node_id != NodeId.CFC:
-                    self._opd[opd_node_id].reset()
+                    logger.error(
+                        f"resetting node {node_id.name}, try {self._opd_resets[opd_node_id] + 1}"
+                    )
+                    self._opd[opd_node_id].reset(1)
                     self._opd_resets[opd_node_id] += 1
                 else:
-                    self._opd[OpdNodeId.CFC_PROCESSOR].reset()
+                    logger.error(
+                        f"resetting node {node_id.name}, try "
+                        f"{self._opd_resets[OpdNodeId.CFC_PROCESSOR] + 1}"
+                    )
+                    self._opd[OpdNodeId.CFC_PROCESSOR].reset(1)
                     self._opd_resets[OpdNodeId.CFC_PROCESSOR] += 1
                     self._opd[OpdNodeId.CFC_SENSOR].reset()
                     self._opd_resets[OpdNodeId.CFC_SENSOR] += 1
@@ -282,6 +296,10 @@ class NodeManagerService(Service):
 
         if node_id in NODES_NOT_ON_OPD:
             return  # do nothing
+
+        if self._status[node_id] == NodeState.DEAD:
+            logger.warning(f"cannot enable node {node_id.name} as it is DEAD")
+            return
 
         if node_id == NodeId.CFC:
             self._opd[OpdNodeId.CFC_PROCESSOR].enable()
@@ -317,7 +335,7 @@ class NodeManagerService(Service):
 
         data = []
         for node, status in self._status.items():
-            if node.name in ["C3"] + ORESAT1_NODES:
+            if node in [NodeId.C3] + ORESAT1_NODES:
                 continue
             on_opd = "SOLAR" not in node.name
             data.append({

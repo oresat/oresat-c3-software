@@ -68,11 +68,13 @@ class BeaconService(Service):
             return  # do nothing
 
         if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
-            self._send_beacon()
+            self.send()
 
         self.sleep(self._delay_obj.value)
 
-    def _send_beacon(self):
+    def send(self):
+        """Send a beacon now."""
+
         payload = bytes()
         for obj in self._beacon_def:
             payload += obj.encode_raw(obj.value)
@@ -103,4 +105,4 @@ class BeaconService(Service):
         """SDO write callback to send a beacon immediately."""
 
         if value:
-            self._send_beacon()
+            self.send()

@@ -3,61 +3,17 @@ Node manager service.
 """
 
 import json
-from time import time
+from dataclasses import dataclass
 from enum import IntEnum
+from time import time
 from typing import Union
 
 import canopen
+from dataclasses_json import dataclass_json
 from olaf import Service, logger
-from oresat_configs import NodeId
+from oresat_configs import Card
 
-from ..subsystems.opd import Opd, OpdNodeId, OpdNodeState, OpdState
-
-OPD_NODE_TO_CO_NODE = {
-    OpdNodeId.BATTERY_1: NodeId.BATTERY_1,
-    OpdNodeId.GPS: NodeId.GPS,
-    OpdNodeId.IMU: NodeId.IMU,
-    OpdNodeId.DXWIFI: NodeId.DXWIFI,
-    OpdNodeId.STAR_TRACKER_1: NodeId.STAR_TRACKER_1,
-    OpdNodeId.BATTERY_2: NodeId.BATTERY_2,
-    OpdNodeId.CFC_PROCESSOR: NodeId.CFC,
-    # CFC_SENSOR is not a CANopen node
-    OpdNodeId.RW_1: NodeId.REACTION_WHEEL_1,
-    OpdNodeId.RW_2: NodeId.REACTION_WHEEL_2,
-    OpdNodeId.RW_3: NodeId.REACTION_WHEEL_3,
-    OpdNodeId.RW_4: NodeId.REACTION_WHEEL_4,
-}
-
-CO_TO_OPD = {
-    NodeId.BATTERY_1: OpdNodeId.BATTERY_1,
-    NodeId.BATTERY_2: OpdNodeId.BATTERY_2,
-    NodeId.IMU: OpdNodeId.IMU,
-    NodeId.REACTION_WHEEL_1: OpdNodeId.RW_1,
-    NodeId.REACTION_WHEEL_2: OpdNodeId.RW_2,
-    NodeId.REACTION_WHEEL_3: OpdNodeId.RW_3,
-    NodeId.REACTION_WHEEL_4: OpdNodeId.RW_4,
-    NodeId.GPS: OpdNodeId.GPS,
-    NodeId.STAR_TRACKER_1: OpdNodeId.STAR_TRACKER_1,
-    NodeId.DXWIFI: OpdNodeId.DXWIFI,
-}
-
-NODES_NOT_ON_OPD = [
-    NodeId.SOLAR_MODULE_1,
-    NodeId.SOLAR_MODULE_2,
-    NodeId.SOLAR_MODULE_3,
-    NodeId.SOLAR_MODULE_4,
-    NodeId.SOLAR_MODULE_5,
-    NodeId.SOLAR_MODULE_6,
-    NodeId.SOLAR_MODULE_7,
-    NodeId.SOLAR_MODULE_8,
-]
-
-ORESAT1_NODES = [
-    NodeId.STAR_TRACKER_2,
-    NodeId.BATTERY_2,
-    NodeId.SOLAR_MODULE_7,
-    NodeId.SOLAR_MODULE_8,
-]
+from ..subsystems.opd import Opd, OpdNodeState, OpdState
 
 
 class NodeState(IntEnum):
@@ -92,20 +48,36 @@ class NodeState(IntEnum):
     """Node has failed to clear errors after multiple resets."""
 
 
+@dataclass_json
+@dataclass
+class Node(Card):
+    """Node data."""
+
+    opd_resets: int = 0
+    """OPD reset count."""
+    last_enable: float = 0.0
+    """last enable timeout."""
+    status: NodeState = NodeState.OFF
+    """Node status."""
+
+
 class NodeManagerService(Service):
     """Node manager service."""
 
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 5
+    _STM32_BOOT_TIMEOUT = 5
+    _OCTAVO_BOOT_TIMEOUT = 30
+    _HB_TIMEOUT = 5
 
-    def __init__(self, opd: Opd):
+    def __init__(self, cards: dict, opd: Opd):
         super().__init__()
 
-        nodes = list(NodeId)
-        self._opd = opd
-        self._opd_resets = {node.id: 0 for node in self._opd}
-        self._status = {node: NodeState.OFF for node in nodes}
+        self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
 
+        self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
+        self._data["c3"].status = NodeState.ON
+        self._opd = opd
         self._loops = 0
 
         self._flight_mode_obj: canopen.objectdictionary.Variable = None
@@ -119,39 +91,46 @@ class NodeManagerService(Service):
     def on_start(self):
         # local objects
         self._flight_mode_obj = self.node.od["flight_mode"]
-        node_mgr_rec = self.node.od['node_manager']
-        self._nodes_off_obj = node_mgr_rec['nodes_off']
-        self._nodes_booting_obj = node_mgr_rec['nodes_booting']
-        self._nodes_on_obj = node_mgr_rec['nodes_on']
-        self._nodes_not_found_obj = node_mgr_rec['nodes_not_found']
-        self._nodes_with_errors_obj = node_mgr_rec['nodes_with_errors']
-        self._nodes_dead_obj = node_mgr_rec['nodes_dead']
-        node_mgr_rec['total_nodes'].value = len(list(NodeId))
+        nodes_mgr_rec = self.node.od["node_manager"]
+        self._nodes_off_obj = nodes_mgr_rec["nodes_off"]
+        self._nodes_booting_obj = nodes_mgr_rec["nodes_booting"]
+        self._nodes_on_obj = nodes_mgr_rec["nodes_on"]
+        self._nodes_not_found_obj = nodes_mgr_rec["nodes_not_found"]
+        self._nodes_with_errors_obj = nodes_mgr_rec["nodes_with_errors"]
+        self._nodes_dead_obj = nodes_mgr_rec["nodes_dead"]
+        nodes_mgr_rec["total_nodes"].value = len(list(self._data))
 
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
-        for node_id in list(NodeId):
-            if node_id in [NodeId.C3] + ORESAT1_NODES:
-                continue
-            name = node_id.name.lower()
+        self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
+        for name in self._data:
             self.node.add_sdo_callbacks(
                 "node_status",
-                name,
-                lambda n=node_id: self.status(n),
-                lambda v, n=node_id: self.enable(n) if v == NodeState.ON else self.disable(n),
+                str(name),
+                lambda n=name: self.status(n),
+                lambda v, n=name: self.enable(n) if v == NodeState.ON else self.disable(n),
             )
 
-    def _check_co_node_state(self, node_id: NodeId) -> NodeState:
+    def _check_co_nodes_state(self, name: str) -> NodeState:
         """Get a CANopen node's state."""
 
-        next_state = self._status[node_id]
+        next_state = self._data[name].status
         if next_state == NodeState.DEAD:
             return next_state
 
-        last_hb = self.node.node_status[node_id][1]
-        if self._flight_mode_obj.value and time() > last_hb + self._RESET_TIMEOUT_S:
+        if self._data[name].processor == "stm32":
+            timeout = self._STM32_BOOT_TIMEOUT
+        else:
+            timeout = self._OCTAVO_BOOT_TIMEOUT
+
+        last_hb = self.node.node_status[name][1]
+        if self._data[name].last_enable + timeout > time():
+            if time() > last_hb + self._RESET_TIMEOUT_S:
+                next_state = NodeState.BOOT
+            else:
+                next_state = NodeState.ON
+        elif self._flight_mode_obj.value and time() > last_hb + self._RESET_TIMEOUT_S:
             logger.error(
-                f"CANopen node {node_id.name} has had no heartbeats in "
-                f"{self._RESET_TIMEOUT_S} seconds"
+                f"CANopen node {name} has had no heartbeats in " f"{self._RESET_TIMEOUT_S} seconds"
             )
             next_state = NodeState.ERROR
         else:
@@ -159,69 +138,48 @@ class NodeManagerService(Service):
 
         return next_state
 
-    def _get_node_state(self, node_id: NodeId) -> NodeState:
+    def _get_nodes_state(self, name: str) -> NodeState:
         """Determine a node's state."""
 
-        if node_id == NodeId.C3:
-            return NodeState.ON
-
-        if node_id not in self.node.node_status:
-            return NodeState.NOT_FOUND
-
-        # update status of nodes not on the OPD
-        if node_id in NODES_NOT_ON_OPD:
-            if time() > self.node.node_status[node_id][1] + 1:
+        # update status of data not on the OPD
+        if self._data[name].opd_address == 0:
+            if time() > self.node.node_status[name][1] + self._HB_TIMEOUT:
                 next_state = NodeState.OFF
             else:
                 next_state = NodeState.ON
             return next_state
 
-        prev_state = self._status[node_id]
+        # opd subsystem is off
+        if self._opd.status == OpdState.DISABLED:
+            return NodeState.NOT_FOUND
+
+        prev_state = self._data[name].status
 
         # default is last state
         next_state = prev_state
 
-        # update status of nodes on the OPD
+        # update status of data on the OPD
         if self._opd.status == OpdState.DEAD:
             next_state = NodeState.DEAD
-        elif node_id != NodeId.CFC:
-            opd_node_id = CO_TO_OPD[node_id]
-            status = self._opd[opd_node_id].status
+        else:
+            status = self._opd[name].status
             if status == OpdNodeState.FAULT:
                 next_state = NodeState.ERROR
             elif status == OpdNodeState.NOT_FOUND:
                 next_state = NodeState.NOT_FOUND
-            elif prev_state == NodeState.ERROR \
-                    and self._opd_resets[opd_node_id] >= self._MAX_CO_RESETS:
+            elif (
+                prev_state == NodeState.ERROR and self._data[name].opd_resets >= self._MAX_CO_RESETS
+            ):
                 next_state = NodeState.DEAD
             elif status == OpdNodeState.ENABLED:
-                next_state = self._check_co_node_state(node_id)
+                next_state = self._check_co_nodes_state(name)
             elif status == OpdNodeState.DISABLED:
                 next_state = NodeState.OFF
-        else:
-            pro_status = self._opd[OpdNodeId.CFC_PROCESSOR].status
-            sen_status = self._opd[OpdNodeId.CFC_SENSOR].status
-            if OpdNodeState.NOT_FOUND in [pro_status, sen_status]:
-                next_state = NodeState.NOT_FOUND
-            elif prev_state == NodeState.ERROR \
-                    and self._opd_resets[OpdNodeId.CFC_PROCESSOR] >= self._MAX_CO_RESETS:
-                next_state = NodeState.DEAD
-            elif OpdNodeState.ENABLED in [pro_status, sen_status]:
-                next_state = self._check_co_node_state(node_id)
-            elif pro_status == OpdNodeState.DISABLED and sen_status == OpdNodeState.DISABLED:
-                next_state = NodeState.OFF
-            else:  # one card is on and other is not
-                next_state = NodeState.ERROR
-
-        if prev_state != next_state:
-            logger.info(
-                f"node {node_id.name} state change {prev_state.name} -> {next_state.name}"
-            )
 
         return next_state
 
     def on_loop(self):
-        """Monitor all OPD nodes and check that nodes that are on are sending heartbeats."""
+        """Monitor all OPD data and check that data that are on are sending heartbeats."""
 
         self.sleep(1)
 
@@ -231,15 +189,21 @@ class NodeManagerService(Service):
         nodes_with_errors = 0
         nodes_not_found = 0
         nodes_dead = 0
-        for node_id in list(NodeId):
-            state = self._get_node_state(node_id)
+        for name in self._data:
+            if name == "c3":
+                continue
+
+            last_state = self._data[name].status
+            state = self._get_nodes_state(name)
+            if state != last_state:
+                logger.info(f"node {name} state change {last_state.name} -> {state.name}")
             nodes_off += int(state == NodeState.OFF)
             nodes_booting += int(state == NodeState.BOOT)
             nodes_on += int(state == NodeState.ON)
             nodes_with_errors += int(state == NodeState.ERROR)
             nodes_not_found += int(state == NodeState.NOT_FOUND)
             nodes_dead += int(state == NodeState.DEAD)
-            self._status[node_id] = state
+            self._data[name].status = state
         self._nodes_off_obj.value = nodes_off
         self._nodes_booting_obj.value = nodes_booting
         self._nodes_on_obj.value = nodes_on
@@ -250,99 +214,80 @@ class NodeManagerService(Service):
         if self._opd.status == OpdState.DEAD:
             return
 
-        if not self._flight_mode_obj.value:
-            return  # don't reset card when not in flight mode as someone may be debugging it
-
-        # reset nodes with errors and probe for nodes not found
-        for node_id in list(NodeId):
-            if node_id in NODES_NOT_ON_OPD + [NodeId.C3] + ORESAT1_NODES:
+        # reset data with errors and probe for data not found
+        for name, info in self._data.items():
+            if info.opd_address == 0:
                 continue
 
-            opd_node_id = CO_TO_OPD.get(node_id, None)
+            if self._loops % 60 == 0 and self._data[name].status == NodeState.NOT_FOUND:
+                self._opd[name].probe(True)
 
-            if self._loops % 60 == 0 and self._status[node_id] == NodeState.NOT_FOUND:
-                if node_id != NodeId.CFC:
-                    self._opd[opd_node_id].probe(True)
-                else:
-                    self._opd[OpdNodeId.CFC_PROCESSOR].probe(True)
-                    self._opd[OpdNodeId.CFC_SENSOR].probe(True)
+            if info.opd_always_on and info.status == NodeState.OFF:
+                self.enable(name)
 
-            if self._status[node_id] == NodeState.ERROR:
-                if node_id != NodeId.CFC:
-                    logger.error(
-                        f"resetting node {node_id.name}, try {self._opd_resets[opd_node_id] + 1}"
-                    )
-                    self._opd[opd_node_id].reset(1)
-                    self._opd_resets[opd_node_id] += 1
-                else:
-                    logger.error(
-                        f"resetting node {node_id.name}, try "
-                        f"{self._opd_resets[OpdNodeId.CFC_PROCESSOR] + 1}"
-                    )
-                    self._opd[OpdNodeId.CFC_PROCESSOR].reset(1)
-                    self._opd_resets[OpdNodeId.CFC_PROCESSOR] += 1
-                    self._opd[OpdNodeId.CFC_SENSOR].reset()
-                    self._opd_resets[OpdNodeId.CFC_SENSOR] += 1
+            if info.status == NodeState.ERROR:
+                logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
+                self._opd[name].reset(1)
+                info.opd_resets += 1
             else:
-                self._opd_resets[opd_node_id] = 0
+                info.opd_resets = 0
 
         self._loops += 1
 
-    def enable(self, node_id: Union[NodeId, int]):
+    def enable(self, name: Union[str, int]):
         """Enable a OreSat node."""
 
-        if not isinstance(node_id, NodeId):
-            node_id = NodeId(node_id)
+        if isinstance(name, int):
+            name = self.opd_addr_to_name[name]
 
-        if node_id in NODES_NOT_ON_OPD:
-            return  # do nothing
+        if self._data[name].opd_address == 0:
+            logger.warning(f"cannot enable node {name} as it is not on the OPD")
+            return  # not on OPD, nothing to do
 
-        if self._status[node_id] == NodeState.DEAD:
-            logger.warning(f"cannot enable node {node_id.name} as it is DEAD")
+        if self._data[name] == NodeState.DEAD:
+            logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
-        if node_id == NodeId.CFC:
-            self._opd[OpdNodeId.CFC_PROCESSOR].enable()
-            self._opd[OpdNodeId.CFC_SENSOR].enable()
-        elif node_id not in NODES_NOT_ON_OPD:
-            self._opd[CO_TO_OPD[node_id]].enable()
+        self._opd[name].enable()
+        self._data[name].last_enable = time()
 
-    def disable(self, node_id: Union[NodeId, int]):
+    def disable(self, name: Union[str, int]):
         """Disable a OreSat node."""
 
-        if not isinstance(node_id, NodeId):
-            node_id = NodeId(node_id)
+        if isinstance(name, int):
+            name = self.opd_addr_to_name[name]
 
-        if node_id in NODES_NOT_ON_OPD:
-            return  # do nothing
+        self._opd[name].disable()
 
-        if node_id == NodeId.CFC:
-            self._opd[OpdNodeId.CFC_PROCESSOR].disable()
-            self._opd[OpdNodeId.CFC_SENSOR].disable()
-        elif node_id not in NODES_NOT_ON_OPD:
-            self._opd[CO_TO_OPD[node_id]].disable()
-
-    def status(self, node_id: Union[NodeId, int]) -> NodeState:
+    def status(self, name: Union[str, int]) -> NodeState:
         """Get the status of a OreSat node."""
 
-        if not isinstance(node_id, NodeId):
-            node_id = NodeId(node_id)
+        if isinstance(name, int):
+            name = self.opd_addr_to_name[name]
 
-        return self._status[node_id]
+        return self._data[name].status
 
     def _get_status_json(self) -> str:
-        """SDO read callback to get the status of all nodes as a JSON."""
+        """SDO read callback to get the status of all data as a JSON."""
 
         data = []
-        for node, status in self._status.items():
-            if node in [NodeId.C3] + ORESAT1_NODES:
-                continue
-            on_opd = "SOLAR" not in node.name
-            data.append({
-                "node_name": node.name,
-                "node_id": node.value,
-                "node_status_name": status.name,
-                "node_status": status.value,
-                "on_opd": on_opd,
-            })
+        for name, info in self._data.items():
+            data.append(
+                {
+                    "name": name,
+                    "nice_name": info.nice_name,
+                    "node_id": info.node_id,
+                    "opd_addr": info.opd_address,
+                    "status": info.status.name,
+                }
+            )
         return json.dumps(data)
+
+    def _get_opd_status(self) -> int:
+        return self._opd.status.value
+
+    def _set_opd_status(self, value: int):
+        if value == 0:
+            self._opd.disable()
+        elif value == 1:
+            self._opd.enable()

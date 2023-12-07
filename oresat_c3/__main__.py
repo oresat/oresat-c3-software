@@ -3,7 +3,6 @@
 import os
 
 from olaf import Gpio, GpioError, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
-from oresat_configs import NodeId
 
 from . import __version__
 from .drivers.fm24cl64b import Fm24cl64b
@@ -54,7 +53,7 @@ def main():
     """OreSat C3 app main."""
     path = os.path.dirname(os.path.abspath(__file__))
 
-    args, config = olaf_setup(NodeId.C3)
+    args, config = olaf_setup("c3")
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = "opd" in mock_args or "all" in mock_args
     mock_fram = "fram" in mock_args or "all" in mock_args
@@ -74,7 +73,12 @@ def main():
 
     antennas = Antennas(mock_ant)
     opd = Opd(
-        opd_not_enable_pin, opd_not_fault_pin, opd_adc_current_pin, i2c_bus_num, mock=mock_opd
+        config.cards,
+        opd_not_enable_pin,
+        opd_not_fault_pin,
+        opd_adc_current_pin,
+        i2c_bus_num,
+        mock=mock_opd,
     )
     fram = Fm24cl64b(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
 
@@ -83,7 +87,7 @@ def main():
     )  # add state first to restore state from F-RAM
     app.add_service(BeaconService(beacon_def))
     app.add_service(EdlService(opd))
-    app.add_service(NodeManagerService(opd))
+    app.add_service(NodeManagerService(config.cards, opd))
 
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/state.html")

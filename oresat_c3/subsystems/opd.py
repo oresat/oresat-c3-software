@@ -16,50 +16,6 @@ class OpdError(Exception):
     """Error with :py:class:`Opd` or :py:class:`OpdNode`"""
 
 
-class OpdNodeId(IntEnum):
-    """I2C addresses for all cards on the OPD"""
-
-    BATTERY_1 = 0x18
-    GPS = 0x19
-    IMU = 0x1A
-    DXWIFI = 0x1B
-    STAR_TRACKER_1 = 0x1C
-    CFC_PROCESSOR = 0x1D
-    CFC_SENSOR = 0x1E
-    BATTERY_2 = 0x1F
-    RW_1 = 0x20
-    RW_2 = 0x21
-    RW_3 = 0x22
-    RW_4 = 0x23
-
-    @property
-    def is_stm32_card(self) -> bool:
-        """bool: Flag for if the OPD node is a STM32-based card."""
-
-        if self not in [
-            OpdNodeId.GPS,
-            OpdNodeId.DXWIFI,
-            OpdNodeId.STAR_TRACKER_1,
-            OpdNodeId.CFC_PROCESSOR,
-            OpdNodeId.CFC_SENSOR,
-        ]:
-            return True
-        return False
-
-    @property
-    def is_octavo_card(self) -> bool:
-        """bool: Flag for if the OPD node is a Octavo A8-based card."""
-
-        if self in [
-            OpdNodeId.GPS,
-            OpdNodeId.DXWIFI,
-            OpdNodeId.STAR_TRACKER_1,
-            OpdNodeId.CFC_PROCESSOR,
-        ]:
-            return True
-        return False
-
-
 class OpdNodeState(IntEnum):
     """OPD node states"""
 
@@ -91,21 +47,24 @@ class OpdNode:
     _ENABLE_PIN = 3
     _CB_RESET_PIN = 4
 
-    def __init__(self, bus: int, node_id: OpdNodeId, mock: bool = False):
+    def __init__(self, bus: int, name: str, addr: int, mock: bool = False):
         """
         Parameters
         ----------
         not_enable_pin: int
             Pin that enable the OPD subsystem.
+        name: str
+            Name of OPD node.
         bus: int
             The I2C bus.
         mock: bool
             Mock the OPD subsystem.
         """
 
-        self._id = node_id
+        self._addr = addr
+        self._name = name
         self._mock = mock
-        self._max7310 = Max7310(bus, node_id.value, mock)
+        self._max7310 = Max7310(bus, addr, mock)
         self._status = OpdNodeState.NOT_FOUND
 
     def __del__(self):
@@ -139,7 +98,7 @@ class OpdNode:
             If the node was found.
         """
 
-        logger.debug(f"probing OPD node {self.id.name} (0x{self.id.value:02X})")
+        logger.debug(f"probing OPD node {self.name} (0x{self.addr:02X})")
 
         if self._status == OpdNodeState.DEAD:
             return False  # node is dead, no reason to probe
@@ -147,7 +106,7 @@ class OpdNode:
         try:
             if self._max7310.is_valid:
                 if self._status == OpdNodeState.NOT_FOUND:
-                    logger.info(f"OPD node {self.id.name} (0x{self.id.value:02X}) was found")
+                    logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was found")
                     self.configure()
 
                 if reset:
@@ -157,11 +116,11 @@ class OpdNode:
                 self._status = OpdNodeState.DISABLED
             else:
                 if self._status != OpdNodeState.NOT_FOUND:
-                    logger.info(f"OPD node {self.id.name} (0x{self.id.value:02X}) was lost")
+                    logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was lost")
                     self._status = OpdNodeState.NOT_FOUND
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
-            logger.debug(f"OPD node {self.id.name} (0x{self.id.value:02X}) was not found")
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not found")
             self._status = OpdNodeState.NOT_FOUND
 
         return self._status != OpdNodeState.NOT_FOUND
@@ -176,7 +135,7 @@ class OpdNode:
             The node state after disabling the node.
         """
 
-        logger.info(f"enabling OPD node {self.id.name} (0x{self.id.value:02X})")
+        logger.info(f"enabling OPD node {self.name} (0x{self.addr:02X})")
 
         if self._status == OpdNodeState.NOT_FOUND:
             return self._status  # cannot enable node that is NOT_FOUND
@@ -199,7 +158,7 @@ class OpdNode:
             The node state after disabling the node.
         """
 
-        logger.info(f"disabling OPD node {self.id.name} (0x{self.id.value:02X})")
+        logger.info(f"disabling OPD node {self.name} (0x{self.addr:02X})")
 
         if self._status == OpdNodeState.NOT_FOUND:
             return self._status  # cannot disable node that is NOT_FOUND
@@ -224,7 +183,7 @@ class OpdNode:
         """
 
         for i in range(attempts):
-            logger.debug(f"resetting OPD node {self.id.name} (0x{self.id.value:02X}), try {i + 1}")
+            logger.debug(f"resetting OPD node {self.name} (0x{self.addr:02X}), try {i + 1}")
             try:
                 self._max7310.output_set(self._CB_RESET_PIN)
                 sleep(self._RESET_DELAY_S)
@@ -244,10 +203,16 @@ class OpdNode:
         return self._status
 
     @property
-    def id(self) -> OpdNodeId:
-        """OpdNodeId: Unique node ID."""
+    def name(self) -> str:
+        """int: Unique name."""
 
-        return self._id
+        return self._name
+
+    @property
+    def addr(self) -> int:
+        """int: Unique address."""
+
+        return self._addr
 
     @property
     def status(self) -> OpdNodeState:
@@ -416,6 +381,7 @@ class Opd:
 
     def __init__(
         self,
+        cards: dict,
         not_enable_pin: int,
         not_fault_pin: int,
         current_pin: int,
@@ -425,6 +391,8 @@ class Opd:
         """
         Parameters
         ----------
+        cards: dict
+            Dictionary of cards on the OPD.
         not_enable_pin: int
             Output pin that enables/disables the OPD subsystem.
         not_fault_pin: int
@@ -437,6 +405,7 @@ class Opd:
             Mock the OPD subsystem.
         """
 
+        self._cards = cards
         self._not_enable_pin = Gpio(not_enable_pin, mock)
         self._not_fault_pin = Gpio(not_fault_pin, mock)
         self._not_fault_pin._mock_value = 1  # fix default for mocking
@@ -444,15 +413,19 @@ class Opd:
         self._not_enable_pin.high()  # make sure OPD disable initially
 
         self._nodes = {}
-        for node_id in list(OpdNodeId):
-            if not node_id.is_stm32_card and not node_id.is_octavo_card:
-                node = OpdNode(bus, node_id, mock)
-            elif node_id.is_stm32_card:
-                node = OpdStm32Node(bus, node_id, mock)
-            elif node_id.is_octavo_card:
-                node = OpdOctavoNode(bus, node_id, mock)
+        for name, info in cards.items():
+            if info.opd_address == 0:
+                continue
+            if info.processor == "none":
+                node = OpdNode(bus, info.nice_name, info.opd_address, mock)
+            elif info.processor == "stm32":
+                node = OpdStm32Node(bus, info.nice_name, info.opd_address, mock)
+            elif info.processor == "octavo":
+                node = OpdOctavoNode(bus, info.nice_name, info.opd_address, mock)
+            else:
+                continue
 
-            self._nodes[node_id] = node
+            self._nodes[name] = node
 
         self._status = OpdState.DISABLED
         self.stop_loop = True
@@ -460,12 +433,12 @@ class Opd:
 
         self.enable()
 
-    def __getitem__(self, node_id: OpdNodeId) -> OpdNode:
-        return self._nodes[node_id]
+    def __getitem__(self, name: str) -> OpdNode:
+        return self._nodes[name]
 
     def __iter__(self) -> OpdNode:
-        for p in list(OpdNodeId):
-            yield self._nodes[p]
+        for node in self._nodes.values():
+            yield node
 
     def enable(self):
         """Enable the OPD subsystem, will also do a scan."""
@@ -518,15 +491,9 @@ class Opd:
 
         count = 0
 
-        for node in self._nodes.values():
+        for name, node in self._nodes.items():
             if node.probe(reset):
                 count += 1
-
-        # Turn on any battery cards found
-        if self._nodes[OpdNodeId.BATTERY_1].status == OpdNodeState.DISABLED:
-            self._nodes[OpdNodeId.BATTERY_1].enable()
-        if self._nodes[OpdNodeId.BATTERY_2].status == OpdNodeState.DISABLED:
-            self._nodes[OpdNodeId.BATTERY_2].enable()
 
         return count
 
@@ -575,8 +542,8 @@ class Opd:
         """
 
         good_states = [OpdNodeState.ENABLED, OpdNodeState.DISABLED]
-        bat0_node = self._nodes[OpdNodeId.BATTERY_1]
-        bat1_node = self._nodes[OpdNodeId.BATTERY_2]
+        bat0_node = self._nodes["battery_1"]
+        bat1_node = self._nodes["battery_2"]
 
         # batteries should always be on and are used to see if the subsystem is working
         bat0_was_alive = bat0_node.status in good_states

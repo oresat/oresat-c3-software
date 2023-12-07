@@ -15,7 +15,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError
-from ..subsystems.opd import Opd, OpdNodeId
+from ..subsystems.opd import Opd
 
 
 class EdlService(Service):
@@ -165,12 +165,12 @@ class EdlService(Service):
             logger.info("EDL scaning for all OPD nodes")
             ret = self._opd.scan()
         elif request.code == EdlCommandCode.OPD_PROBE:
-            node_id = OpdNodeId(request.args[0])
+            node_id = request.args[0]
             node = self._opd[node_id]
             logger.info(f"EDL probing for OPD node {node_id.name}")
             ret = self._opd[node].probe()
         elif request.code == EdlCommandCode.OPD_ENABLE:
-            node_id = OpdNodeId(request.args[0])
+            node_id = request.args[0]
             node = self._opd[node_id]
             if request.args[1] == b"\x00":
                 logger.info(f"EDL disabling OPD node {node_id.name}")
@@ -180,13 +180,13 @@ class EdlService(Service):
                 ret = node.enable()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_RESET:
-            node_id = OpdNodeId(request.args[0])
+            node_id = request.args[0]
             node = self._opd[node_id]
             logger.info(f"EDL resetting for OPD node {node_id.name}")
             node.reset()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_STATUS:
-            node_id = OpdNodeId(request.args[0])
+            node_id = request.args[0]
             node = self._opd[node_id]
             logger.info(f"EDL getting the status for OPD node {node.name}")
             ret = self._opd[node].status.value

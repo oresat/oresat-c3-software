@@ -491,8 +491,8 @@ class Opd:
 
         count = 0
 
-        for board in self._boards.values():
-            if board.probe(reset):
+        for node in self._nodes.values():
+            if node.probe(reset):
                 count += 1
 
         return count

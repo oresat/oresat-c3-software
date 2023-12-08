@@ -2,7 +2,9 @@
 
 import unittest
 
-from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeId, OpdNodeState
+from oresat_configs import OreSatConfig, OreSatId
+
+from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeState
 
 from .. import I2C_BUS_NUM
 
@@ -13,10 +15,11 @@ class TestOpd(unittest.TestCase):
     def test_opd(self):
         """Test enable/disable works."""
 
-        opd = Opd(10, 12, 2, I2C_BUS_NUM, mock=True)
+        config = OreSatConfig(OreSatId.ORESAT0)
+        opd = Opd(config.cards, 10, 12, 2, I2C_BUS_NUM, mock=True)
 
         for node in opd:
-            if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
+            if node.name in ["battery_1", "battery_2"]:
                 self.assertIn(node.status, [OpdNodeState.ENABLED, OpdNodeState.NOT_FOUND])
             else:
                 self.assertIn(node.status, [OpdNodeState.DISABLED, OpdNodeState.NOT_FOUND])
@@ -24,7 +27,7 @@ class TestOpd(unittest.TestCase):
         opd.enable()
 
         for node in opd:
-            if node.id in [OpdNodeId.BATTERY_1, OpdNodeId.BATTERY_2]:
+            if node.name in ["battery_1", "battery_2"]:
                 self.assertIn(node.status, [OpdNodeState.ENABLED, OpdNodeState.NOT_FOUND])
             else:
                 self.assertIn(node.status, [OpdNodeState.DISABLED, OpdNodeState.NOT_FOUND])
@@ -46,7 +49,7 @@ class TestOpdNode(unittest.TestCase):
 
     def test_node_enable(self):
         """Test enable/disable works."""
-        node = OpdNode(I2C_BUS_NUM, OpdNodeId.BATTERY_1, mock=True)
+        node = OpdNode(I2C_BUS_NUM, "battery_1", 0x18, mock=True)
         node.configure()
         self.assertEqual(node._status, OpdNodeState.DISABLED)
 

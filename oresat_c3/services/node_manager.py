@@ -176,7 +176,7 @@ class NodeManagerService(Service):
         if self.opd.status == OpdState.DEAD:
             next_state = NodeState.DEAD
         else:
-            status = self._opd[name].status
+            status = self.opd[name].status
             if status == OpdNodeState.FAULT:
                 next_state = NodeState.ERROR
             elif status == OpdNodeState.NOT_FOUND:

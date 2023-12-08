@@ -11,6 +11,7 @@ from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.opd import OpdService
 from .services.state import StateService
+from .services.adcs import AdcsService
 from .subsystems.antennas import Antennas
 from .subsystems.opd import Opd
 
@@ -84,6 +85,7 @@ def main():
     app.add_service(BeaconService(beacon_def))
     app.add_service(EdlService(opd))
     app.add_service(OpdService(opd))
+    app.add_service(AdcsService(opd))
 
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/opd.html")

@@ -15,7 +15,8 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError
-from ..subsystems.opd import Opd
+from .beacon import BeaconService
+from .node_manager import NodeManagerService
 
 
 class EdlService(Service):
@@ -25,10 +26,11 @@ class EdlService(Service):
     _DOWNLINK_ADDR = ("localhost", 10016)
     _BUFFER_LEN = 1024
 
-    def __init__(self, opd: Opd):
+    def __init__(self, node_mgr_service: NodeManagerService, beacon_service: BeaconService):
         super().__init__()
 
-        self._opd = opd
+        self._node_mgr_service = node_mgr_service
+        self._beacon_service = beacon_service
 
         logger.info(f"EDL uplink socket: {self._UPLINK_ADDR}")
         self._uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -156,22 +158,22 @@ class EdlService(Service):
             enable = request.args[0]
             if enable:
                 logger.info("EDL enabling OPD subsystem")
-                self._opd.enable()
+                self._node_mgr_service.opd.enable()
             else:
                 logger.info("EDL disabling OPD subsystem")
-                self._opd.disable()
-            ret = self._opd.is_system_enabled
+                self._node_mgr_service.opd.disable()
+            ret = self._node_mgr_service.opd.status.value
         elif request.code == EdlCommandCode.OPD_SCAN:
             logger.info("EDL scaning for all OPD nodes")
-            ret = self._opd.scan()
+            ret = self._node_mgr_service.opd.scan()
         elif request.code == EdlCommandCode.OPD_PROBE:
             node_id = request.args[0]
-            node = self._opd[node_id]
+            node = self._node_mgr_service.opd[node_id]
             logger.info(f"EDL probing for OPD node {node_id.name}")
-            ret = self._opd[node].probe()
+            ret = self._node_mgr_service.opd[node].probe()
         elif request.code == EdlCommandCode.OPD_ENABLE:
             node_id = request.args[0]
-            node = self._opd[node_id]
+            node = self._node_mgr_service.opd[node_id]
             if request.args[1] == b"\x00":
                 logger.info(f"EDL disabling OPD node {node_id.name}")
                 ret = node.disable()
@@ -181,15 +183,15 @@ class EdlService(Service):
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_RESET:
             node_id = request.args[0]
-            node = self._opd[node_id]
+            node = self._node_mgr_service.opd[node_id]
             logger.info(f"EDL resetting for OPD node {node_id.name}")
             node.reset()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_STATUS:
             node_id = request.args[0]
-            node = self._opd[node_id]
+            node = self._node_mgr_service.opd[node_id]
             logger.info(f"EDL getting the status for OPD node {node.name}")
-            ret = self._opd[node].status.value
+            ret = self._node_mgr_service.opd[node].status.value
         elif request.code == EdlCommandCode.RTC_SET_TIME:
             logger.info(f"EDL setting the RTC to {request.args[0]}")
         elif request.code == EdlCommandCode.TIME_SYNC:

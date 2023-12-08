@@ -69,15 +69,27 @@ class NodeManagerService(Service):
     _STM32_BOOT_TIMEOUT = 5
     _OCTAVO_BOOT_TIMEOUT = 30
     _HB_TIMEOUT = 5
+    _NOT_ENABLE_PIN = "OPD_nENABLE"
+    _NOT_FAULT_PIN = "OPD_nFAULT"
+    _ADC_CURRENT_PIN = 2
+    _I2C_BUS_NUM = 2
 
-    def __init__(self, cards: dict, opd: Opd):
+    def __init__(self, cards: dict, mock_hw: bool = True):
         super().__init__()
+
+        self.opd = Opd(
+            cards,
+            self._NOT_ENABLE_PIN,
+            self._NOT_FAULT_PIN,
+            self._ADC_CURRENT_PIN,
+            self._I2C_BUS_NUM,
+            mock=mock_hw,
+        )
 
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
 
         self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
         self._data["c3"].status = NodeState.ON
-        self._opd = opd
         self._loops = 0
 
         self._flight_mode_obj: canopen.objectdictionary.Variable = None
@@ -152,7 +164,7 @@ class NodeManagerService(Service):
             return next_state
 
         # opd subsystem is off
-        if self._opd.status == OpdState.DISABLED:
+        if self.opd.status == OpdState.DISABLED:
             return NodeState.NOT_FOUND
 
         prev_state = self._data[name].status
@@ -161,7 +173,7 @@ class NodeManagerService(Service):
         next_state = prev_state
 
         # update status of data on the OPD
-        if self._opd.status == OpdState.DEAD:
+        if self.opd.status == OpdState.DEAD:
             next_state = NodeState.DEAD
         else:
             status = self._opd[name].status
@@ -213,7 +225,7 @@ class NodeManagerService(Service):
         self._nodes_not_found_obj.value = nodes_not_found
         self._nodes_dead_obj.value = nodes_dead
 
-        if self._opd.status == OpdState.DEAD:
+        if self.opd.status == OpdState.DEAD:
             return
 
         # reset data with errors and probe for data not found
@@ -222,14 +234,14 @@ class NodeManagerService(Service):
                 continue
 
             if self._loops % 60 == 0 and self._data[name].status == NodeState.NOT_FOUND:
-                self._opd[name].probe(True)
+                self.opd[name].probe(True)
 
             if info.opd_always_on and info.status == NodeState.OFF:
                 self.enable(name)
 
             if info.status == NodeState.ERROR:
                 logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
-                self._opd[name].reset(1)
+                self.opd[name].reset(1)
                 info.opd_resets += 1
             else:
                 info.opd_resets = 0
@@ -250,7 +262,7 @@ class NodeManagerService(Service):
             logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
-        self._opd[name].enable()
+        self.opd[name].enable()
         self._data[name].last_enable = time()
 
     def disable(self, name: Union[str, int]):
@@ -259,7 +271,7 @@ class NodeManagerService(Service):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
-        self._opd[name].disable()
+        self.opd[name].disable()
 
     def status(self, name: Union[str, int]) -> NodeState:
         """Get the status of a OreSat node."""
@@ -286,10 +298,10 @@ class NodeManagerService(Service):
         return json.dumps(data)
 
     def _get_opd_status(self) -> int:
-        return self._opd.status.value
+        return self.opd.status.value
 
     def _set_opd_status(self, value: int):
         if value == 0:
-            self._opd.disable()
+            self.opd.disable()
         elif value == 1:
-            self._opd.enable()
+            self.opd.enable()

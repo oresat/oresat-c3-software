@@ -5,13 +5,10 @@ import os
 from olaf import Gpio, GpioError, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
 
 from . import __version__
-from .drivers.fm24cl64b import Fm24cl64b
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
 from .services.state import StateService
-from .subsystems.antennas import Antennas
-from .subsystems.opd import Opd
 
 
 @rest_api.app.route("/beacon")
@@ -55,46 +52,27 @@ def main():
 
     args, config = olaf_setup("c3")
     mock_args = [i.lower() for i in args.mock_hw]
-    mock_opd = "opd" in mock_args or "all" in mock_args
-    mock_fram = "fram" in mock_args or "all" in mock_args
-    mock_ant = "antennas" in mock_args or "all" in mock_args
+    mock_hw = len(mock_args) != 0
 
     app.od["versions"]["sw_version"].value = __version__
-    app.od["hw_id"].value = get_hw_id("all" in mock_args)
+    app.od["hw_id"].value = get_hw_id(mock_hw)
 
-    beacon_def = config.beacon_def
-    fram_def = config.fram_def
+    state_service = StateService(config.fram_def, mock_args)
+    beacon_service = BeaconService(config.beacon_def)
+    node_mgr_service = NodeManagerService(config.cards, mock_args)
+    edl_service = EdlService(node_mgr_service, beacon_service)
 
-    i2c_bus_num = 2
-    opd_not_enable_pin = "OPD_nENABLE"
-    opd_not_fault_pin = "OPD_nFAULT"
-    opd_adc_current_pin = 2
-    fram_i2c_addr = 0x50
-
-    antennas = Antennas(mock_ant)
-    opd = Opd(
-        config.cards,
-        opd_not_enable_pin,
-        opd_not_fault_pin,
-        opd_adc_current_pin,
-        i2c_bus_num,
-        mock=mock_opd,
-    )
-    fram = Fm24cl64b(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
-
-    app.add_service(
-        StateService(fram, fram_def, antennas)
-    )  # add state first to restore state from F-RAM
-    app.add_service(BeaconService(beacon_def))
-    app.add_service(EdlService(opd))
-    app.add_service(NodeManagerService(config.cards, opd))
+    app.add_service(state_service)  # add state first to restore state from F-RAM
+    app.add_service(beacon_service)
+    app.add_service(edl_service)
+    app.add_service(node_mgr_service)
 
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/state.html")
     rest_api.add_template(f"{path}/templates/node_manager.html")
 
     # on factory reset clear F-RAM
-    app.set_factory_reset_callback(fram.clear)
+    app.set_factory_reset_callback(state_service.clear_state)
 
     olaf_run()
 

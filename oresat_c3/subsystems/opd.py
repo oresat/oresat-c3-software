@@ -382,9 +382,9 @@ class Opd:
     def __init__(
         self,
         cards: dict,
-        not_enable_pin: int,
-        not_fault_pin: int,
-        current_pin: int,
+        not_enable_pin: str,
+        not_fault_pin: str,
+        current_pin: str,
         bus: int,
         mock: bool = False,
     ):
@@ -393,11 +393,11 @@ class Opd:
         ----------
         cards: dict
             Dictionary of cards on the OPD.
-        not_enable_pin: int
+        not_enable_pin: str
             Output pin that enables/disables the OPD subsystem.
-        not_fault_pin: int
+        not_fault_pin: str
             Input pin for faults.
-        current_pin: int
+        current_pin: str
             ADC pin number to get OPD current.
         bus: int
             The I2C bus.
@@ -491,8 +491,8 @@ class Opd:
 
         count = 0
 
-        for name, node in self._nodes.items():
-            if node.probe(reset):
+        for board in self._boards.values():
+            if board.probe(reset):
                 count += 1
 
         return count

@@ -1,6 +1,5 @@
 """'EDL Service"""
 
-import socket
 from time import time
 from typing import Any
 
@@ -17,28 +16,23 @@ from ..protocols.edl_command import (
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
+from .radios import RadiosService
 
 
 class EdlService(Service):
     """'EDL Service"""
 
-    _UPLINK_ADDR = ("localhost", 10025)
-    _DOWNLINK_ADDR = ("localhost", 10016)
-    _BUFFER_LEN = 1024
-
-    def __init__(self, node_mgr_service: NodeManagerService, beacon_service: BeaconService):
+    def __init__(
+        self,
+        radios_service: RadiosService,
+        node_mgr_service: NodeManagerService,
+        beacon_service: BeaconService,
+    ):
         super().__init__()
 
+        self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
-
-        logger.info(f"EDL uplink socket: {self._UPLINK_ADDR}")
-        self._uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._uplink_socket.bind(self._UPLINK_ADDR)
-        self._uplink_socket.settimeout(1)
-
-        logger.info(f"EDL downlink socket: {self._DOWNLINK_ADDR}")
-        self._downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         self._hmac_key = b""
         self._seq_num = 0
@@ -64,15 +58,13 @@ class EdlService(Service):
         self._last_edl_obj = edl_rec["last_timestamp"]
 
     def on_loop(self):
-        try:
-            req_message, _ = self._uplink_socket.recvfrom(self._BUFFER_LEN)
-        except socket.timeout:
+        if len(self._radios_service.recv_queue) == 0:
+            self.sleep_ms(500)
             return
 
-        logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
+        req_message = self._radios_service.recv_queue.pop()
 
-        if len(req_message) == 0:
-            return  # no message
+        logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
 
         try:
             req_packet = EdlPacket.unpack(self._hmac_key, req_message)
@@ -103,10 +95,7 @@ class EdlService(Service):
 
         logger.info(f'EDL response packet: {res_message.hex(sep=" ")}')
 
-        try:
-            self._downlink_socket.sendto(res_message, self._DOWNLINK_ADDR)
-        except socket.error as e:
-            logger.error(f"failed to send EDL response: {e}")
+        self._radios_service.send_edl_response(res_message)
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

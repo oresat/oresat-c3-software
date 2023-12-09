@@ -3,6 +3,7 @@ SI41xx RF Synthesizer driver.
 """
 
 from enum import IntEnum
+from typing import Union
 
 from olaf import Gpio
 
@@ -125,16 +126,14 @@ class Si41xx:
         """
 
         if data > self._DATA_MASK:
-            raise Si41xxError(
-                f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}"
-            )
+            raise Si41xxError(f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}")
 
         word = reg.value | ((data & self._DATA_MASK) << 4)
 
         self._sen_gpio.low()
 
         # bit bang from MSB down
-        for i in range(self._MSG_SIZE, 0, -1):
+        for _ in range(self._MSG_SIZE, 0, -1):
             self._sclk_gpio.low()
 
             if word & self._MSG_MSB:
@@ -149,7 +148,7 @@ class Si41xx:
         self._sen_gpio.high()
         self._sclk_gpio.high()
 
-    def calc_div(self, freq: int) -> (int, int):
+    def calc_div(self, freq: int) -> tuple[int, int]:
         """
         This function calculates N and R division values needed to provided the specified frequency
         from the reference frequency defined in the device configuration.
@@ -179,17 +178,17 @@ class Si41xx:
                 gcd -= phasedet
 
         # Divide until frequency is less than the maximum
-        while phasedet >= self.SI41XX_MAX_PHASEDET:
-            phasedet /= 2
-        if phasedet < self.SI41XX_MIN_PHASEDET:
-            Si41xxError("failed to find values within phase detector frequency bounds")
+        while phasedet >= self.MAX_PHASEDET:
+            phasedet //= 2
+        if phasedet < self.MIN_PHASEDET:
+            raise Si41xxError("failed to find values within phase detector frequency bounds")
 
         # Calculate needed N and R values
         ndiv = freq // phasedet
         rdiv = self._ref_freq // phasedet
 
         if ndiv > 0xFF_FF or rdiv > 0x1F_FF:
-            Si41xxError("calc_div values are not within bounds of programmable values")
+            raise Si41xxError("calc_div values are not within bounds of programmable values")
 
         return ndiv, rdiv
 
@@ -202,9 +201,7 @@ class Si41xx:
         self._pbib = False
         self._pbrb = False
 
-        self._set_config_reg(
-            False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET
-        )
+        self._set_config_reg(False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET)
         self._write_reg(Si41xxRegister.PHASE_GAIN, 0)
         self._set_phase_pwrdown_reg(self._pbrb, self._pbib)
 
@@ -234,8 +231,8 @@ class Si41xx:
         autokp: bool,
         autopdb: bool,
         lprw: bool,
-        if_div: Si41xxIfdiv or int,
-        aux_sel: Si41xxAuxSel or int,
+        if_div: Union[Si41xxIfdiv, int],
+        aux_sel: Union[Si41xxAuxSel, int],
     ):
         """Set the Config register"""
 

@@ -8,6 +8,7 @@ from . import __version__
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
+from .services.radios import RadiosService
 from .services.state import StateService
 
 
@@ -57,12 +58,14 @@ def main():
     app.od["versions"]["sw_version"].value = __version__
     app.od["hw_id"].value = get_hw_id(mock_hw)
 
-    state_service = StateService(config.fram_def, mock_args)
-    beacon_service = BeaconService(config.beacon_def)
-    node_mgr_service = NodeManagerService(config.cards, mock_args)
-    edl_service = EdlService(node_mgr_service, beacon_service)
+    state_service = StateService(config.fram_def, mock_hw)
+    radios_service = RadiosService(mock_hw)
+    beacon_service = BeaconService(config.beacon_def, radios_service)
+    node_mgr_service = NodeManagerService(config.cards, mock_hw)
+    edl_service = EdlService(radios_service, node_mgr_service, beacon_service)
 
     app.add_service(state_service)  # add state first to restore state from F-RAM
+    app.add_service(radios_service)
     app.add_service(beacon_service)
     app.add_service(edl_service)
     app.add_service(node_mgr_service)

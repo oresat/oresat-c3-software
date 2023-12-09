@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from olaf import Service, logger
 from oresat_configs import Card
 
-from ..subsystems.opd import Opd, OpdNodeState, OpdState, OpdNode, OpdStm32Node, OpdOctavoNode
+from ..subsystems.opd import Opd, OpdNode, OpdNodeState, OpdOctavoNode, OpdState, OpdStm32Node
 
 
 class NodeState(IntEnum):

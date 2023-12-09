@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from olaf import Service, logger
 from oresat_configs import Card
 
-from ..subsystems.opd import Opd, OpdNodeState, OpdState
+from ..subsystems.opd import Opd, OpdNodeState, OpdState, OpdNode, OpdStm32Node, OpdOctavoNode
 
 
 class NodeState(IntEnum):
@@ -69,6 +69,8 @@ class NodeManagerService(Service):
     _STM32_BOOT_TIMEOUT = 5
     _OCTAVO_BOOT_TIMEOUT = 30
     _HB_TIMEOUT = 5
+
+    # opd hardware constants
     _NOT_ENABLE_PIN = "OPD_nENABLE"
     _NOT_FAULT_PIN = "OPD_nFAULT"
     _ADC_CURRENT_PIN = 2
@@ -78,13 +80,25 @@ class NodeManagerService(Service):
         super().__init__()
 
         self.opd = Opd(
-            cards,
             self._NOT_ENABLE_PIN,
             self._NOT_FAULT_PIN,
             self._ADC_CURRENT_PIN,
-            self._I2C_BUS_NUM,
             mock=mock_hw,
         )
+
+        for name, info in cards.items():
+            if info.opd_address == 0:
+                continue  # not an opd node
+            elif info.processor == "none":
+                node = OpdNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
+            elif info.processor == "stm32":
+                node = OpdStm32Node(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
+            elif info.processor == "octavo":
+                node = OpdOctavoNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
+            else:
+                continue
+
+            self.opd[name] = node
 
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
 
@@ -99,6 +113,8 @@ class NodeManagerService(Service):
         self._nodes_with_errors_obj: canopen.objectdictionary.Variable = None
         self._nodes_not_found_obj: canopen.objectdictionary.Variable = None
         self._nodes_dead_obj: canopen.objectdictionary.Variable = None
+
+        self.opd.enable()
 
     def on_start(self):
         # local objects
@@ -225,8 +241,8 @@ class NodeManagerService(Service):
         self._nodes_not_found_obj.value = nodes_not_found
         self._nodes_dead_obj.value = nodes_dead
 
-        if self.opd.status == OpdState.DEAD:
-            return
+        if self._status in [OpdState.DEAD, OpdState.DISABLED]:
+            return  # nothing to monitor
 
         # reset data with errors and probe for data not found
         for name, info in self._data.items():

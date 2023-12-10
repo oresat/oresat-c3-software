@@ -131,12 +131,12 @@ class NodeManagerService(Service):
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
         for name in self._data:
-            if self._data[name].node_id == 0:
+            if self._data[name].opd_address == 0:
                 continue  # not a CANopen node
             self.node.add_sdo_callbacks(
                 "node_status",
                 str(name),
-                lambda n=name: self.status(n),
+                lambda n=name: self.node_status(n),
                 lambda v, n=name: self.enable(n) if v == NodeState.ON else self.disable(n),
             )
 
@@ -202,7 +202,10 @@ class NodeManagerService(Service):
             ):
                 next_state = NodeState.DEAD
             elif status == OpdNodeState.ENABLED:
-                next_state = self._check_co_nodes_state(name)
+                if self._data[name].node_id != 0:  # aka CANopen nodes
+                    next_state = self._check_co_nodes_state(name)
+                else:
+                    next_state = NodeState.ON
             elif status == OpdNodeState.DISABLED:
                 next_state = NodeState.OFF
 
@@ -270,16 +273,20 @@ class NodeManagerService(Service):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
-        if self._data[name].opd_address == 0:
+        node = self._data[name]
+        child_node = self._data[node.child] if node.child else None
+        if node.opd_address == 0:
             logger.warning(f"cannot enable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if self._data[name] == NodeState.DEAD:
+        if node.status == NodeState.DEAD:
             logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
         self.opd[name].enable()
-        self._data[name].last_enable = time()
+        if child_node:
+            self.opd[node.child].enable()
+        node.last_enable = time()
 
     def disable(self, name: Union[str, int]):
         """Disable a OreSat node."""
@@ -287,9 +294,18 @@ class NodeManagerService(Service):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
+        node = self._data[name]
+        child_node = self._data[node.child] if node.child else None
+        if node.opd_address == 0:
+            logger.warning(f"cannot disable node {name} as it is not on the OPD")
+            return  # not on OPD, nothing to do
+
+        if child_node:
+            self.opd[node.child].disable()
+
         self.opd[name].disable()
 
-    def status(self, name: Union[str, int]) -> NodeState:
+    def node_status(self, name: Union[str, int]) -> NodeState:
         """Get the status of a OreSat node."""
 
         if isinstance(name, int):

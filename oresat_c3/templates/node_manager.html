@@ -38,29 +38,6 @@
     </table>
   </div>
   <script>
-    const NODES = {
-      C3: 0,
-      BATTERY_1: 0x4,
-      BATTERY_2: 0x8,
-      SOLAR_MODULE_1: 0xC,
-      SOLAR_MODULE_2: 0x10,
-      SOLAR_MODULE_3: 0x14,
-      SOLAR_MODULE_4: 0x18,
-      SOLAR_MODULE_5: 0x1C,
-      SOLAR_MODULE_6: 0x20,
-      SOLAR_MODULE_7: 0x24,
-      SOLAR_MODULE_8: 0x28,
-      STAR_TRACKER_1: 0x2C,
-      STAR_TRACKER_2: 0x30,
-      GPS: 0x34,
-      REACTION_WHEEL_1: 0x3C,
-      REACTION_WHEEL_2: 0x40,
-      REACTION_WHEEL_3: 0x44,
-      REACTION_WHEEL_4: 0x48,
-      DXWIFI: 0x4C,
-      CFC: 0x50,
-    };
-
     const STATES = {
       OFF: 0,
       BOOT: 1,
@@ -92,7 +69,6 @@
       const data = await readValue("node_manager", "status_json");
       let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
       for (const status of JSON.parse(data.value)) {
-        console.log(status);
         let newRow = tbodyRef.insertRow();
 
         let newCell = newRow.insertCell();
@@ -126,7 +102,7 @@
         newCell5.appendChild(newText5);
 
         let newCell3 = newRow.insertCell();
-        if (status.opd_addr !== 0) {
+        if (status.opd_addr !== 0 && status.node_id !== 0) {
           let button = document.createElement("button");
           button.addEventListener("click", function() {nodeOnClick(status.node_id)});
           button.id = `node${status.node_id}Button`;
@@ -179,7 +155,6 @@
     /** Update data in the table */
     async function updateStatus() {
       const statusSpan = document.getElementById("systemStatus");
-      const spanButton = document.getElementById("scanNodesButton");
       const enableButton = document.getElementById("enableSystemButton");
 
       const data = await readValue("node_manager", "status_json");
@@ -193,10 +168,8 @@
       statusSpan.innerText = status;
       if (status === "ENABLED" || status === "FAULT") {
         enableButton.innerText = "Disable System";
-        spanButton.disabled = false;
       } else {
         enableButton.innerText = "Enable System";
-        spanButton.disabled = true;
       }
     }
 

@@ -1,8 +1,20 @@
 """OreSat C3 app main."""
 
 import os
+import socket
+from threading import Event, Thread
 
-from olaf import Gpio, GpioError, app, logger, olaf_run, olaf_setup, render_olaf_template, rest_api
+from olaf import (
+    Gpio,
+    GpioError,
+    ServiceState,
+    app,
+    logger,
+    olaf_run,
+    olaf_setup,
+    render_olaf_template,
+    rest_api,
+)
 
 from . import __version__
 from .services.beacon import BeaconService
@@ -47,13 +59,34 @@ def get_hw_id(mock: bool) -> int:
     return hw_id
 
 
+def watchdog(event: Event):
+    """Pet the watchdog app (which pets the watchdog circuit)."""
+
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    while not event.is_set():
+        failed = 0
+        for service in app._services:  # pylint: disable=W0212
+            failed += int(service.status == ServiceState.FAILED)
+        if not app.od["flight_mode"].value or failed == 0:
+            logger.debug("watchdog pet")
+            udp_socket.sendto(b"PET", ("localhost", 20001))
+            event.wait(10)
+
+
 def main():
     """OreSat C3 app main."""
+
     path = os.path.dirname(os.path.abspath(__file__))
 
     args, config = olaf_setup("c3")
     mock_args = [i.lower() for i in args.mock_hw]
     mock_hw = len(mock_args) != 0
+
+    # start watchdog thread ASAP
+    event = Event()
+    thread = Thread(target=watchdog, args=(event,))
+    thread.start()
 
     app.od["versions"]["sw_version"].value = __version__
     app.od["hw_id"].value = get_hw_id(mock_hw)
@@ -78,6 +111,10 @@ def main():
     app.set_factory_reset_callback(state_service.clear_state)
 
     olaf_run()
+
+    # stop watchdog thread
+    event.set()
+    thread.join()
 
 
 if __name__ == "__main__":

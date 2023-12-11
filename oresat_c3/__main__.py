@@ -85,7 +85,7 @@ def main():
     app.add_service(BeaconService(beacon_def))
     app.add_service(EdlService(opd))
     app.add_service(OpdService(opd))
-    app.add_service(AdcsService(opd))
+    app.add_service(AdcsService(config, opd))
 
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/opd.html")

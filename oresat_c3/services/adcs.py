@@ -104,7 +104,9 @@ class AdcsService(Service):
         logger.info("Sending control signal to magnetorquers")
 
         logger.info(type(self.node))
-        #self.node.sdo_write('adcs', 'magnetorquer', 'current_z_setpoint', 1)
+        self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1)
+
+            
         sleep(0.1)
 
 
@@ -123,11 +125,27 @@ class AdcsService(Service):
 
 
     # HELPER FUNCTIONS
+    def write_sdo(self, node, index, subindex, value):
+        """Mock function 
+        
+        Paramters:
+        node = the card to write to
+        index = the index to write to
+        subindex = the subindex to write to
+        value = the value to send
+        """
 
-    def rot_vect_to_quat(self, angle, vect):
+        try:
+            self.node.sdo_write(node, index, subindex, value)
+        except Exception as e:
+            logger.warning(f"An error occured with sending SDO: {e}")
+            logger.warning(f"node: {node}, index: {index}, subindex: {subindex}, value: {value}")
+
+    
+    def rot_vect_to_quat(self, angle: float, vect: dict):
         """Converts rotation vector to quaternion
 
-        Paramters:
+        Parameters:
         angle = angle in radians
         vect = dictionary of normalized vector {x, y, z}
         """

@@ -9,6 +9,7 @@ from oresat_configs import NodeId
 
 from ..subsystems.opd import Opd, OpdNodeId, OpdNode, OpdOctavoNode, OpdState, OpdStm32Node
 
+
 class AdcsService(Service):
     """ADCS Service"""
 
@@ -22,12 +23,10 @@ class AdcsService(Service):
         logger.info("Iterating through cards")
         self.sys_info = info
 
-        for name,info in self.sys_info.cards.items():
+        for name, info in self.sys_info.cards.items():
             logger.info(f"Name: {name}, NodeId: {info.node_id}, Processor, {info.processor}")
-            
 
         logger.info("Completed iteration through cards")
-
 
         logger.info("ADCS service object initiated")
 
@@ -38,7 +37,6 @@ class AdcsService(Service):
         self.rw_calibrate()
         logger.info("Completed ADCS startup")
 
-    
     def on_loop(self):
         logger.info("Starting iteration of ADCS loop")
         sleep(0.25)
@@ -63,7 +61,6 @@ class AdcsService(Service):
         logger.info("Completed iteration of ADCS loop")
         sleep(1)
 
-
     # IMU Functions
     def imu_calibrate(self):
         logger.info("Calibrating IMU")
@@ -83,10 +80,9 @@ class AdcsService(Service):
     def mag_monitor(self):
         """Monitors the magnetometer readings"""
         logger.info("Monitoring magnetometers")
-        #logger.info(dir(self.node._od_db['adcs']))
-        #logger.info(self.node._od_db['adcs']['pos_z_magnetometer_1_x'].value)
+        # logger.info(dir(self.node._od_db['adcs']))
+        # logger.info(self.node._od_db['adcs']['pos_z_magnetometer_1_x'].value)
         sleep(0.1)
-
 
     # Magnetorquer Functions
     def mt_calibrate(self):
@@ -104,9 +100,8 @@ class AdcsService(Service):
         logger.info("Sending control signal to magnetorquers")
 
         logger.info(type(self.node))
-        #self.node.sdo_write('adcs', 'magnetorquer', 'current_z_setpoint', 1)
+        # self.node.sdo_write('adcs', 'magnetorquer', 'current_z_setpoint', 1)
         sleep(0.1)
-
 
     # Reaction Wheel Functions
     def rw_calibrate(self):
@@ -121,13 +116,13 @@ class AdcsService(Service):
         logger.info("Sending control signal to reaction wheels")
         sleep(0.1)
 
-
     # HELPER FUNCTIONS
 
     def rot_vect_to_quat(self, angle, vect):
-        """Converts rotation vector to quaternion
+        """
+        Converts rotation vector to quaternion
 
-        Paramters:
+        Parameters:
         angle = angle in radians
         vect = dictionary of normalized vector {x, y, z}
         """
@@ -135,17 +130,21 @@ class AdcsService(Service):
         logger.info(f"Converting vector {vect} into a rotation quaternion")
 
         # for now, comparing the square of the length against 1
-        if (vdiff:=abs(sum([val**2 for val in vect.values()]) - 1)) > 0.00000001:
-            logger.warning("WARNING: vector for vector to quaternion conversion is not a unit vector")
+        if (vdiff := abs(sum([val**2 for val in vect.values()]) - 1)) > 0.00000001:
+            logger.warning(
+                "WARNING: vector for vector to quaternion conversion is not a unit vector"
+            )
             logger.warning(f"unit vector diff: {vdiff}")
 
-        quat = {"h": math.cos(angle/2) , 
-                "i": math.sin(angle/2)*vect["x"], 
-                "j": math.sin(angle/2)*vect["y"], 
-                "k": math.sin(angle/2)*vect["z"]}
+        quat = {
+            "h": math.cos(angle / 2),
+            "i": math.sin(angle / 2) * vect["x"],
+            "j": math.sin(angle / 2) * vect["y"],
+            "k": math.sin(angle / 2) * vect["z"],
+        }
 
         # for now, comparing teh square of the length against 1
-        if (qdiff:=abs(sum([val**2 for val in quat.values()]) -1 )) > 0.00000001:
+        if (qdiff := abs(sum([val**2 for val in quat.values()]) - 1)) > 0.00000001:
             logger.warning("WARNING: quaternion conversion did not result in unit quaternion")
             logger.warning(f"unit quaternion diff: {qdiff}")
         return quat

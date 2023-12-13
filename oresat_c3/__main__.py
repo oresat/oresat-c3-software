@@ -55,7 +55,7 @@ def main():
     """OreSat C3 app main."""
     path = os.path.dirname(os.path.abspath(__file__))
 
-    args, config = olaf_setup('c3')
+    args, config = olaf_setup("c3")
     mock_args = [i.lower() for i in args.mock_hw]
     mock_opd = "opd" in mock_args or "all" in mock_args
     mock_fram = "fram" in mock_args or "all" in mock_args

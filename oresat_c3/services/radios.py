@@ -38,7 +38,12 @@ class RadiosService(Service):
 
         # gpio pins
         self._uhf_tot_ok_gpio = Gpio("UHF_TOT_OK", mock_hw)
+        if mock_hw:
+            self._uhf_tot_ok_gpio._mock_value = 1
         self._uhf_tot_clear_gpio = Gpio("UHF_TOT_CLEAR", mock_hw)
+        self._radio_enable_gpio = Gpio("RADIO_ENABLE", mock_hw)
+        self._uhf_enable_gpio = Gpio("UHF_ENABLE", mock_hw)
+        self._lband_enable_gpio = Gpio("LBAND_ENABLE", mock_hw)
 
         # beacon downlink: UDP client
         logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
@@ -57,18 +62,42 @@ class RadiosService(Service):
         self.recv_queue: List[bytes] = []
 
     def on_start(self):
-        self.uhf_tot_clear()
-        self._si41xx.start()
+        self.enable()
 
     def on_loop(self):
         if not self.is_uhf_tot_okay:
-            self.uhf_tot_clear()
+            logger.error("tot okay was low, resetting radios")
+            self.disable()
+            self.enable()
 
         recv = self._recv_edl_request()
         if recv:
             self.recv_queue.append(recv)
 
     def on_stop(self):
+        self.disable()
+
+    def enable(self):
+        """Enable the radios."""
+
+        logger.info("enabling radios")
+        self._radio_enable_gpio.high()
+        self.sleep_ms(100)
+        self._uhf_enable_gpio.high()
+        self.sleep_ms(100)
+        self._lband_enable_gpio.high()
+        self.uhf_tot_clear()
+        self._si41xx.start()
+
+    def disable(self):
+        """Disable the radios."""
+
+        logger.info("disabling radios")
+        self._lband_enable_gpio.low()
+        self.sleep_ms(100)
+        self._uhf_enable_gpio.low()
+        self.sleep_ms(100)
+        self._radio_enable_gpio.low()
         self._si41xx.stop()
 
     def uhf_tot_clear(self):

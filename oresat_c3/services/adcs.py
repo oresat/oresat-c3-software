@@ -53,9 +53,10 @@ class AdcsService(Service):
 
 
         # Read sensors
-        self.gyro_monitor()
+        gyro_values = self.gyro_monitor()
         mag_values = self.mag_monitor()
 
+        logger.info(str(gyro_values))
         logger.info(str(mag_values))
         self.rw_monitor()
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
@@ -104,7 +105,13 @@ class AdcsService(Service):
     def gyro_monitor(self):
         """Monitors the gyroscope"""
         logger.info("Monitoring gyroscope")
-        pass
+        # pitch roll and yaw should be relative to velocity, convert back to xyz
+        directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
+        gyro_values = dict()
+        for name,axis in directions.items():
+            gyro_values[axis] = self.od_db["adcs"]["gyroscope"][name].value
+
+        return gyro_values
     
     # MAG Functions
     def mag_calibrate(self):

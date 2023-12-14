@@ -86,8 +86,9 @@ class AdcsService(Service):
 
 
         # Send control signal
-        self.mt_control()
-        self.rw_control()        
+        # Control signals turned off for sensor testing, for now
+        #self.mt_control()
+        #self.rw_control()        
         timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 
 
@@ -154,9 +155,9 @@ class AdcsService(Service):
 
     def mt_control(self):
         """Send control signal to magnetorquers"""
-        #logger.info("Sending control signal to magnetorquers")
-        self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
-
+        logger.info("Sending control signal to magnetorquers")
+        #self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
+        pass
 
     # Reaction Wheel Functions
     def rw_calibrate(self):

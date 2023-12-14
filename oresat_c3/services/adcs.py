@@ -9,6 +9,10 @@ from oresat_configs import NodeId
 
 from ..subsystems.opd import Opd, OpdNodeId, OpdNode, OpdOctavoNode, OpdState, OpdStm32Node
 
+"""
+For node, index, and subindex references, see oresat configs base
+"""
+
 class AdcsService(Service):
     """ADCS Service"""
 
@@ -21,10 +25,6 @@ class AdcsService(Service):
 
         logger.info("Iterating through cards")
         self.sys_info = info
-
-        for name,info in self.sys_info.cards.items():
-            logger.info(f"Name: {name}, NodeId: {info.node_id}, Processor, {info.processor}")
-            
 
         logger.info("Completed iteration through cards")
 

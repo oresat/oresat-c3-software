@@ -1,7 +1,7 @@
 """ADCS Service"""
 
 import math
-from time import time, sleep
+from time import time, sleep, monotonic_ns
 
 import canopen
 from olaf import NodeStop, Service, logger
@@ -33,107 +33,121 @@ class AdcsService(Service):
 
     def on_start(self):
         logger.info("Starting ADCS")
+
+        # Calibrate sensors and actuators
         self.imu_calibrate()
         self.mag_calibrate()
         self.rw_calibrate()
 
+        # Define initial reference frame
         self.init_quat = {"h": 1, "i": 0, "j": 0, "k": 0}
         self.quat = dict(self.init_quat)
+        
+        # ADCS startup complete
         logger.info("Completed ADCS startup")
 
     
     def on_loop(self):
-        logger.info("Starting iteration of ADCS loop")
-        sleep(0.25)
+
+        #logger.info("Starting iteration of ADCS loop")
+        timestamps = dict()
+        start_ns = monotonic_ns()
+
 
         # Read sensors
         self.imu_monitor()
         self.mag_monitor()
         self.rw_monitor()
+        timestamps["sensors_end"] = (monotonic_ns() - start_ns)
+        
 
-        # Determine state (filter+)
+        # Determine state (and use filters)
         vect1 = {"x": 1, "y": 0, "z": 0}
         vect2 = {"x": 0, "y": 1, "z": 0}
-
-        #logger.info(str(vect1))
-        #logger.info(str(vect2))
         theta, rot_vect = self.get_rot_vect(vect1, vect2)
         
-        logger.info(f"Applying rotation of {theta} radians about vector {rot_vect}")
+        #logger.info(f"Applying rotation of {theta} radians about vector {rot_vect}")
         rot_quat = self.rot_vect_to_quat(theta, rot_vect)
         self.quat = self.quat_product(self.quat, rot_quat)
-        logger.info(f"The current positional quaternion is {self.quat}")
+        #logger.info(f"The current positional quaternion is {self.quat}")
+
+        # Check if positional quaternion is still a unit quaternion
         if abs(math.hypot(*self.quat.values()) - 1) > 0.00000001:
             logger.warning(f"WARNING: positional quaternion is currently not a unit quaternion")
         
+        timestamps["state_end"] = (monotonic_ns() - start_ns)
+
+
         # Calculate error
+
 
         # Determine control signal
 
+
         # Send control signal
         self.mt_control()
-        self.rw_control()
+        self.rw_control()        
+        timestamps["control_end"] = (monotonic_ns() - start_ns)
 
-        logger.info("Completed iteration of ADCS loop")
-        sleep(1)
+
+        # End of ADCS control loop
+        logger.info(f"ADCS loop timestamps are {timestamps} (ns)")
+        #logger.info("Completed iteration of ADCS loop")
+        sleep(0.1)
 
 
     # IMU Functions
     def imu_calibrate(self):
-        logger.info("Calibrating IMU")
-        sleep(0.1)
+        #logger.info("Calibrating IMU")
+        pass
 
     def imu_monitor(self):
         """Monitors the imu unit"""
-        logger.info("Monitoring IMU")
-        sleep(0.1)
-
+        #logger.info("Monitoring IMU")
+        pass
+    
     # MAG Functions
     def mag_calibrate(self):
         """Calibrates the magnetometers"""
-        logger.info("Calibrating Magnetometers")
-        sleep(0.1)
+        #logger.info("Calibrating Magnetometers")
+        pass
 
     def mag_monitor(self):
         """Monitors the magnetometer readings"""
-        logger.info("Monitoring magnetometers")
+        #logger.info("Monitoring magnetometers")
         #logger.info(dir(self.node._od_db['adcs']))
         #logger.info(self.node._od_db['adcs']['pos_z_magnetometer_1_x'].value)
-        sleep(0.1)
-
+        pass
 
     # Magnetorquer Functions
     def mt_calibrate(self):
         """Calibrate magnetorquers"""
-        logger.info("Calibrating magnetorquers")
-        sleep(0.1)
+        #logger.info("Calibrating magnetorquers")
+        pass
 
     def mt_monitor(self):
         """Monitor magnetorquers"""
-        logger.info("Monitoring magnetorquers")
-        sleep(0.1)
+        #logger.info("Monitoring magnetorquers")
+        pass
 
     def mt_control(self):
         """Send control signal to magnetorquers"""
-        logger.info("Sending control signal to magnetorquers")
+        #logger.info("Sending control signal to magnetorquers")
         self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
-        sleep(0.1)
 
 
     # Reaction Wheel Functions
     def rw_calibrate(self):
-        logger.info("Calibrating reaction wheels")
-        sleep(0.1)
+        #logger.info("Calibrating reaction wheels")
+        pass
 
     def rw_monitor(self):
-        logger.info("Monitoring reaction wheels")
-        sleep(0.1)
+        #logger.info("Monitoring reaction wheels")
+        pass
 
     def rw_control(self):
-        logger.info("Sending control signal to reaction wheels")
-        sleep(0.1)
-
-
+        #logger.info("Sending control signal to reaction wheels")
+        pass
 
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
@@ -196,20 +210,20 @@ class AdcsService(Service):
         
         Return: quaternion = dictionary of normalized quaternion {h, i, j, k}"""
 
-        logger.debug(f"Converting angle {angle} and vector {vect} into a rotation quaternion")
+        #logger.debug(f"Converting angle {angle} and vector {vect} into a rotation quaternion")
 
-        if (vdiff:=abs(math.hypot(*vect.values()) - 1)) > 0.00000001:
-            logger.warning("WARNING: vector for vector to quaternion conversion is not a unit vector")
-            logger.warning(f"unit vector diff: {vdiff}")
+        #if (vdiff:=abs(math.hypot(*vect.values()) - 1)) > 0.00000001:
+        #    logger.warning("WARNING: vector for vector to quaternion conversion is not a unit vector")
+        #    logger.warning(f"unit vector diff: {vdiff}")
 
         quat = {"h": math.cos(angle/2) , 
                 "i": math.sin(angle/2)*vect["x"], 
                 "j": math.sin(angle/2)*vect["y"], 
                 "k": math.sin(angle/2)*vect["z"]}
 
-        if (qdiff:=abs(math.hypot(*quat.values()) - 1)) > 0.00000001:
-            logger.warning("WARNING: quaternion conversion did not result in unit quaternion")
-            logger.warning(f"unit quaternion diff: {qdiff}")
+        #if (qdiff:=abs(math.hypot(*quat.values()) - 1)) > 0.00000001:
+        #    logger.warning("WARNING: quaternion conversion did not result in unit quaternion")
+        #    logger.warning(f"unit quaternion diff: {qdiff}")
         return quat
 
     def quat_product(self, quat1, quat2):

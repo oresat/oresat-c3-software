@@ -19,12 +19,10 @@ class AdcsService(Service):
     def __init__(self, info: dict, opd: Opd):
         super().__init__()
 
-        self._opd = opd
-
         # Create the canopen network
 
         logger.info("Iterating through cards")
-        self.sys_info = info
+        self.od_db = info.od_db
 
         logger.info("Completed iteration through cards")
 
@@ -35,7 +33,7 @@ class AdcsService(Service):
         logger.info("Starting ADCS")
 
         # Calibrate sensors and actuators
-        self.imu_calibrate()
+        self.gyro_calibrate()
         self.mag_calibrate()
         self.rw_calibrate()
 
@@ -55,10 +53,12 @@ class AdcsService(Service):
 
 
         # Read sensors
-        self.imu_monitor()
-        self.mag_monitor()
+        self.gyro_monitor()
+        mag_values = self.mag_monitor()
+
+        logger.info(str(mag_values))
         self.rw_monitor()
-        timestamps["sensors_end"] = (monotonic_ns() - start_ns)
+        timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
         
 
         # Determine state (and use filters)
@@ -75,7 +75,7 @@ class AdcsService(Service):
         if abs(math.hypot(*self.quat.values()) - 1) > 0.00000001:
             logger.warning(f"WARNING: positional quaternion is currently not a unit quaternion")
         
-        timestamps["state_end"] = (monotonic_ns() - start_ns)
+        timestamps["state_end"] = (monotonic_ns() - start_ns) // 1000
 
 
         # Calculate error
@@ -87,23 +87,23 @@ class AdcsService(Service):
         # Send control signal
         self.mt_control()
         self.rw_control()        
-        timestamps["control_end"] = (monotonic_ns() - start_ns)
+        timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 
 
         # End of ADCS control loop
-        logger.info(f"ADCS loop timestamps are {timestamps} (ns)")
+        logger.info(f"ADCS loop timestamps are {timestamps} (ms)")
         #logger.info("Completed iteration of ADCS loop")
         sleep(0.1)
 
 
-    # IMU Functions
-    def imu_calibrate(self):
-        #logger.info("Calibrating IMU")
+    # gyro Functions
+    def gyro_calibrate(self):
+        #logger.info("Calibrating gyroscopes")
         pass
 
-    def imu_monitor(self):
-        """Monitors the imu unit"""
-        #logger.info("Monitoring IMU")
+    def gyro_monitor(self):
+        """Monitors the gyroscope"""
+        logger.info("Monitoring gyroscope")
         pass
     
     # MAG Functions
@@ -114,10 +114,21 @@ class AdcsService(Service):
 
     def mag_monitor(self):
         """Monitors the magnetometer readings"""
-        #logger.info("Monitoring magnetometers")
-        #logger.info(dir(self.node._od_db['adcs']))
-        #logger.info(self.node._od_db['adcs']['pos_z_magnetometer_1_x'].value)
-        pass
+        logger.info("Monitoring magnetometers")
+        # full names are a little long, shorten them for now
+        mag_map = {'pos_z_magnetometer_1': 'mag_pz1',
+                   'pos_z_magnetometer_2': 'mag_pz2',
+                   'min_z_magnetometer_1': 'mag_nz1',
+                   'min_z_magnetometer_2': 'mag_nz2',
+                   }
+        directions = ["x", "y", "z"]
+        mag_values = dict()
+        for name,nick in mag_map.items():
+            mag_values[nick] = dict()
+            for axis in directions:
+                mag_values[nick][axis] = self.od_db["adcs"][name][axis].value
+
+        return mag_values
 
     # Magnetorquer Functions
     def mt_calibrate(self):

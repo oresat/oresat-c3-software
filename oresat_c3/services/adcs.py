@@ -16,17 +16,11 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
-    def __init__(self, info: dict, opd: Opd):
+    def __init__(self, config: dict, opd: Opd):
         super().__init__()
 
-        # Create the canopen network
-
-        logger.info("Iterating through cards")
-        self.od_db = info.od_db
-
-        logger.info("Completed iteration through cards")
-
-
+        self.od_db = config.od_db
+        self.opd = opd
         logger.info("ADCS service object initiated")
 
     def on_start(self):
@@ -51,14 +45,20 @@ class AdcsService(Service):
         timestamps = dict()
         start_ns = monotonic_ns()
 
-
         # Read sensors
         gyro_values = self.gyro_monitor()
         mag_values = self.mag_monitor()
 
-        logger.info(str(gyro_values))
-        logger.info(str(mag_values))
+        # Read actuators
+        mt_values = self.mt_monitor()
         self.rw_monitor()
+
+
+        # Dump data to logger for now
+        logger.info(f"gyroscope: {gyro_values}")
+        logger.info(f"magnetometers: {mag_values}")
+        logger.info(f"magnetorquers: {mt_values}")
+
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
         
 
@@ -145,8 +145,12 @@ class AdcsService(Service):
 
     def mt_monitor(self):
         """Monitor magnetorquers"""
-        #logger.info("Monitoring magnetorquers")
-        pass
+        logger.info("Monitoring magnetorquers")
+        directions = {"current_x": "x", "current_y": "y", "current_z": "z"}
+        cur_values = dict()
+        for name,axis in directions.items():
+            cur_values[axis] = self.od_db["adcs"]["magnetorquer"][name].value
+        return cur_values
 
     def mt_control(self):
         """Send control signal to magnetorquers"""

@@ -1,10 +1,9 @@
 """'
 Beacon Service
 
-Handles the beaconing.
+Handles making the beacon packets.
 """
 
-import socket
 import zlib
 from time import time
 
@@ -13,19 +12,17 @@ from olaf import Service, logger, scet_int_from_time
 
 from .. import C3State
 from ..protocols.ax25 import ax25_pack
+from .radios import RadiosService
 
 
 class BeaconService(Service):
     """Beacon Service."""
 
-    _DOWNLINK_ADDR = ("localhost", 10015)
-
-    def __init__(self, beacon_def: dict):
+    def __init__(self, beacon_def: dict, radios_service: RadiosService):
         super().__init__()
 
         self._beacon_def = beacon_def
-        logger.info(f"Beacon socket: {self._DOWNLINK_ADDR}")
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # UDP client
+        self._radios_service = radios_service
         self._ts = 0.0
 
         self._c3_state_obj: canopen.objectdictionary.Variable = None
@@ -68,11 +65,13 @@ class BeaconService(Service):
             return  # do nothing
 
         if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
-            self._send_beacon()
+            self.send()
 
         self.sleep(self._delay_obj.value)
 
-    def _send_beacon(self):
+    def send(self):
+        """Send a beacon now."""
+
         payload = bytes()
         for obj in self._beacon_def:
             payload += obj.encode_raw(obj.value)
@@ -92,7 +91,7 @@ class BeaconService(Service):
 
         logger.debug("beaconing")
         self._ts = time()
-        self._socket.sendto(packet, self._DOWNLINK_ADDR)
+        self._radios_service.send_beacon(packet)
 
     def _on_read_last_ts(self) -> int:
         """SDO read callback to get the SCET timestamp of the last beacon."""
@@ -103,4 +102,4 @@ class BeaconService(Service):
         """SDO write callback to send a beacon immediately."""
 
         if value:
-            self._send_beacon()
+            self.send()

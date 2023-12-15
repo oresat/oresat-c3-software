@@ -28,12 +28,14 @@ dynamic = ["version"]
 
 [project.scripts]
 oresat-c3 = "oresat_c3.__main__:main"
+oresat-watchdog = "oresat_watchdog.watchdog:main"
+oresat-app-surrogate = "oresat_watchdog.app_surrogate:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "oresat_c3.__version__"}
 
 [tool.setuptools.packages.find]
-exclude = ["docs*"] 
+exclude = ["docs*", "tests*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html"]

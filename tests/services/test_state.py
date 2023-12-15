@@ -4,12 +4,10 @@ import unittest
 from time import time
 
 from olaf import MasterNode, NodeStop
-from oresat_configs import NodeId, OreSatConfig, OreSatId
+from oresat_configs import OreSatConfig, OreSatId
 
 from oresat_c3 import C3State
-from oresat_c3.drivers.fm24cl64b import Fm24cl64b
 from oresat_c3.services.state import StateService
-from oresat_c3.subsystems.antennas import Antennas
 
 
 class TestState(unittest.TestCase):
@@ -17,14 +15,11 @@ class TestState(unittest.TestCase):
 
     def setUp(self):
         config = OreSatConfig(OreSatId.ORESAT0_5)
-        self.od = config.od_db[NodeId.C3]
+        self.od = config.od_db["c3"]
         fram_def = config.fram_def
         self.node = MasterNode(self.od, "vcan0", config.od_db)
 
-        mock = True
-        antennas = Antennas(mock)
-        fram = Fm24cl64b(2, 0x50, mock)
-        self.service = StateService(fram, fram_def, antennas)
+        self.service = StateService(fram_def, mock_hw=True)
 
         self.node._setup_node()
         self.node._destroy_node()

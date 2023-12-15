@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+  </style>
+  <b>OPD Status:</b>
+  <span id="systemStatus">ENABLED</span>
+  <button id="enableSystemButton" onclick="enableSystem()">Disable System</button>
+  <br />
+  <br />
+  <div id="nodeMgrTableDiv">
+    <table id="nodeMgrTable">
+      <thead>
+        <tr>
+          <td>Card</td>
+          <td>Node Id</td>
+          <td>Status</td>
+          <td>OPD Address</td>
+          <td>Control</td>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+  <script>
+    const STATES = {
+      OFF: 0,
+      BOOT: 1,
+      ON: 2,
+      ERROR: 3,
+      NOT_FOUND: 4,
+      DEAD: 0xFF,
+    }
+
+    const OPD_STATES = {
+       0x00: "DISABLED",
+       0x01: "ENABLED",
+       0x02: "FAULT",
+       0x03: "DEAD",
+    };
+
+    function inverse(obj){
+      let invObj = {};
+      for(let key in obj){
+        invObj[obj[key]] = key;
+      }
+      return invObj;
+    }
+
+    const STATES_INV = inverse(STATES);
+
+    /** Build the table */
+    async function buildTable() {
+      const data = await readValue("node_manager", "status_json");
+      let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
+      for (const status of JSON.parse(data.value)) {
+        let newRow = tbodyRef.insertRow();
+
+        let newCell = newRow.insertCell();
+        let newText = document.createTextNode(status.nice_name);
+        newCell.appendChild(newText);
+
+        let newCell4 = newRow.insertCell();
+        let upperHex = parseInt(status.node_id).toString(16).toUpperCase()
+        if (upperHex !== "0") {
+          upperHex = `0x${upperHex}`;
+        } else  {
+          upperHex = "";
+        }
+        let newText4 = document.createTextNode(upperHex);
+        newCell4.appendChild(newText4);
+
+        let newCell2 = newRow.insertCell();
+        let span = document.createElement("span");
+        span.id = `node${status.node_id}`;
+        span.innerText = status.status;
+        newCell2.appendChild(span);
+
+        let newCell5 = newRow.insertCell();
+        upperHex = parseInt(status.opd_addr).toString(16).toUpperCase()
+        if (upperHex !== "0") {
+          upperHex = `0x${upperHex}`;
+        } else  {
+          upperHex = "";
+        }
+        let newText5 = document.createTextNode(upperHex);
+        newCell5.appendChild(newText5);
+
+        let newCell3 = newRow.insertCell();
+        if (status.opd_addr !== 0 && status.node_id !== 0) {
+          let button = document.createElement("button");
+          button.addEventListener("click", function() {nodeOnClick(status.node_id)});
+          button.id = `node${status.node_id}Button`;
+          button.innerText = "Enable";
+          newCell3.appendChild(button);
+        }
+      }
+    }
+
+    /** Enable / disable a node button callback */
+    async function nodeOnClick(nodeId) {
+      let value = "OFF";
+      if (document.getElementById(`node${nodeId}Button`).innerText === "Enable") {
+        value = "ON";
+      }
+      const data = await writeValue("node_status", nodeId, STATES[value]);
+      if (value === "ON") {
+        value = "BOOT";
+      }
+      updateNode(nodeId, value);
+    }
+
+    /** Update a row in the table */
+    function updateNode(node, status) {
+      const span = document.getElementById(`node${node}`);
+      const button = document.getElementById(`node${node}Button`);
+
+      span.innerText = status;
+
+      if (button === null) {
+        return;
+      }
+
+      switch (status) {
+      case "OFF":
+        button.innerText = "Enable";
+        button.disabled = false;
+        break;
+      case "BOOT":
+      case "ON":
+        button.innerText = "Disable";
+        button.disabled = false;
+        break;
+      default:
+        button.innerText = "Enable";
+        button.disabled = true;
+      }
+    }
+
+    /** Update data in the table */
+    async function updateStatus() {
+      const statusSpan = document.getElementById("systemStatus");
+      const enableButton = document.getElementById("enableSystemButton");
+
+      const data = await readValue("node_manager", "status_json");
+      for (const status of JSON.parse(data.value)) {
+        updateNode(status.node_id, status.status);
+      }
+
+      const systemEnable = await readValue("opd", "status");
+      const status = OPD_STATES[systemEnable.value]
+
+      statusSpan.innerText = status;
+      if (status === "ENABLED" || status === "FAULT") {
+        enableButton.innerText = "Disable System";
+      } else {
+        enableButton.innerText = "Enable System";
+      }
+    }
+
+    /** Enable / disable the OPD subsystem button callback */
+    async function enableSystem() {
+      const enable = document.getElementById("systemStatus").innerText !== "ENABLED";
+      const data = await writeValue("opd", "status", Number(enable));
+      updateStatus();
+    }
+
+    buildTable();
+    updateStatus();
+    const interval = setInterval(function() {
+      updateStatus();
+    }, 2500);
+  </script>
+{% endblock %}

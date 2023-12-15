@@ -22,7 +22,12 @@ from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
+<<<<<<< HEAD
 from .services.adcs import AdcsService
+from .subsystems.antennas import Antennas
+from .subsystems.opd import Opd
+=======
+>>>>>>> c3_dev
 
 
 @rest_api.app.route("/beacon")
@@ -80,7 +85,11 @@ def main():
 
     path = os.path.dirname(os.path.abspath(__file__))
 
+<<<<<<< HEAD
+    args, config = olaf_setup('c3')
+=======
     args, config = olaf_setup("c3")
+>>>>>>> c3_dev
     mock_args = [i.lower() for i in args.mock_hw]
     mock_hw = len(mock_args) != 0
 
@@ -97,13 +106,34 @@ def main():
     beacon_service = BeaconService(config.beacon_def, radios_service)
     node_mgr_service = NodeManagerService(config.cards, mock_hw)
     edl_service = EdlService(radios_service, node_mgr_service, beacon_service)
-    # Add adcs service
 
+<<<<<<< HEAD
+    i2c_bus_num = 2
+    opd_not_enable_pin = "OPD_nENABLE"
+    opd_not_fault_pin = "OPD_nFAULT"
+    opd_adc_current_pin = 2
+    fram_i2c_addr = 0x50
+
+    antennas = Antennas(mock_ant)
+    opd = Opd(
+        opd_not_enable_pin, opd_not_fault_pin, opd_adc_current_pin, i2c_bus_num, mock=mock_opd
+    )
+    fram = Fm24cl64b(i2c_bus_num, fram_i2c_addr, mock=mock_fram)
+
+    app.add_service(
+        StateService(fram, fram_def, antennas)
+    )  # add state first to restore state from F-RAM
+    app.add_service(BeaconService(beacon_def))
+    app.add_service(EdlService(opd))
+    app.add_service(OpdService(opd))
+    app.add_service(AdcsService(config, opd))
+=======
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)
     app.add_service(beacon_service)
     app.add_service(edl_service)
     app.add_service(node_mgr_service)
+>>>>>>> c3_dev
 
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/state.html")

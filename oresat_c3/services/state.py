@@ -1,7 +1,7 @@
 """
 C3 State Service
 
-This handles the main C3 state machine.
+This handles the main C3 state machine and saving state.
 """
 
 from time import time
@@ -18,13 +18,15 @@ class StateService(Service):
     """C3 State Service."""
 
     BAT_LEVEL_LOW = 6500  # in mV
+    I2C_BUS_NUM = 2
+    FRAM_I2C_ADDR = 0x50
 
-    def __init__(self, fram: Fm24cl64b, fram_objs: list, antennas: Antennas):
+    def __init__(self, fram_objs: list, mock_hw: bool = False):
         super().__init__()
 
-        self._fram = fram
         self._fram_objs = fram_objs
-        self._antennas = antennas
+        self._fram = Fm24cl64b(self.I2C_BUS_NUM, self.FRAM_I2C_ADDR, mock_hw)
+        self._antennas = Antennas(mock_hw)
         self._attempts = 0
         self._loops = 0
         self._last_state = C3State.OFFLINE
@@ -69,7 +71,7 @@ class StateService(Service):
         self._vbatt_bp1_obj = bat_1_rec["pack_1_vbatt"]
         self._vbatt_bp2_obj = bat_1_rec["pack_2_vbatt"]
 
-        self._restore_state()
+        self.restore_state()
 
         self.node.add_sdo_callbacks("tx_control", "enable", None, self._on_write_tx_enable)
 
@@ -81,7 +83,7 @@ class StateService(Service):
         logger.info(f"C3 initial state: {C3State(self._last_state).name}")
 
     def on_stop(self):
-        self._store_state()
+        self.store_state()
 
     def _on_write_tx_enable(self, data: bool):
         """On SDO write set tx enable and last enable timestamp objects."""
@@ -191,7 +193,7 @@ class StateService(Service):
         self._loops += 1
         self._loops %= 10
         if self._loops == 0:
-            self._store_state()
+            self.store_state()
 
         self.sleep(0.1)
 
@@ -222,7 +224,7 @@ class StateService(Service):
 
         return (time() - self._boot_time) >= self._reset_timeout_obj.value
 
-    def _store_state(self):
+    def store_state(self):
         """Store the state in F-RAM."""
 
         if self._c3_state_obj.value == C3State.PRE_DEPLOY:
@@ -243,7 +245,7 @@ class StateService(Service):
             self._fram.write(offset, raw)
             offset += raw_len
 
-    def _restore_state(self):
+    def restore_state(self):
         """Restore the state from F-RAM."""
 
         offset = 0
@@ -259,3 +261,8 @@ class StateService(Service):
                 raw = self._fram.read(offset, size)
                 obj.value = obj.decode_raw(raw)
             offset += size
+
+    def clear_state(self):
+        """Clear the state from F-RAM."""
+
+        self._fram.clear()

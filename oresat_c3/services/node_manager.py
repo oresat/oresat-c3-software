@@ -104,7 +104,7 @@ class NodeManagerService(Service):
 
         self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
         self._data["c3"].status = NodeState.ON
-        self._loops = 0
+        self._loops = -1
 
         self._flight_mode_obj: canopen.objectdictionary.Variable = None
         self._nodes_off_obj: canopen.objectdictionary.Variable = None
@@ -214,6 +214,7 @@ class NodeManagerService(Service):
     def on_loop(self):
         """Monitor all OPD data and check that data that are on are sending heartbeats."""
 
+        self._loops += 1
         self.sleep(1)
 
         nodes_off = 0
@@ -244,7 +245,8 @@ class NodeManagerService(Service):
         self._nodes_not_found_obj.value = nodes_not_found
         self._nodes_dead_obj.value = nodes_dead
 
-        if self._status in [OpdState.DEAD, OpdState.DISABLED]:
+        if self.opd.status in [OpdState.DEAD, OpdState.DISABLED]:
+            self._loops = -1
             return  # nothing to monitor
 
         # reset data with errors and probe for data not found
@@ -264,8 +266,6 @@ class NodeManagerService(Service):
                 info.opd_resets += 1
             else:
                 info.opd_resets = 0
-
-        self._loops += 1
 
     def enable(self, name: Union[str, int]):
         """Enable a OreSat node."""

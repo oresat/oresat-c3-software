@@ -108,6 +108,7 @@ class AdcsService(Service):
         directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
         gyro_values = dict()
         for name,axis in directions.items():
+            self.node.sdo_read("adcs", "gyroscope", name)
             gyro_values[axis] = self.od_db["adcs"]["gyroscope"][name].value
 
         return gyro_values

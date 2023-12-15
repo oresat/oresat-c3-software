@@ -103,6 +103,7 @@ def main():
     app.add_service(radios_service)
     app.add_service(beacon_service)
     app.add_service(edl_service)
+    app.add_service(adcs_service)
     app.add_service(node_mgr_service)
 
     rest_api.add_template(f"{path}/templates/beacon.html")

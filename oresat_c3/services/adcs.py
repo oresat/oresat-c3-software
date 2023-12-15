@@ -7,7 +7,6 @@ import canopen
 from olaf import NodeStop, Service, logger
 from oresat_configs import NodeId
 
-from ..subsystems.opd import Opd, OpdNodeId, OpdNode, OpdOctavoNode, OpdState, OpdStm32Node
 
 """
 For node, index, and subindex references, see oresat configs base
@@ -16,11 +15,10 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
-    def __init__(self, config: dict, opd: Opd):
+    def __init__(self, config: dict):
         super().__init__()
 
         self.od_db = config.od_db
-        self.opd = opd
         logger.info("ADCS service object initiated")
 
     def on_start(self):

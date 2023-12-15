@@ -97,7 +97,7 @@ def main():
     beacon_service = BeaconService(config.beacon_def, radios_service)
     node_mgr_service = NodeManagerService(config.cards, mock_hw)
     edl_service = EdlService(radios_service, node_mgr_service, beacon_service)
-    # Add adcs service
+    adcs_service = AdcsService(config)
 
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)

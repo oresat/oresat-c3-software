@@ -159,6 +159,9 @@ class StateService(Service):
                 self._c3_state_obj.value = C3State.STANDBY.value
 
     def on_loop(self):
+        if self.has_tx_timed_out:
+            self._tx_enable_obj.value = False
+
         state_a = self._c3_state_obj.value
         if state_a != self._last_state:  # incase of change thru REST API
             logger.info(f"tx en: {self._tx_enable_obj.value} | bat good: {self.is_bat_lvl_good}")

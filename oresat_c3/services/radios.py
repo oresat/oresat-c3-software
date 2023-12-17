@@ -24,6 +24,8 @@ class RadiosService(Service):
     def __init__(self, mock_hw: bool = False):
         super().__init__()
 
+        self._mock_hw = mock_hw
+
         self._si41xx = Si41xx(
             "LBAND_LO_nSEN",
             "LBAND_LO_SCLK",
@@ -62,6 +64,9 @@ class RadiosService(Service):
         self.recv_queue: List[bytes] = []
 
     def on_start(self):
+        if not self._mock_hw:
+            self.node.add_daemon("lband")
+            self.node.add_daemon("uhf")
         self.enable()
 
     def on_loop(self):
@@ -88,17 +93,23 @@ class RadiosService(Service):
         self._lband_enable_gpio.high()
         self.uhf_tot_clear()
         self._si41xx.start()
+        if not self._mock_hw:
+            self.node.daemons["uhf"].start()
+            self.node.daemons["lband"].start()
 
     def disable(self):
         """Disable the radios."""
 
         logger.info("disabling radios")
+        if not self._mock_hw:
+            self.node.daemons["uhf"].stop()
+            self.node.daemons["lband"].stop()
+        self._si41xx.stop()
         self._lband_enable_gpio.low()
         self.sleep_ms(100)
         self._uhf_enable_gpio.low()
         self.sleep_ms(100)
         self._radio_enable_gpio.low()
-        self._si41xx.stop()
 
     def uhf_tot_clear(self):
         """Clear TOT."""

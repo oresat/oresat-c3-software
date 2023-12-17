@@ -18,7 +18,6 @@ class AdcsService(Service):
     def __init__(self, config: dict):
         super().__init__()
 
-        self.od_db = config.od_db
         logger.info("ADCS service object initiated")
 
     def on_start(self):
@@ -108,8 +107,7 @@ class AdcsService(Service):
         directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
         gyro_values = dict()
         for name,axis in directions.items():
-            self.node.sdo_read("adcs", "gyroscope", name)
-            gyro_values[axis] = self.od_db["adcs"]["gyroscope"][name].value
+            gyro_values[axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
         return gyro_values
     
@@ -133,7 +131,7 @@ class AdcsService(Service):
         for name,nick in mag_map.items():
             mag_values[nick] = dict()
             for axis in directions:
-                mag_values[nick][axis] = self.od_db["adcs"][name][axis].value
+                mag_values[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
 
         return mag_values
 
@@ -149,7 +147,7 @@ class AdcsService(Service):
         directions = {"current_x": "x", "current_y": "y", "current_z": "z"}
         cur_values = dict()
         for name,axis in directions.items():
-            cur_values[axis] = self.od_db["adcs"]["magnetorquer"][name].value
+            cur_values[axis] = self.node.od["adcs"]["magnetorquer_" +name].value
         return cur_values
 
     def mt_control(self):

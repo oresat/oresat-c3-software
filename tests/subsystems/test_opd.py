@@ -2,8 +2,6 @@
 
 import unittest
 
-from oresat_configs import OreSatConfig, OreSatId
-
 from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeState
 
 from .. import I2C_BUS_NUM
@@ -15,8 +13,7 @@ class TestOpd(unittest.TestCase):
     def test_opd(self):
         """Test enable/disable works."""
 
-        config = OreSatConfig(OreSatId.ORESAT0)
-        opd = Opd(config.cards, 10, 12, 2, I2C_BUS_NUM, mock=True)
+        opd = Opd(10, 12, 2, mock=True)
 
         for node in opd:
             if node.name in ["battery_1", "battery_2"]:

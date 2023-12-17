@@ -37,6 +37,7 @@ class EdlService(Service):
         self._hmac_key = b""
         self._seq_num = 0
 
+        self._flight_mode_obj: canopen.objectdictionary.Variable = None
         self._tx_enable_obj: canopen.objectdictionary.Variable = None
         self._last_tx_enable_obj: canopen.objectdictionary.Variable = None
         self._edl_sequence_count_obj: canopen.objectdictionary.Variable = None
@@ -46,6 +47,8 @@ class EdlService(Service):
     def on_start(self):
         edl_rec = self.node.od["edl"]
         tx_rec = self.node.od["tx_control"]
+
+        self._flight_mode_obj = self.node.od["flight_mode"]
 
         active_key = edl_rec["active_crypto_key"].value
         self._hmac_key = edl_rec[f"crypto_key_{active_key}"].value
@@ -67,16 +70,22 @@ class EdlService(Service):
         logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
 
         try:
-            req_packet = EdlPacket.unpack(self._hmac_key, req_message)
+            req_packet = EdlPacket.unpack(req_message, self._hmac_key, self._flight_mode_obj.value)
         except (EdlCommandError, EdlPacketError) as e:
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
             return  # no responses to invalid commands
 
+        if req_packet.seq_num < self._edl_rejected_count_obj.value:
+            logger.error("invalid EDL request packet sequence number")
+            return  # no responses to invalid commands
+
         self._last_edl_obj.value = int(time())
-        self._edl_sequence_count_obj.value += 1
-        self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
+
+        if self._flight_mode_obj.value:
+            self._edl_sequence_count_obj.value += 1
+            self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
 
         try:
             res_payload = self._run_cmd(req_packet.payload)
@@ -103,7 +112,7 @@ class EdlService(Service):
         logger.info(f"EDL command response: {request.code.name}, args: {request.args}")
 
         if request.code == EdlCommandCode.TX_CTRL:
-            if request.args[0] == b"\x00":
+            if request.args[0] == 0:
                 logger.info("EDL disabling Tx")
                 self._tx_enable_obj.value = False
                 self._last_tx_enable_obj.value = 0
@@ -186,6 +195,10 @@ class EdlService(Service):
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info("EDL sending time sync TPDO")
             self.node.send_tpdo(0)
+        elif request.code == EdlCommandCode.BEACON_PING:
+            self._beacon_service.send()
+        elif request.code == EdlCommandCode.PING:
+            ret = request.args[0]
 
         if type(ret) not in [None, tuple]:
             ret = (ret,)  # make ret a tuple

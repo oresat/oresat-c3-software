@@ -89,7 +89,8 @@ class NodeManagerService(Service):
         for name, info in cards.items():
             if info.opd_address == 0:
                 continue  # not an opd node
-            elif info.processor == "none":
+
+            if info.processor == "none":
                 node = OpdNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
             elif info.processor == "stm32":
                 node = OpdStm32Node(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)

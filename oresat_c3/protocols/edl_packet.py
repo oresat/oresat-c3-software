@@ -160,7 +160,7 @@ class EdlPacket:
         return packet
 
     @classmethod
-    def unpack(cls, hmac_key: bytes, raw: bytes):
+    def unpack(cls, raw: bytes, hmac_key: bytes, ignore_hmac: bool = False):
         """
         Unpack the EDL packet.
 
@@ -168,6 +168,10 @@ class EdlPacket:
         ----------
         raw: bytes
             The raw data to unpack.
+        hmac_key: bytes
+            The hmac key.
+        ignore_hmac: bool
+            Ignore the HMAC value.
         """
 
         if len(raw) < cls.TC_MIN_LEN:
@@ -180,14 +184,14 @@ class EdlPacket:
 
         try:
             frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
-        except UslpInvalidRawPacketOrFrameLen:
-            raise EdlPacketError("USLP invalid packet or frame length")
+        except UslpInvalidRawPacketOrFrameLen as e:
+            raise EdlPacketError("USLP invalid packet or frame length") from e
 
         payload_raw = frame.tfdf.tfdz[: -cls.HMAC_LEN]
         hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN :]
         hmac_bytes_calc = gen_hmac(hmac_key, payload_raw)
 
-        if hmac_bytes != hmac_bytes_calc:
+        if not ignore_hmac and hmac_bytes != hmac_bytes_calc:
             raise EdlPacketError(f"invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}")
 
         if frame.header.vcid == EdlVcid.C3_COMMAND:

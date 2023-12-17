@@ -402,7 +402,7 @@ class Opd:
         self._adc = Adc(current_pin, mock)
         self._not_enable_pin.high()  # make sure OPD disable initially
 
-        self._nodes = {}
+        self._nodes = {}  # type: ignore
         self._status = OpdState.DISABLED
         self.stop_loop = True
         self._resets = 0

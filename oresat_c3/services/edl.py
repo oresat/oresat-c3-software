@@ -5,7 +5,6 @@ from typing import Any
 
 import canopen
 from olaf import NodeStop, Service, logger
-from oresat_configs import NodeId
 
 from ..protocols.edl_command import (
     EdlCommandCode,
@@ -93,6 +92,9 @@ class EdlService(Service):
             logger.error(f"EDL command {req_message.code.name} raised: {e}")
             return
 
+        if not res_payload.values:
+            return  # no response
+
         try:
             res_peacket = EdlPacket(
                 res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
@@ -132,18 +134,20 @@ class EdlService(Service):
             logger.info("EDL factory reset")
             self.node.stop(NodeStop.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
-            node = NodeId(int(request.args[0]))
-            logger.info(f"EDL enabling CANopen node {node.name}")
+            node_id = request.args[0]
+            name = self._node_mgr_service.node_id_to_name[node_id]
+            logger.info(f"EDL enabling CANopen node {name} (0x{node_id:02X})")
         elif request.code == EdlCommandCode.CO_NODE_STATUS:
-            node = NodeId(int(request.args[0]))
-            logger.info(f"EDL getting CANopen node {node.name} status")
-            ret = self.node.node_status[node.value]
+            node_id = request.args[0]
+            name = self._node_mgr_service.node_id_to_name[node_id]
+            logger.info(f"EDL getting CANopen node {name} (0x{node_id:02X}) status")
+            ret = self.node.node_status[name]
         elif request.code == EdlCommandCode.CO_SDO_WRITE:
             node_id, index, subindex, _, data = request.args
-            node = NodeId(node_id)
-            logger.info(f"EDL SDO write on CANopen node {node.name}")
+            name = self._node_mgr_service.node_id_to_name[node_id]
+            logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
             try:
-                self.node.sdo_write(node_id, index, subindex, data)
+                self.node.sdo_write(name, index, subindex, data)
                 ret = 0
             except canopen.sdo.exceptions.SdoError as e:
                 logger.error(e)
@@ -165,42 +169,48 @@ class EdlService(Service):
             logger.info("EDL scaning for all OPD nodes")
             ret = self._node_mgr_service.opd.scan()
         elif request.code == EdlCommandCode.OPD_PROBE:
-            node_id = request.args[0]
-            node = self._node_mgr_service.opd[node_id]
-            logger.info(f"EDL probing for OPD node {node_id.name}")
-            ret = self._node_mgr_service.opd[node].probe()
+            opd_addr = request.args[0]
+            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
+            logger.info(f"EDL probing for OPD node {name} (0x{opd_addr:02X})")
+            ret = self._node_mgr_service.opd[name].probe()
         elif request.code == EdlCommandCode.OPD_ENABLE:
-            node_id = request.args[0]
-            node = self._node_mgr_service.opd[node_id]
-            if request.args[1] == b"\x00":
-                logger.info(f"EDL disabling OPD node {node_id.name}")
+            opd_addr = request.args[0]
+            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
+            node = self._node_mgr_service.opd[name]
+            if request.args[1] == 0:
+                logger.info(f"EDL disabling OPD node {name} (0x{opd_addr:02X})")
                 ret = node.disable()
             else:
-                logger.info(f"EDL enabling OPD node {node_id.name}")
+                logger.info(f"EDL enabling OPD node {name} (0x{opd_addr:02X})")
                 ret = node.enable()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_RESET:
-            node_id = request.args[0]
-            node = self._node_mgr_service.opd[node_id]
-            logger.info(f"EDL resetting for OPD node {node_id.name}")
+            opd_addr = request.args[0]
+            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
+            logger.info(f"EDL resetting OPD node {name} (0x{opd_addr:02X})")
+            node = self._node_mgr_service.opd[name]
             node.reset()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_STATUS:
-            node_id = request.args[0]
-            node = self._node_mgr_service.opd[node_id]
-            logger.info(f"EDL getting the status for OPD node {node.name}")
-            ret = self._node_mgr_service.opd[node].status.value
+            opd_addr = request.args[0]
+            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
+            logger.info(f"EDL getting the status for OPD node {name} (0x{opd_addr:02X})")
+            ret = self._node_mgr_service.opd[name].status.value
         elif request.code == EdlCommandCode.RTC_SET_TIME:
             logger.info(f"EDL setting the RTC to {request.args[0]}")
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info("EDL sending time sync TPDO")
             self.node.send_tpdo(0)
         elif request.code == EdlCommandCode.BEACON_PING:
+            logger.info("EDL beacon")
             self._beacon_service.send()
         elif request.code == EdlCommandCode.PING:
+            logger.info("EDL ping")
             ret = request.args[0]
+        elif request.code == EdlCommandCode.RX_TEST:
+            logger.info("EDL Rx test")
 
-        if type(ret) not in [None, tuple]:
+        if ret is not None and not isinstance(ret, tuple):
             ret = (ret,)  # make ret a tuple
 
         response = EdlCommandResponse(request.code, ret)

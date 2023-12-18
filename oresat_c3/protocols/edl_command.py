@@ -245,7 +245,7 @@ class EdlCommandCode(IntEnum):
 
     BEACON_PING = auto()
     """
-    C3 will response with a beacon as a ping.
+    C3 will response with a beacon reguardless of tx state.
     """
 
     PING = auto()
@@ -260,7 +260,12 @@ class EdlCommandCode(IntEnum):
     Returns
     -------
     uint32:
-        The value from the parameter.
+        The parameter value.
+    """
+
+    RX_TEST = auto()
+    """
+    Empty command for C3 Rx testing.
     """
 
 
@@ -289,6 +294,7 @@ EDL_COMMANDS = {
     EdlCommandCode.RTC_SET_TIME: EdlCommand("I", "?"),
     EdlCommandCode.BEACON_PING: EdlCommand(),
     EdlCommandCode.PING: EdlCommand("I", "I"),
+    EdlCommandCode.RX_TEST: EdlCommand(),
 }
 """All valid EDL commands lookup table"""
 

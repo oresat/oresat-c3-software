@@ -102,6 +102,7 @@ class NodeManagerService(Service):
             self.opd[name] = node
 
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
+        self.node_id_to_name = {info.node_id: name for name, info in cards.items()}
 
         self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
         self._data["c3"].status = NodeState.ON

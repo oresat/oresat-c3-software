@@ -15,9 +15,18 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
+    
     def __init__(self, config: dict):
         super().__init__()
-
+        self.sensor_data = {}
+        self.xyz_sensor_names = ['accelerometer', 
+                                   'gyroscope', 
+                                   'pos_z_magnetometer_1',
+                                   'pos_z_magnetometer_2',
+                                   'min_z_magnetometer_1',
+                                   'min_z_magnetometer_2']
+        for sensor in self.xyz_sensor_names:
+            self.sensor_data[sensor] = dict()
         logger.info("ADCS service object initiated")
 
     def on_start(self):
@@ -43,18 +52,18 @@ class AdcsService(Service):
         start_ns = monotonic_ns()
 
         # Read sensors
-        gyro_values = self.gyro_monitor()
-        mag_values = self.mag_monitor()
+        self.gyro_monitor()
+        self.mag_monitor()
 
         # Read actuators
-        mt_values = self.mt_monitor()
+        self.mt_monitor()
         self.rw_monitor()
 
 
         # Dump data to logger for now
-        logger.info(f"gyroscope: {gyro_values}")
-        logger.info(f"magnetometers: {mag_values}")
-        logger.info(f"magnetorquers: {mt_values}")
+        logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
+        #logger.info(f"magnetometers: {self.sensor_data[]}")
+        logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
 
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
         
@@ -105,11 +114,9 @@ class AdcsService(Service):
         logger.info("Monitoring gyroscope")
         # pitch roll and yaw should be relative to velocity, convert back to xyz
         directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
-        gyro_values = dict()
         for name,axis in directions.items():
-            gyro_values[axis] = self.node.od["adcs"]["gyroscope_" + name].value
+            self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
-        return gyro_values
     
     # MAG Functions
     def mag_calibrate(self):
@@ -127,13 +134,11 @@ class AdcsService(Service):
                    'min_z_magnetometer_2': 'mag_nz2',
                    }
         directions = ["x", "y", "z"]
-        mag_values = dict()
         for name,nick in mag_map.items():
-            mag_values[nick] = dict()
+            self.sensor_data[nick] = dict()
             for axis in directions:
-                mag_values[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
+                self.sensor_data[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
 
-        return mag_values
 
     # Magnetorquer Functions
     def mt_calibrate(self):
@@ -145,10 +150,9 @@ class AdcsService(Service):
         """Monitor magnetorquers"""
         logger.info("Monitoring magnetorquers")
         directions = {"current_x": "x", "current_y": "y", "current_z": "z"}
-        cur_values = dict()
+        self.sensor_data["magnetorquer"] = dict()
         for name,axis in directions.items():
-            cur_values[axis] = self.node.od["adcs"]["magnetorquer_" +name].value
-        return cur_values
+            self.sensor_data["magnetorquer"][axis] = self.node.od["adcs"]["magnetorquer_" +name].value
 
     def mt_control(self):
         """Send control signal to magnetorquers"""

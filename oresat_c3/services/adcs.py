@@ -51,7 +51,7 @@ class AdcsService(Service):
         timestamps = dict()
         start_ns = monotonic_ns()
 
-        # Read sensors
+        # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
 
@@ -59,12 +59,20 @@ class AdcsService(Service):
         self.mt_monitor()
         self.rw_monitor()
 
+        # More things to read
+        star_orientation = self.star_monitor()
+        solar_power = self.solar_monitor()
+        temperatures = self.temperature_monitor()
+        batteries = self.battery_monitor()
 
         # Dump data to logger for now
         logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
         #logger.info(f"magnetometers: {self.sensor_data[]}")
         logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
-
+        logger.info(f"star orientation: {star_orientation}")
+        logger.info(f"solar cell power: {solar_power}")
+        logger.info(f"temperatures: {temperatures}")
+        logger.info(f"batteries: {batteries}")
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
         
 
@@ -166,12 +174,57 @@ class AdcsService(Service):
         pass
 
     def rw_monitor(self):
+        """Retreives reaction wheel states"""
         #logger.info("Monitoring reaction wheels")
         pass
 
     def rw_control(self):
+        """Sends the control signal to the reaction wheels"""
         #logger.info("Sending control signal to reaction wheels")
         pass
+
+    # Other attitude determination functions
+    def solar_monitor(self, num_modules=6):
+        """Returns a dictionary of solar power generation data
+
+        Parameters:
+            num = the number of modules (modules are named 'solar_num')
+        """
+        logger.info("Monitoring solar modules")
+        return {module: self.node.od[module]["output_power"].value 
+                for module in ["solar_"+str(num) for num in range(1, num_modules+1)]}
+
+    def star_monitor(self, num_modules=1):
+        """Returns a dictionary of star tracker orientation data
+
+        Parameters:
+            num = the number of modules (modules are named 'star_tracker_num' starting with 1)
+        """
+        logger.info("Monitoring star tracker")
+        # Note there are two star trackers
+        return {"star_tracker_" + str(tracker_num): 
+                {subindex: self.node.od["star_tracker_"+str(tracker_num)][str("orientation_" + subindex)].value
+                for subindex in ["right_ascension", "declination", "roll", "time_since_midnight"]}
+                for tracker_num in range(1, num_modules+1)}
+
+
+    # Additional data retrieval to consider control type
+    def temperature_monitor(self, num_solar_modules=6):
+        """Records the temperatures from the imu and solar modules"""
+        logger.info("Monitoring temperature sensors")
+        # Note that modules have a cell 1 and cell 2
+        temps = {module: self.node.od[module]["cell_1_temperature"].value
+                 for module in ["solar_"+str(num) for num in range(1, num_solar_modules+1)]}
+        temps["adcs"] = self.node.od["adcs"]["temperature"].value
+        return temps
+
+    def battery_monitor(self, num_cards=1, num_packs=2):
+        """Returns a dictionary of battery information"""
+        logger.info("Monitoring battery reported capacities")
+        return {"battery_%s_pack_%s"%(battery, pack): 
+                self.node.od["battery_%s"%battery]["pack_%s_reported_capacity"%pack].value
+                for battery in range(1, num_cards+1)
+                for pack in range(1, num_packs+1)}
 
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):

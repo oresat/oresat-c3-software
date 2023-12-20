@@ -24,8 +24,11 @@ class RadiosService(Service):
     def __init__(self, mock_hw: bool = False):
         super().__init__()
 
+<<<<<<< HEAD
+=======
         self._mock_hw = mock_hw
 
+>>>>>>> master
         self._si41xx = Si41xx(
             "LBAND_LO_nSEN",
             "LBAND_LO_SCLK",
@@ -40,12 +43,16 @@ class RadiosService(Service):
 
         # gpio pins
         self._uhf_tot_ok_gpio = Gpio("UHF_TOT_OK", mock_hw)
+<<<<<<< HEAD
+        self._uhf_tot_clear_gpio = Gpio("UHF_TOT_CLEAR", mock_hw)
+=======
         if mock_hw:
             self._uhf_tot_ok_gpio._mock_value = 1
         self._uhf_tot_clear_gpio = Gpio("UHF_TOT_CLEAR", mock_hw)
         self._radio_enable_gpio = Gpio("RADIO_ENABLE", mock_hw)
         self._uhf_enable_gpio = Gpio("UHF_ENABLE", mock_hw)
         self._lband_enable_gpio = Gpio("LBAND_ENABLE", mock_hw)
+>>>>>>> master
 
         # beacon downlink: UDP client
         logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
@@ -64,6 +71,14 @@ class RadiosService(Service):
         self.recv_queue: List[bytes] = []
 
     def on_start(self):
+<<<<<<< HEAD
+        self.uhf_tot_clear()
+        self._si41xx.start()
+
+    def on_loop(self):
+        if not self.is_uhf_tot_okay:
+            self.uhf_tot_clear()
+=======
         if not self._mock_hw:
             self.node.add_daemon("lband")
             self.node.add_daemon("uhf")
@@ -74,12 +89,16 @@ class RadiosService(Service):
             logger.error("tot okay was low, resetting radios")
             self.disable()
             self.enable()
+>>>>>>> master
 
         recv = self._recv_edl_request()
         if recv:
             self.recv_queue.append(recv)
 
     def on_stop(self):
+<<<<<<< HEAD
+        self._si41xx.stop()
+=======
         self.disable()
 
     def enable(self):
@@ -110,6 +129,7 @@ class RadiosService(Service):
         self._uhf_enable_gpio.low()
         self.sleep_ms(100)
         self._radio_enable_gpio.low()
+>>>>>>> master
 
     def uhf_tot_clear(self):
         """Clear TOT."""

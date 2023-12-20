@@ -22,7 +22,7 @@ The EDL has Uplink and Downlink.
 EDL Packet Stucture
 -------------------
 
-The EDL uses USLP (Unified Space Lint Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
+The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
 
 +--------------+---------------------+-----------------+------------+-------------------+------------+
 | USLP Primary | Sequence Number     | USLP Data Field | Payload    | HMAC              | USLP FECF  |

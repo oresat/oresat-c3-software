@@ -65,9 +65,15 @@ class EdlService(Service):
             return
 
         req_message = self._radios_service.recv_queue.pop()
+<<<<<<< HEAD
 
         logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
 
+=======
+
+        logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
+
+>>>>>>> master
         try:
             req_packet = EdlPacket.unpack(req_message, self._hmac_key, self._flight_mode_obj.value)
         except (EdlCommandError, EdlPacketError) as e:
@@ -169,6 +175,17 @@ class EdlService(Service):
             logger.info("EDL scaning for all OPD nodes")
             ret = self._node_mgr_service.opd.scan()
         elif request.code == EdlCommandCode.OPD_PROBE:
+<<<<<<< HEAD
+            node_id = request.args[0]
+            node = self._node_mgr_service.opd[node_id]
+            logger.info(f"EDL probing for OPD node {node_id.name}")
+            ret = self._node_mgr_service.opd[node].probe()
+        elif request.code == EdlCommandCode.OPD_ENABLE:
+            node_id = request.args[0]
+            node = self._node_mgr_service.opd[node_id]
+            if request.args[1] == b"\x00":
+                logger.info(f"EDL disabling OPD node {node_id.name}")
+=======
             opd_addr = request.args[0]
             name = self._node_mgr_service.opd_addr_to_name[opd_addr]
             logger.info(f"EDL probing for OPD node {name} (0x{opd_addr:02X})")
@@ -179,12 +196,25 @@ class EdlService(Service):
             node = self._node_mgr_service.opd[name]
             if request.args[1] == 0:
                 logger.info(f"EDL disabling OPD node {name} (0x{opd_addr:02X})")
+>>>>>>> master
                 ret = node.disable()
             else:
                 logger.info(f"EDL enabling OPD node {name} (0x{opd_addr:02X})")
                 ret = node.enable()
             ret = node.status.value
         elif request.code == EdlCommandCode.OPD_RESET:
+<<<<<<< HEAD
+            node_id = request.args[0]
+            node = self._node_mgr_service.opd[node_id]
+            logger.info(f"EDL resetting for OPD node {node_id.name}")
+            node.reset()
+            ret = node.status.value
+        elif request.code == EdlCommandCode.OPD_STATUS:
+            node_id = request.args[0]
+            node = self._node_mgr_service.opd[node_id]
+            logger.info(f"EDL getting the status for OPD node {node.name}")
+            ret = self._node_mgr_service.opd[node].status.value
+=======
             opd_addr = request.args[0]
             name = self._node_mgr_service.opd_addr_to_name[opd_addr]
             logger.info(f"EDL resetting OPD node {name} (0x{opd_addr:02X})")
@@ -196,6 +226,7 @@ class EdlService(Service):
             name = self._node_mgr_service.opd_addr_to_name[opd_addr]
             logger.info(f"EDL getting the status for OPD node {name} (0x{opd_addr:02X})")
             ret = self._node_mgr_service.opd[name].status.value
+>>>>>>> master
         elif request.code == EdlCommandCode.RTC_SET_TIME:
             logger.info(f"EDL setting the RTC to {request.args[0]}")
         elif request.code == EdlCommandCode.TIME_SYNC:

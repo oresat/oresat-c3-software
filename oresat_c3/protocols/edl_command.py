@@ -243,6 +243,31 @@ class EdlCommandCode(IntEnum):
         Time sync was sent.
     """
 
+    BEACON_PING = auto()
+    """
+    C3 will response with a beacon reguardless of tx state.
+    """
+
+    PING = auto()
+    """
+    A basic ping to the C3.
+
+    Parameters
+    ----------
+    value: uint32
+        A value to return.
+
+    Returns
+    -------
+    uint32:
+        The parameter value.
+    """
+
+    RX_TEST = auto()
+    """
+    Empty command for C3 Rx testing.
+    """
+
 
 def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
     res = struct.unpack("<2BHI", request_raw[:8])
@@ -267,6 +292,9 @@ EDL_COMMANDS = {
     EdlCommandCode.OPD_RESET: EdlCommand("B", "B"),
     EdlCommandCode.OPD_STATUS: EdlCommand("B", "B"),
     EdlCommandCode.RTC_SET_TIME: EdlCommand("I", "?"),
+    EdlCommandCode.BEACON_PING: EdlCommand(),
+    EdlCommandCode.PING: EdlCommand("I", "I"),
+    EdlCommandCode.RX_TEST: EdlCommand(),
 }
 """All valid EDL commands lookup table"""
 

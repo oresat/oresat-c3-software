@@ -89,8 +89,12 @@ class NodeManagerService(Service):
         for name, info in cards.items():
             if info.opd_address == 0:
                 continue  # not an opd node
+<<<<<<< HEAD
+            elif info.processor == "none":
+=======
 
             if info.processor == "none":
+>>>>>>> master
                 node = OpdNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
             elif info.processor == "stm32":
                 node = OpdStm32Node(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
@@ -102,11 +106,18 @@ class NodeManagerService(Service):
             self.opd[name] = node
 
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
+<<<<<<< HEAD
+
+        self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
+        self._data["c3"].status = NodeState.ON
+        self._loops = 0
+=======
         self.node_id_to_name = {info.node_id: name for name, info in cards.items()}
 
         self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
         self._data["c3"].status = NodeState.ON
         self._loops = -1
+>>>>>>> master
 
         self._flight_mode_obj: canopen.objectdictionary.Variable = None
         self._nodes_off_obj: canopen.objectdictionary.Variable = None
@@ -216,7 +227,10 @@ class NodeManagerService(Service):
     def on_loop(self):
         """Monitor all OPD data and check that data that are on are sending heartbeats."""
 
+<<<<<<< HEAD
+=======
         self._loops += 1
+>>>>>>> master
         self.sleep(1)
 
         nodes_off = 0
@@ -247,8 +261,12 @@ class NodeManagerService(Service):
         self._nodes_not_found_obj.value = nodes_not_found
         self._nodes_dead_obj.value = nodes_dead
 
+<<<<<<< HEAD
+        if self._status in [OpdState.DEAD, OpdState.DISABLED]:
+=======
         if self.opd.status in [OpdState.DEAD, OpdState.DISABLED]:
             self._loops = -1
+>>>>>>> master
             return  # nothing to monitor
 
         # reset data with errors and probe for data not found
@@ -269,6 +287,11 @@ class NodeManagerService(Service):
             else:
                 info.opd_resets = 0
 
+<<<<<<< HEAD
+        self._loops += 1
+
+=======
+>>>>>>> master
     def enable(self, name: Union[str, int]):
         """Enable a OreSat node."""
 

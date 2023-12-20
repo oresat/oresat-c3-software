@@ -57,6 +57,7 @@ class AdcsService(Service):
         self.mag_monitor()
         self.gps_monitor()
         self.gps_time()
+        ecef_data = self.gps_ecef_monitor()
 
         # Read actuators
         self.mt_monitor()
@@ -69,6 +70,7 @@ class AdcsService(Service):
         batteries = self.battery_monitor()
 
         # Dump data to logger for now
+        logger.info(f"gps ecef data: {ecef_data}")
         logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
         #logger.info(f"magnetometers: {self.sensor_data[]}")
         logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
@@ -142,6 +144,15 @@ class AdcsService(Service):
     def gps_time(self):
         """Gets the gps time since midnight"""
         logger.info(self.node.od["gps"]["skytraq_time_since_midnight"].value)
+
+    def gps_ecef_monitor(self):
+        axis_list = ["x", "y", "z"]
+        ecef_data = dict()
+        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+        
+        return ecef_data
+
 
     # MAG Functions
     def mag_calibrate(self):

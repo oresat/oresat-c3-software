@@ -50,19 +50,19 @@ class AdcsService(Service):
         #logger.info("Starting iteration of ADCS loop")
         timestamps = dict()
         start_ns = monotonic_ns()
+        logger.info("START OF ADCS LOOP")
 
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
         self.gps_monitor()
+        self.gps_time()
 
         # Read actuators
         self.mt_monitor()
         self.rw_monitor()
 
         # More things to read
-        self.gps_monitor()
-        self.gps_time()
         star_orientation = self.star_monitor()
         solar_power = self.solar_monitor()
         temperatures = self.temperature_monitor()
@@ -83,7 +83,16 @@ class AdcsService(Service):
         vect1 = {"x": 1, "y": 0, "z": 0}
         vect2 = {"x": 0, "y": 1, "z": 0}
         theta, rot_vect = self.get_rot_vect(vect1, vect2)
-        
+
+        # calculate the magnitude of the rotation vector
+        gyro_theta = math.hypot(*self.sensor_data['gyroscope'].values()) 
+        # calcualte the normalized direction of the rotation vector
+        gyro_norm = self.vect_normalize(self.sensor_data['gyroscope'])
+
+        logger.info(gyro_theta)
+        logger.info(gyro_norm)
+
+
         #logger.info(f"Applying rotation of {theta} radians about vector {rot_vect}")
         rot_quat = self.rot_vect_to_quat(theta, rot_vect)
         self.quat = self.quat_product(self.quat, rot_quat)
@@ -106,7 +115,7 @@ class AdcsService(Service):
         # End of ADCS control loop
         logger.info(f"ADCS loop timestamps are {timestamps} (ms)")
         #logger.info("Completed iteration of ADCS loop")
-        sleep(0.1)
+        sleep(1)
 
 
     # gyro Functions
@@ -116,7 +125,7 @@ class AdcsService(Service):
 
     def gyro_monitor(self):
         """Monitors the gyroscope"""
-        logger.info("Monitoring gyroscope")
+        logger.debug("Monitoring gyroscope")
         # pitch roll and yaw should be relative to velocity, convert back to xyz
         directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
         for name,axis in directions.items():
@@ -125,7 +134,7 @@ class AdcsService(Service):
     # GPS Functions
     def gps_monitor(self):
         """Monitors the GPS readings"""
-        logger.info("Monitoring GPS")
+        logger.debug("Monitoring GPS")
 
         for name, item in self.node.od["gps"].items():
             logger.info(f"Key: {name} Value: {item.value}")
@@ -142,7 +151,7 @@ class AdcsService(Service):
 
     def mag_monitor(self):
         """Monitors the magnetometer readings"""
-        logger.info("Monitoring magnetometers")
+        logger.debug("Monitoring magnetometers")
         # full names are a little long, shorten them for now
         mag_map = {'pos_z_magnetometer_1': 'mag_pz1',
                    'pos_z_magnetometer_2': 'mag_pz2',
@@ -198,7 +207,7 @@ class AdcsService(Service):
         Parameters:
             num = the number of modules (modules are named 'solar_num')
         """
-        logger.info("Monitoring solar modules")
+        logger.debug("Monitoring solar modules")
         return {module: self.node.od[module]["output_power"].value 
                 for module in ["solar_"+str(num) for num in range(1, num_modules+1)]}
 
@@ -208,7 +217,7 @@ class AdcsService(Service):
         Parameters:
             num = the number of modules (modules are named 'star_tracker_num' starting with 1)
         """
-        logger.info("Monitoring star tracker")
+        logger.debug("Monitoring star tracker")
         # Note there are two star trackers
         return {"star_tracker_" + str(tracker_num): 
                 {subindex: self.node.od["star_tracker_"+str(tracker_num)][str("orientation_" + subindex)].value
@@ -219,7 +228,7 @@ class AdcsService(Service):
     # Additional data retrieval to consider control type
     def temperature_monitor(self, num_solar_modules=6):
         """Records the temperatures from the imu and solar modules"""
-        logger.info("Monitoring temperature sensors")
+        logger.debug("Monitoring temperature sensors")
         # Note that modules have a cell 1 and cell 2
         temps = {module: self.node.od[module]["cell_1_temperature"].value
                  for module in ["solar_"+str(num) for num in range(1, num_solar_modules+1)]}
@@ -228,7 +237,7 @@ class AdcsService(Service):
 
     def battery_monitor(self, num_cards=1, num_packs=2):
         """Returns a dictionary of battery information"""
-        logger.info("Monitoring battery reported capacities")
+        logger.debug("Monitoring battery reported capacities")
         return {"battery_%s_pack_%s"%(battery, pack): 
                 self.node.od["battery_%s"%battery]["pack_%s_reported_capacity"%pack].value
                 for battery in range(1, num_cards+1)
@@ -254,6 +263,9 @@ class AdcsService(Service):
     def vect_normalize(self, vect: dict):
         """Returns the normalized vector"""
         magnitude = math.hypot(*vect.values())
+        if magnitude == 0:
+            # why z? because it is the easiest axis to rotate on
+            return {"x": 0, "y": 0, "z": 1}
         norm_vect = dict()
         for key,val in vect.items():
             norm_vect[key] = val / magnitude

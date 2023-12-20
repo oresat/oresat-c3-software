@@ -15,12 +15,12 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
-    
+
     def __init__(self, config: dict):
         super().__init__()
         self.sensor_data = {}
-        self.xyz_sensor_names = ['accelerometer', 
-                                   'gyroscope', 
+        self.xyz_sensor_names = ['accelerometer',
+                                   'gyroscope',
                                    'pos_z_magnetometer_1',
                                    'pos_z_magnetometer_2',
                                    'min_z_magnetometer_1',
@@ -54,6 +54,7 @@ class AdcsService(Service):
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
+        self.gps_monitor()
 
         # Read actuators
         self.mt_monitor()
@@ -125,7 +126,14 @@ class AdcsService(Service):
         for name,axis in directions.items():
             self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
-    
+    # GPS Functions
+    def gps_monitor(self):
+        """Monitors the GPS readings"""
+        logger.info("Monitoring GPS")
+
+        for name, item in self.node.od["gps"].items():
+            logger.info(f"Key: {name} Value: {item}")
+
     # MAG Functions
     def mag_calibrate(self):
         """Calibrates the magnetometers"""

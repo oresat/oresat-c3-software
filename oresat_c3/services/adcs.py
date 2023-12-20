@@ -70,11 +70,14 @@ class AdcsService(Service):
         batteries = self.battery_monitor()
 
         # Dump data to logger for now
-        logger.info(f"gps ecef data: {ecef_data}")
+        #logger.info(f"gps ecef data: {ecef_data}")
         logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
-        #logger.info(f"magnetometers: {self.sensor_data[]}")
-        logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
-        logger.info(f"star orientation: {star_orientation}")
+        logger.info(f"magnetometer pz1: {self.sensor_data['mag_pz1']}")
+        logger.info(f"magnetometer pz2: {self.sensor_data['mag_pz2']}")
+        logger.info(f"magnetometer nz1: {self.sensor_data['mag_nz1']}")
+        logger.info(f"magnetometer nz2: {self.sensor_data['mag_nz2']}")
+        #logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
+        #logger.info(f"star orientation: {star_orientation}")
         logger.info(f"solar cell power: {solar_power}")
         logger.info(f"temperatures: {temperatures}")
         logger.info(f"batteries: {batteries}")
@@ -82,23 +85,24 @@ class AdcsService(Service):
         
 
         # Determine state (and use filters)
-        vect1 = {"x": 1, "y": 0, "z": 0}
-        vect2 = {"x": 0, "y": 1, "z": 0}
-        theta, rot_vect = self.get_rot_vect(vect1, vect2)
+        #vect1 = {"x": 1, "y": 0, "z": 0}
+        #vect2 = {"x": 0, "y": 1, "z": 0}
+        #theta, rot_vect = self.get_rot_vect(vect1, vect2)
 
-        # calculate the magnitude of the rotation vector
-        gyro_theta = math.hypot(*self.sensor_data['gyroscope'].values()) 
+        # calculate the magnitude of the rotation vector in radians
+        gyro_theta = math.hypot(*self.sensor_data['gyroscope'].values()) * math.pi / 180.0
         # calcualte the normalized direction of the rotation vector
         gyro_norm = self.vect_normalize(self.sensor_data['gyroscope'])
 
-        logger.info(gyro_theta)
-        logger.info(gyro_norm)
+        logger.info(f"Gyroscope theata: {gyro_theta}")
+        logger.info(f"Gyroscope norm: {gyro_norm}")
 
 
-        #logger.info(f"Applying rotation of {theta} radians about vector {rot_vect}")
-        rot_quat = self.rot_vect_to_quat(theta, rot_vect)
-        self.quat = self.quat_product(self.quat, rot_quat)
-        #logger.info(f"The current positional quaternion is {self.quat}")
+        if gyro_theta != 0:
+            logger.info(f"Applying rotation of {gyro_theta} radians about vector {gyro_norm}")
+            rot_quat = self.rot_vect_to_quat(gyro_theta, gyro_norm)
+            self.quat = self.quat_product(self.quat, rot_quat)
+        logger.info(f"The current positional quaternion is {self.quat}")
 
         # Check if positional quaternion is still a unit quaternion
         if abs(math.hypot(*self.quat.values()) - 1) > 0.00000001:

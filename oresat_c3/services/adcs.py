@@ -61,6 +61,8 @@ class AdcsService(Service):
         self.rw_monitor()
 
         # More things to read
+        self.gps_monitor()
+        self.gps_time()
         star_orientation = self.star_monitor()
         solar_power = self.solar_monitor()
         temperatures = self.temperature_monitor()
@@ -92,12 +94,6 @@ class AdcsService(Service):
             logger.warning(f"WARNING: positional quaternion is currently not a unit quaternion")
         
         timestamps["state_end"] = (monotonic_ns() - start_ns) // 1000
-
-
-        # Calculate error
-
-
-        # Determine control signal
 
 
         # Send control signal
@@ -132,7 +128,11 @@ class AdcsService(Service):
         logger.info("Monitoring GPS")
 
         for name, item in self.node.od["gps"].items():
-            logger.info(f"Key: {name} Value: {item}")
+            logger.info(f"Key: {name} Value: {item.value}")
+
+    def gps_time(self):
+        """Gets the gps time since midnight"""
+        logger.info(self.node.od["gps"]["skytraq_time_since_midnight"].value)
 
     # MAG Functions
     def mag_calibrate(self):

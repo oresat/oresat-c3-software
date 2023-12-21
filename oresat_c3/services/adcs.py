@@ -55,7 +55,7 @@ class AdcsService(Service):
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
-        self.gps_monitor()
+        #self.gps_monitor()
         self.gps_time()
         ecef_data = self.gps_ecef_monitor()
 
@@ -147,7 +147,7 @@ class AdcsService(Service):
 
     def gps_time(self):
         """Gets the gps time since midnight"""
-        logger.info(self.node.od["gps"]["skytraq_time_since_midnight"].value)
+        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
 
     def gps_ecef_monitor(self):
         axis_list = ["x", "y", "z"]

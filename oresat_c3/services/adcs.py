@@ -56,8 +56,8 @@ class AdcsService(Service):
         self.gyro_monitor()
         self.mag_monitor()
         #self.gps_monitor()
-        self.gps_time()
-        ecef_data = self.gps_ecef_monitor()
+        #self.gps_time()
+        #ecef_data = self.gps_ecef_monitor()
 
         # Read actuators
         self.mt_monitor()
@@ -65,7 +65,7 @@ class AdcsService(Service):
 
         # More things to read
         star_orientation = self.star_monitor()
-        solar_power = self.solar_monitor()
+        #solar_power = self.solar_monitor()
         temperatures = self.temperature_monitor()
         batteries = self.battery_monitor()
 
@@ -76,9 +76,9 @@ class AdcsService(Service):
         logger.info(f"magnetometer pz2: {self.sensor_data['mag_pz2']}")
         logger.info(f"magnetometer nz1: {self.sensor_data['mag_nz1']}")
         logger.info(f"magnetometer nz2: {self.sensor_data['mag_nz2']}")
-        #logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
+        logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
         #logger.info(f"star orientation: {star_orientation}")
-        logger.info(f"solar cell power: {solar_power}")
+        #logger.info(f"solar cell power: {solar_power}")
         logger.info(f"temperatures: {temperatures}")
         logger.info(f"batteries: {batteries}")
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
@@ -197,7 +197,7 @@ class AdcsService(Service):
     def mt_control(self):
         """Send control signal to magnetorquers"""
         logger.info("Sending control signal to magnetorquers")
-        #self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
+        self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
         pass
 
     # Reaction Wheel Functions

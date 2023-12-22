@@ -113,7 +113,7 @@ class AdcsService(Service):
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
-        #self.mt_control()
+        self.mt_control()
         #self.rw_control()        
         timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 

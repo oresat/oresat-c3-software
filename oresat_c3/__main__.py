@@ -42,6 +42,12 @@ def node_mgr_template():
     """Render node manager template."""
     return render_olaf_template("node_manager.html", name="Node Manager")
 
+@rest_api.app.route("/adcs")
+def adcs_template():
+    """Render adcs template."""
+    return render_olaf_template("adcs.html", name="ADCS")
+
+
 
 def get_hw_id(mock: bool) -> int:
     """
@@ -109,6 +115,7 @@ def main():
     rest_api.add_template(f"{path}/templates/beacon.html")
     rest_api.add_template(f"{path}/templates/state.html")
     rest_api.add_template(f"{path}/templates/node_manager.html")
+    rest_api.add_template(f"{path}/templates/adcs.html")
 
     # on factory reset clear F-RAM
     app.set_factory_reset_callback(state_service.clear_state)

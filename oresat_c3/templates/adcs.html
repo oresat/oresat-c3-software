@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+  </style>
+  <b>The current branch is for testing the ADCS service!</b>
+  <br />
+  <input id="test" type="number"></input>
+  <div id="adcsMgrTableDiv">
+    <table id="adcsMgrTable">
+      <thead>
+        <tr>
+          <td>Actuator</td>
+          <td>Control Signal</td>
+          <td>Feedback Signal</td>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+  <script>
+
+    /** Update data in the table */
+    async function updateStatus() {
+      const my_num = document.getElementById('test').value;
+      const hey = await writeValue("adcs_manager", "reserved_rw", my_num);
+      console.log(hey);
+    }
+
+    const interval = setInterval(function() {
+      updateStatus();
+    }, 1000);
+  </script>
+{% endblock %}

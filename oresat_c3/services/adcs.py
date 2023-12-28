@@ -1,6 +1,7 @@
 """ADCS Service"""
 
 import math
+import threading
 from time import time, sleep, monotonic_ns
 
 import canopen
@@ -27,6 +28,12 @@ class AdcsService(Service):
                                    'min_z_magnetometer_2']
         for sensor in self.xyz_sensor_names:
             self.sensor_data[sensor] = dict()
+        
+        self.actuator_names = ['MT_x, MT_y, MT_z, RW_1, RW_2, RW_3, RW_4']
+
+        self.control_signals = dict()
+        for actuator in self.actuator_names:
+            self.control_signals[actuator] = 0.0
         logger.info("ADCS service object initiated")
 
     def on_start(self):
@@ -40,7 +47,10 @@ class AdcsService(Service):
         # Define initial reference frame
         self.init_quat = {"h": 1, "i": 0, "j": 0, "k": 0}
         self.quat = dict(self.init_quat)
-        
+
+        # for ADCS testing
+        self.node.add_sdo_callbacks("adcs_manager", "reserved_rw", self.test_sdo_read, self.test_sdo_write)
+
         # ADCS startup complete
         logger.info("Completed ADCS startup")
 
@@ -113,7 +123,8 @@ class AdcsService(Service):
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
-        self.mt_control()
+        
+        #self.mt_control()
         #self.rw_control()        
         timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 
@@ -122,6 +133,15 @@ class AdcsService(Service):
         logger.info(f"ADCS loop timestamps are {timestamps} (ms)")
         #logger.info("Completed iteration of ADCS loop")
         sleep(1)
+
+    def test_sdo_read(self, *args):
+        logger.info("SDO read called!")
+        logger.info(args)
+        return 222
+
+    def test_sdo_write(self, *args):
+        logger.info("SDO write called!")
+        logger.info(args)
 
 
     # gyro Functions
@@ -258,6 +278,8 @@ class AdcsService(Service):
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
 
+
+    
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
         """Mock function 

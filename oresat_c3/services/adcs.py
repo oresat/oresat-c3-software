@@ -18,7 +18,7 @@ class AdcsService(Service):
 
     def __init__(self, config: dict):
         super().__init__()
-        self.sensor_data = {}
+        self.sensor_data = dict()
         self.xyz_sensor_names = ['accelerometer',
                                    'gyroscope',
                                    'pos_z_magnetometer_1',
@@ -27,6 +27,12 @@ class AdcsService(Service):
                                    'min_z_magnetometer_2']
         for sensor in self.xyz_sensor_names:
             self.sensor_data[sensor] = dict()
+        
+        self.actuator_feedback = dict()
+        self.actuator_names = ['rw_1', 'rw_2', 'rw_3', 'rw_4']
+        for actuator in self.actuator_names:
+            self.actuator_feedback[actuator] = dict()
+
         logger.info("ADCS service object initiated")
 
     def on_start(self):
@@ -55,32 +61,33 @@ class AdcsService(Service):
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
-        #self.gps_monitor()
-        #self.gps_time()
-        #ecef_data = self.gps_ecef_monitor()
+        self.gps_monitor()
+        self.gps_time()
+        ecef_data = self.gps_ecef_monitor()
 
         # Read actuators
         self.mt_monitor()
-        self.rw_monitor()
+        reaction_wheels = self.rw_monitor(log_it=True)
 
         # More things to read
         star_orientation = self.star_monitor()
-        #solar_power = self.solar_monitor()
+        solar_power = self.solar_monitor()
         temperatures = self.temperature_monitor()
         batteries = self.battery_monitor()
 
         # Dump data to logger for now
         #logger.info(f"gps ecef data: {ecef_data}")
-        logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
-        logger.info(f"magnetometer pz1: {self.sensor_data['mag_pz1']}")
-        logger.info(f"magnetometer pz2: {self.sensor_data['mag_pz2']}")
-        logger.info(f"magnetometer nz1: {self.sensor_data['mag_nz1']}")
-        logger.info(f"magnetometer nz2: {self.sensor_data['mag_nz2']}")
-        logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
+        #logger.info(f"gyroscope: {self.sensor_data['gyroscope']}")
+        #logger.info(f"magnetometer pz1: {self.sensor_data['mag_pz1']}")
+        #logger.info(f"magnetometer pz2: {self.sensor_data['mag_pz2']}")
+        #logger.info(f"magnetometer nz1: {self.sensor_data['mag_nz1']}")
+        #logger.info(f"magnetometer nz2: {self.sensor_data['mag_nz2']}")
+        #logger.info(f"magnetorquer: {self.sensor_data['magnetorquer']}")
         #logger.info(f"star orientation: {star_orientation}")
         #logger.info(f"solar cell power: {solar_power}")
-        logger.info(f"temperatures: {temperatures}")
-        logger.info(f"batteries: {batteries}")
+        #logger.info(f"temperatures: {temperatures}")
+        #logger.info(f"batteries: {batteries}")
+        
         timestamps["sensors_end"] = (monotonic_ns() - start_ns) // 1000
         
 
@@ -90,23 +97,23 @@ class AdcsService(Service):
         #theta, rot_vect = self.get_rot_vect(vect1, vect2)
 
         # calculate the magnitude of the rotation vector in radians
-        gyro_theta = math.hypot(*self.sensor_data['gyroscope'].values()) * math.pi / 180.0
+        #gyro_theta = math.hypot(*self.sensor_data['gyroscope'].values()) * math.pi / 180.0
         # calcualte the normalized direction of the rotation vector
-        gyro_norm = self.vect_normalize(self.sensor_data['gyroscope'])
+        #gyro_norm = self.vect_normalize(self.sensor_data['gyroscope'])
 
-        logger.info(f"Gyroscope theata: {gyro_theta}")
-        logger.info(f"Gyroscope norm: {gyro_norm}")
+        #logger.info(f"Gyroscope theata: {gyro_theta}")
+        #logger.info(f"Gyroscope norm: {gyro_norm}")
 
 
-        if gyro_theta != 0:
-            logger.info(f"Applying rotation of {gyro_theta} radians about vector {gyro_norm}")
-            rot_quat = self.rot_vect_to_quat(gyro_theta, gyro_norm)
-            self.quat = self.quat_product(self.quat, rot_quat)
-        logger.info(f"The current positional quaternion is {self.quat}")
+        #if gyro_theta != 0:
+        #    logger.info(f"Applying rotation of {gyro_theta} radians about vector {gyro_norm}")
+        #    rot_quat = self.rot_vect_to_quat(gyro_theta, gyro_norm)
+        #    self.quat = self.quat_product(self.quat, rot_quat)
+        #logger.info(f"The current positional quaternion is {self.quat}")
 
         # Check if positional quaternion is still a unit quaternion
-        if abs(math.hypot(*self.quat.values()) - 1) > 0.00000001:
-            logger.warning(f"WARNING: positional quaternion is currently not a unit quaternion")
+        #if abs(math.hypot(*self.quat.values()) - 1) > 0.00000001:
+        #    logger.warning(f"WARNING: positional quaternion is currently not a unit quaternion")
         
         timestamps["state_end"] = (monotonic_ns() - start_ns) // 1000
 
@@ -114,7 +121,7 @@ class AdcsService(Service):
         # Send control signal
         # Control signals turned off for sensor testing, for now
         self.mt_control()
-        #self.rw_control()        
+        self.rw_control()        
         timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 
 
@@ -137,13 +144,12 @@ class AdcsService(Service):
         for name,axis in directions.items():
             self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
-    # GPS Functions
-    def gps_monitor(self):
+    def gps_monitor(self, log_it=False):
         """Monitors the GPS readings"""
-        logger.debug("Monitoring GPS")
-
-        for name, item in self.node.od["gps"].items():
-            logger.info(f"Key: {name} Value: {item.value}")
+        #logger.debug("Monitoring GPS")
+        if log_it:
+            for name, item in self.node.od["gps"].items():
+                logger.info(f"Key: {name} Value: {item.value}")
 
     def gps_time(self):
         """Gets the gps time since midnight"""
@@ -156,6 +162,8 @@ class AdcsService(Service):
         ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
         
         return ecef_data
+
+
 
 
     # MAG Functions
@@ -180,6 +188,7 @@ class AdcsService(Service):
                 self.sensor_data[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
 
 
+
     # Magnetorquer Functions
     def mt_calibrate(self):
         """Calibrate magnetorquers"""
@@ -200,20 +209,62 @@ class AdcsService(Service):
         self.write_sdo('adcs', 'magnetorquer', 'current_z_setpoint', 1) 
         pass
 
-    # Reaction Wheel Functions
+
+    
+    # Reaction wheel functions
+    def rw_apply_state(self, rw_name, state):
+        self.write_sdo(rw_name, 'requested', 'state', 1)
+        self.write_sdo(rw_name, 'requested', 'state', state)
+
     def rw_calibrate(self):
         #logger.info("Calibrating reaction wheels")
+        
+        def calibrate(rw_name, calibration_state):
+            self.rw_apply_state(rw_name, calibration_state)
+            for i in range(3):
+                logger.info(rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value)
+                if rw_state == 3:
+                    while True:
+                        logger.info(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
+                if rw_state == 4:
+                    logger.info(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
+                    self.rw_apply_state(rw_name, 13)
+                    self.rw_apply_state(rw_name, calibration_state)
+
+                sleep(1)
+
+        # Calibrate
+        #calibrate("rw_1", 7)
+        #calibrate("rw_1", 8)
+        #calibrate("rw_1", 9)
+        #calibrate("rw_1", 10)
+        # set velocity control
+        #self.rw_apply_state("rw_1", 5)
+
         pass
 
-    def rw_monitor(self):
+    def rw_monitor(self, num_rws=4, log_it=False):
         """Retreives reaction wheel states"""
-        #logger.info("Monitoring reaction wheels")
-        pass
+        endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
+        for num in range(1, num_rws+1):
+            self.actuator_feedback['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
+
+        if log_it:
+            for num in range(1, num_rws+1):
+                logger.info("RW %s state: %s"%(num, self.actuator_feedback['rw_'+str(num)]))
+        
 
     def rw_control(self):
         """Sends the control signal to the reaction wheels"""
-        #logger.info("Sending control signal to reaction wheels")
+        
+        logger.info("Sending control signal to reaction wheels")
+        # request velocity control (6???)
+        self.write_sdo('rw_1', 'requested', 'state', 5)
         pass
+
+
+
+
 
     # Other attitude determination functions
     def solar_monitor(self, num_modules=6):
@@ -258,6 +309,12 @@ class AdcsService(Service):
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
 
+
+
+
+
+
+    
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
         """Mock function 

@@ -118,7 +118,7 @@
     async function nodeOnClick(nodeId) {
       let value = "OFF";
       if (document.getElementById(`node${nodeId}Button`).innerText === "Enable") {
-        value = "ON";
+       value = "ON";
       }
       const data = await writeValue("node_status", nodeId, STATES[value]);
       if (value === "ON") {

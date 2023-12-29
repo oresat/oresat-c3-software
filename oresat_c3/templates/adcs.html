@@ -18,32 +18,109 @@
     }
   </style>
   <b>The current branch is for testing the ADCS service!</b>
-  <br />
-  <input id="test" type="number"></input>
-  <div id="adcsMgrTableDiv">
-    <table id="adcsMgrTable">
-      <thead>
-        <tr>
-          <td>Actuator</td>
-          <td>Control Signal</td>
-          <td>Feedback Signal</td>
-        </tr>
-      </thead>
-      <tbody>
-      </tbody>
-    </table>
-  </div>
+  <br/>
+  <form>
+    <br/>
+    <input id="apply_button" type="button" value="APPLY"></input>
+    <input id="reset_button" type="reset" value="RESET"></input>
+    <br/>
+    <div id="adcsMgrTableDiv">
+      <table id="adcsMgrTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Control Signal Form</td>
+            <td>Applied Control Signal</td>
+            <td>Feedback Signal</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+  </form>
   <script>
 
+    async function applyControlSignals() {
+      console.log("submitting control signals");
+      let ctrl_inputs = document.getElementsByClassName("ctrl_input");
+      console.log(ctrl_inputs);
+      for (const ctrl_input_element of ctrl_inputs) {
+        // Send write values for c3 card to send control signal
+	let name = ctrl_input_element.id.split("_")[1];
+	console.debug(name);
+	let ctrl_signal = document.getElementById(`signal_${name}`);
+	console.debug(ctrl_signal);
+	ctrl_signal.innerText = ctrl_input_element.value;
+      }
+      return 0;
+    }
+
+    async function resetControlSignals() {
+      // sets all control inputs to zero and submits
+      console.log("resetting control signals");
+      let ctrl_inputs = document.getElementsByClassName("ctrl_input");
+      for (const ctrl_input_element of ctrl_inputs) {
+        ctrl_input_element.value = "0";
+      }
+      applyControlSignals();
+    }
+
+    async function buildTable() {
+      let tbodyRef = document.getElementById("adcsMgrTable").getElementsByTagName("tbody")[0];
+      for (let i =0; i< 10; i++) {
+	let newRow = tbodyRef.insertRow();
+
+	// Row name
+	let nameCell = newRow.insertCell();
+	let nameText = document.createTextNode(i);
+	nameCell.appendChild(nameText);
+
+	// Form input values
+	let inputCell = newRow.insertCell();
+	let inputField = document.createElement("input");
+	inputField.id = `input_${i}`;
+	inputField.type = "number";
+	inputField.value = "0";
+	inputField.classList.add("ctrl_input");
+	
+	// Add event listener for signal input
+	// signalField.addEventListener();
+	inputCell.appendChild(inputField)
+
+	// Applied signal Values
+	let signalCell = newRow.insertCell();
+	let signalSpan = document.createElement("span");
+	signalSpan.id = `signal_${i}`;
+	signalSpan.innerText = "0";
+	signalCell.appendChild(signalSpan);
+	signalCell.classList.add("ctrl_signal");
+	
+	// Feedback values
+	let feedbackCell = newRow.insertCell();
+	let feedbackSpan = document.createElement("span");
+	feedbackSpan.id = `feedback_${i}`;
+	feedbackSpan.class = "ctrl_feedback"
+	feedbackSpan.innerText = "0";
+	feedbackCell.appendChild(feedbackSpan);
+      }
+    }
+    
     /** Update data in the table */
     async function updateStatus() {
-      const my_num = document.getElementById('test').value;
-      const hey = await writeValue("adcs_manager", "reserved_rw", my_num);
+      const hey = await writeValue("adcs_manager", "reserved_rw", 2);
       console.log(hey);
     }
 
+    // setup
+    buildTable();
+    // make custom event listener for reset button
+    document.getElementById("reset_button").addEventListener("click", function(e) {e.preventDefault(); resetControlSignals();})
+    // make custom event listener for apply button
+    document.getElementById("apply_button").addEventListener("click", applyControlSignals)
     const interval = setInterval(function() {
       updateStatus();
-    }, 1000);
+    }, 5000);
+	  
   </script>
 {% endblock %}

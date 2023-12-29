@@ -132,8 +132,14 @@ class AdcsService(Service):
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
+<<<<<<< HEAD
+        
+        #self.mt_control()
+        #self.rw_control()        
+=======
         self.mt_control()
         self.rw_control()        
+>>>>>>> rw-dev
         timestamps["control_end"] = (monotonic_ns() - start_ns) // 1000
 
 
@@ -330,6 +336,15 @@ class AdcsService(Service):
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
 
+
+<<<<<<< HEAD
+=======
+
+
+
+
+>>>>>>> rw-dev
+    
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
         """Mock function 

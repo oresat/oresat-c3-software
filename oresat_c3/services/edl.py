@@ -1,10 +1,29 @@
 """'EDL Service"""
 
+import zlib
+from enum import IntEnum, auto
 from time import time
-from typing import Any
+from typing import Any, Union
 
 import canopen
 from olaf import NodeStop, Service, logger
+from spacepackets.cfdp import ConditionCode, CrcFlag, LargeFileFlag, TransmissionMode
+from spacepackets.cfdp.conf import PduConfig
+from spacepackets.cfdp.defs import Direction
+from spacepackets.cfdp.pdu import (
+    AckPdu,
+    DirectiveType,
+    EofPdu,
+    FinishedParams,
+    FinishedPdu,
+    MetadataPdu,
+    NakPdu,
+    PduFactory,
+    TransactionStatus,
+    AbstractFileDirectiveBase,
+)
+from spacepackets.cfdp.pdu.file_data import FileDataPdu
+from spacepackets.util import ByteFieldU8
 
 from ..protocols.edl_command import (
     EdlCommandCode,
@@ -12,10 +31,27 @@ from ..protocols.edl_command import (
     EdlCommandRequest,
     EdlCommandResponse,
 )
-from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError
+from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
+
+
+class Indication(IntEnum):
+    """CFDP Indications."""
+
+    NONE = 0  # not an actually Indication, just a flag
+    TRANSACTION = auto()
+    EOF_SENT = auto()
+    TRANSACTION_FINISHED = auto()
+    METADATA_RECV = auto()
+    FILE_SEGMENT_RECV = auto()
+    REPORT = auto()
+    SUSPENDED = auto()
+    RESUMED = auto()
+    FAULT = auto()
+    ABANDONED = auto()
+    EOF_RECV = auto()
 
 
 class EdlService(Service):
@@ -32,6 +68,8 @@ class EdlService(Service):
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
+
+        self._file_receiver = EdlFileReciever()
 
         self._hmac_key = b""
         self._seq_num = 0
@@ -59,26 +97,26 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
 
-    def on_loop(self):
+    def _upack_last_recv(self) -> Union[EdlPacket, None]:
+
+        req_packet = None
+
         if len(self._radios_service.recv_queue) == 0:
-            self.sleep_ms(500)
-            return
+            return req_packet
 
         req_message = self._radios_service.recv_queue.pop()
 
-        logger.info(f'EDL request packet: {req_message.hex(sep=" ")}')
-
         try:
             req_packet = EdlPacket.unpack(req_message, self._hmac_key, self._flight_mode_obj.value)
-        except (EdlCommandError, EdlPacketError) as e:
+        except Exception as e:  # pylint: disable=W0718
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
-            return  # no responses to invalid commands
+            return req_packet  # no responses to invalid packets
 
         if self._flight_mode_obj.value and req_packet.seq_num < self._edl_rejected_count_obj.value:
             logger.error("invalid EDL request packet sequence number")
-            return  # no responses to invalid commands
+            return req_packet  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
 
@@ -86,27 +124,49 @@ class EdlService(Service):
             self._edl_sequence_count_obj.value += 1
             self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
 
-        try:
-            res_payload = self._run_cmd(req_packet.payload)
-        except Exception as e:  # pylint: disable=W0718
-            logger.error(f"EDL command {req_message.code.name} raised: {e}")
+        return req_packet
+
+    def on_loop(self):
+
+        req_packet = self._upack_last_recv()
+
+        if req_packet is None and self._file_receiver.last_indication == Indication.NONE:
+            self.sleep_ms(50)
             return
 
-        if not res_payload.values:
-            return  # no response
-
-        try:
-            res_peacket = EdlPacket(
-                res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
-            )
-            res_message = res_peacket.pack(self._hmac_key)
-        except (EdlCommandError, EdlPacketError) as e:
-            logger.error(f"EDL response generation raised: {e}")
+        if req_packet is not None and req_packet.vcid == EdlVcid.C3_COMMAND:
+            try:
+                res_payload = self._run_cmd(req_packet.payload)
+                if not res_payload.values:
+                    return  # no response
+            except Exception as e:  # pylint: disable=W0718
+                logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
+                return
+        elif req_packet is None:
+            # hardcode to only asume upload for now!!!
+            res_payload = self._file_receiver.loop(None)
+        elif req_packet.vcid == EdlVcid.FILE_TRANSFER:
+            # hardcode to only asume upload for now!!!
+            res_payload = self._file_receiver.loop(req_packet.payload)
+        else:
+            logger.error(f"got an EDL packet with unknown VCID: {req_packet.vcid}")
             return
 
-        logger.info(f'EDL response packet: {res_message.hex(sep=" ")}')
+        if not isinstance(res_payload, list):
+            res_payload = [res_payload]
 
-        self._radios_service.send_edl_response(res_message)
+        for i in res_payload:
+            if i is None:
+                continue
+
+            try:
+                res_peacket = EdlPacket(i , self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS)
+                res_message = res_peacket.pack(self._hmac_key)
+            except (EdlCommandError, EdlPacketError, ValueError) as e:
+                logger.error(f"EDL response generation raised: {e}")
+                return
+
+            self._radios_service.send_edl_response(res_message)
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None
@@ -218,3 +278,158 @@ class EdlService(Service):
         logger.info(f"EDL command response: {response.code.name}, values: {response.values}")
 
         return response
+
+
+class EdlFileReciever:
+    """CFDP receiver for file uploads."""
+
+    PDU_CONF = PduConfig(
+        transaction_seq_num=ByteFieldU8(0),
+        trans_mode=TransmissionMode.ACKNOWLEDGED,
+        source_entity_id=ByteFieldU8(0),
+        dest_entity_id=ByteFieldU8(0),
+        file_flag=LargeFileFlag.NORMAL,
+        crc_flag=CrcFlag.NO_CRC,
+        direction=Direction.TOWARDS_RECEIVER,
+    )
+
+    def __init__(self):
+        self.file_name = ""
+        self.file_data = b""
+        self.file_data_len = 0
+        self.f = None
+        self.offset = 0
+        self.last_nak = 0
+        self.last_indication = Indication.NONE
+        self.last_pdu_ts = 0.0
+
+    def reset(self):
+        logger.info("reset")
+        self.offset = 0
+        self.last_nak = 0
+        self.file_name = ""
+        self.file_data = b""
+        self.file_data_len = 0
+        if self.f is not None:
+            self.f.close()
+            self.f = None
+        self.last_indication = Indication.NONE
+
+    def _init_recv(self, pdu: MetadataPdu):
+        if self.f is None:
+            self.reset()
+            self.file_name = pdu.dest_file_name
+            self.file_data_len = pdu.file_size
+            logger.info(f"{self.file_name} {self.file_data_len} started")
+            self.f = open(self.file_name, "wb")
+
+    def _recv_data(self, pdu: FileDataPdu) -> Union[NakPdu, None]:
+        if pdu.offset != self.offset:
+            return self._make_nak(pdu)
+
+        self.f.write(pdu.file_data)
+        self.offset += len(pdu.file_data)
+        self.file_data += pdu.file_data
+        if self.offset >= self.file_data_len:
+            logger.info("file transfer done")
+
+        logger.info(f"{self.last_indication.name} {self.offset} write")
+        return None
+
+    def _eof(self, pdu: EofPdu) -> AckPdu:
+        if self.f is not None:
+            self.f.close()
+            self.f = None
+            logger.info(f"{self.file_name} {self.file_data_len} ended")
+        condition_code = ConditionCode.NO_ERROR
+        checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
+        if checksum == pdu.file_checksum:
+            condition_code = ConditionCode.FILE_CHECKSUM_FAILURE
+            logger.info("file checksum matched")
+        else:
+            logger.info("file checksum does not match")
+        ack_pdu = AckPdu(
+            directive_code_of_acked_pdu=DirectiveType.EOF_PDU,
+            condition_code_of_acked_pdu=condition_code,
+            transaction_status=TransactionStatus.TERMINATED,
+            pdu_conf=self.PDU_CONF,
+        )
+        logger.info("eof ack")
+        return ack_pdu
+
+    def _make_nak(self, recv_pdu):
+        pdu = NakPdu(start_of_scope=self.last_nak, end_of_scope=self.offset, pdu_conf=self.PDU_CONF)
+        self.last_nak = self.offset
+        logger.info(f"{self.last_indication.name} {self.offset} nak to {recv_pdu.__class__.__name__}")
+        return pdu
+
+    def loop(self, req_pdu: AbstractFileDirectiveBase) -> list[bytes]:
+        """
+        The receiver entity loop.
+
+        Parameters
+        ----------
+        req_message: AbstractFileDirectiveBase, None
+            The last received PDU or None
+
+        Returns
+        -------
+        list[AbstractFileDireciveBase]
+            List of PDUs to send to sender entity or an empty list.
+        """
+
+        res_pdu = None
+
+        if req_pdu is None and self.last_indication == Indication.NONE:
+            return []  # nothing to do
+
+        if time() > self.last_pdu_ts + 5 and self.last_indication != Indication.NONE:
+            self.reset()
+            return []
+
+        if req_pdu:
+            self.last_pdu_ts = time()
+
+        if self.last_indication == Indication.NONE:
+            if isinstance(req_pdu, MetadataPdu):
+                self._init_recv(req_pdu)
+                self.last_indication = Indication.METADATA_RECV
+            elif req_pdu is not None and not isinstance(req_pdu, AckPdu):
+                res_pdu = self._make_nak(req_pdu)
+        elif self.last_indication in [Indication.METADATA_RECV, Indication.FILE_SEGMENT_RECV]:
+            if isinstance(req_pdu, FileDataPdu):
+                res_pdu = self._recv_data(req_pdu)
+                self.last_indication = Indication.FILE_SEGMENT_RECV
+            elif isinstance(req_pdu, EofPdu) and self.offset >= self.file_data_len:
+                res_pdu = self._eof(req_pdu)
+                self.last_indication = Indication.EOF_RECV
+            elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
+                res_pdu = self._make_nak(req_pdu)
+        elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
+            if (
+                self.last_pdu_ts > time() + 10
+            ):
+                self.reset()
+            elif isinstance(req_pdu, EofPdu):
+                res_pdu = self._eof(req_pdu)
+                self.last_indication = Indication.EOF_RECV
+            elif isinstance(req_pdu, AckPdu):
+                logger.info("fin ack!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                self.last_indication = Indication.TRANSACTION_FINISHED
+                if req_pdu.directive_code_of_acked_pdu == DirectiveType.FINISHED_PDU:
+                    self.reset()
+
+        res_pdus = []
+        if self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
+            res_pdu2 = FinishedPdu(pdu_conf=self.PDU_CONF, params=FinishedParams.success_params())
+            if res_pdu is not None:
+                res_pdus = [res_pdu, res_pdu2]
+            else:
+                res_pdus = [res_pdu2]
+            self.last_indication = Indication.TRANSACTION_FINISHED
+        else:
+            res_pdus = [res_pdu]
+
+        if len(res_pdus) != 0:
+            logger.debug(self.last_indication.name)
+        return res_pdus

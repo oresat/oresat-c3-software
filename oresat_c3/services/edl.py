@@ -2,16 +2,17 @@
 
 import zlib
 from enum import IntEnum, auto
+from pathlib import Path
 from time import time
 from typing import Any, Union
-from pathlib import Path
 
 import canopen
-from olaf import NodeStop, Service, logger, OreSatFileCache, MasterNode
+from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
 from spacepackets.cfdp import ConditionCode, CrcFlag, LargeFileFlag, TransmissionMode
 from spacepackets.cfdp.conf import PduConfig
 from spacepackets.cfdp.defs import Direction
 from spacepackets.cfdp.pdu import (
+    AbstractFileDirectiveBase,
     AckPdu,
     DirectiveType,
     EofPdu,
@@ -19,9 +20,7 @@ from spacepackets.cfdp.pdu import (
     FinishedPdu,
     MetadataPdu,
     NakPdu,
-    PduFactory,
     TransactionStatus,
-    AbstractFileDirectiveBase,
 )
 from spacepackets.cfdp.pdu.file_data import FileDataPdu
 from spacepackets.util import ByteFieldU8
@@ -88,7 +87,6 @@ class EdlService(Service):
         self._last_edl_obj = edl_rec["last_timestamp"]
 
     def _upack_last_recv(self) -> Union[EdlPacket, None]:
-
         req_packet = None
 
         if len(self._radios_service.recv_queue) == 0:
@@ -117,7 +115,6 @@ class EdlService(Service):
         return req_packet
 
     def on_loop(self):
-
         req_packet = self._upack_last_recv()
 
         if req_packet is None and self._file_receiver.last_indication == Indication.NONE:
@@ -150,7 +147,7 @@ class EdlService(Service):
                 continue
 
             try:
-                res_peacket = EdlPacket(i , self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS)
+                res_peacket = EdlPacket(i, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS)
                 res_message = res_peacket.pack(self._hmac_key)
             except (EdlCommandError, EdlPacketError, ValueError) as e:
                 logger.error(f"EDL response generation raised: {e}")
@@ -284,7 +281,6 @@ class EdlFileReciever:
     )
 
     def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
-
         self.upload_dir = upload_dir
         Path(upload_dir).mkdir(parents=True, exist_ok=True)
         self.fwrite_cache = fwrite_cache
@@ -321,13 +317,13 @@ class EdlFileReciever:
             self.file_name = pdu.dest_file_name
             self.file_data_len = pdu.file_size
             logger.info(f"{self.file_name} {self.file_data_len} started")
-            self.f = open(f"{self.upload_dir}/{self.file_name}", "wb")
+            self.f = open(f"{self.upload_dir}/{self.file_name}", "wb")  # type: ignore
 
     def _recv_data(self, pdu: FileDataPdu) -> Union[NakPdu, None]:
         if pdu.offset != self.offset:
             return self._make_nak(pdu)
 
-        self.f.write(pdu.file_data)
+        self.f.write(pdu.file_data)  # type: ignore
         self.offset += len(pdu.file_data)
         self.file_data += pdu.file_data
         if self.offset >= self.file_data_len:
@@ -364,7 +360,9 @@ class EdlFileReciever:
     def _make_nak(self, recv_pdu):
         pdu = NakPdu(start_of_scope=self.last_nak, end_of_scope=self.offset, pdu_conf=self.PDU_CONF)
         self.last_nak = self.offset
-        logger.info(f"{self.last_indication.name} {self.offset} nak to {recv_pdu.__class__.__name__}")
+        logger.info(
+            f"{self.last_indication.name} {self.offset} nak to {recv_pdu.__class__.__name__}"
+        )
         return pdu
 
     def loop(self, req_pdu: AbstractFileDirectiveBase) -> list[bytes]:
@@ -410,9 +408,7 @@ class EdlFileReciever:
             elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
                 res_pdu = self._make_nak(req_pdu)
         elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
-            if (
-                self.last_pdu_ts > time() + 10
-            ):
+            if self.last_pdu_ts > time() + 10:
                 self.reset()
             elif isinstance(req_pdu, EofPdu):
                 res_pdu = self._eof(req_pdu)

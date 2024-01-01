@@ -23,7 +23,8 @@ from enum import IntEnum, auto
 from threading import Event, Thread
 from time import sleep
 
-from spacepackets.cfdp import CrcFlag, PduFactory
+from olaf import OreSatFile
+from spacepackets.cfdp import CrcFlag
 from spacepackets.cfdp.conf import LargeFileFlag, PduConfig
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, Direction, TransmissionMode
 from spacepackets.cfdp.pdu import (
@@ -41,7 +42,7 @@ from spacepackets.util import ByteFieldU8
 
 sys.path.insert(0, os.path.abspath(".."))
 
-from oresat_c3.protocols.edl_packet import EdlPacket, EdlVcid, SRC_DEST_ORESAT
+from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
 EDL_UPLINK_ADDR = ("localhost", 10025)
 EDL_DOWNLINK_ADDR = ("localhost", 10016)
@@ -79,7 +80,7 @@ def recv_thread(bad_connection: bool, event: Event):
         try:
             packet = EdlPacket.unpack(res_message, HMAC_KEY, True)
             recv_queue.append(packet.payload)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=W0718
             print(e)
 
 
@@ -127,12 +128,6 @@ class GroundEntity:
 
         res_pdu = None
         req_pdu = None
-
-        '''
-        if self.last_indication == Indication.EOF_SENT:
-            sleep(5)
-            print(len(recv_queue))
-        '''
 
         while len(recv_queue) > 0:
             res_pdu = recv_queue.pop()

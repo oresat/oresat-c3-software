@@ -8,6 +8,8 @@ import hmac
 from enum import IntEnum
 from typing import Union
 
+from spacepackets.cfdp.pdu import PduFactory
+from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
 from spacepackets.uslp.frame import (  # type: ignore
     FrameType,
@@ -23,8 +25,6 @@ from spacepackets.uslp.header import (  # type: ignore
     ProtocolCommandFlag,
     SourceOrDestField,
 )
-from spacepackets.cfdp.pdu import PduFactory
-from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
 

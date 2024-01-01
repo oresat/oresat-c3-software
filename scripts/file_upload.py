@@ -229,6 +229,14 @@ def main():
     )
     args = parser.parse_args()
 
+    file_name = args.file_path.split("/")[-1]
+    try:
+        OreSatFile(file_name)  # pylint: disable=E0602
+    except ValueError:
+        print("file name must be in card-name_key_unix-time.extension format")
+        print("example: c3_test_123.txt")
+        sys.exit(1)
+
     if args.random_data <= 0:
         if not os.path.isfile(args.file_path):
             print(f"file {args.file_path} not found")

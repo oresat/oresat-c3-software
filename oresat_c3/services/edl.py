@@ -4,9 +4,10 @@ import zlib
 from enum import IntEnum, auto
 from time import time
 from typing import Any, Union
+from pathlib import Path
 
 import canopen
-from olaf import NodeStop, Service, logger
+from olaf import NodeStop, Service, logger, OreSatFileCache, MasterNode
 from spacepackets.cfdp import ConditionCode, CrcFlag, LargeFileFlag, TransmissionMode
 from spacepackets.cfdp.conf import PduConfig
 from spacepackets.cfdp.defs import Direction
@@ -59,6 +60,7 @@ class EdlService(Service):
 
     def __init__(
         self,
+        node: MasterNode,
         radios_service: RadiosService,
         node_mgr_service: NodeManagerService,
         beacon_service: BeaconService,
@@ -69,28 +71,16 @@ class EdlService(Service):
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
 
-        self._file_receiver = EdlFileReciever()
+        upload_dir = f"{node.work_base_dir}/upload"
+        self._file_receiver = EdlFileReciever(upload_dir, node.fwrite_cache)
 
-        self._hmac_key = b""
-        self._seq_num = 0
-
-        self._flight_mode_obj: canopen.objectdictionary.Variable = None
-        self._tx_enable_obj: canopen.objectdictionary.Variable = None
-        self._last_tx_enable_obj: canopen.objectdictionary.Variable = None
-        self._edl_sequence_count_obj: canopen.objectdictionary.Variable = None
-        self._edl_rejected_count_obj: canopen.objectdictionary.Variable = None
-        self._last_edl_obj: canopen.objectdictionary.Variable = None
-
-    def on_start(self):
-        edl_rec = self.node.od["edl"]
-        tx_rec = self.node.od["tx_control"]
-
-        self._flight_mode_obj = self.node.od["flight_mode"]
-
+        # objs
+        edl_rec = node.od["edl"]
+        tx_rec = node.od["tx_control"]
+        self._flight_mode_obj = node.od["flight_mode"]
         active_key = edl_rec["active_crypto_key"].value
         self._hmac_key = edl_rec[f"crypto_key_{active_key}"].value
         self._seq_num = edl_rec["sequence_count"].value
-
         self._tx_enable_obj = tx_rec["enable"]
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
@@ -293,7 +283,11 @@ class EdlFileReciever:
         direction=Direction.TOWARDS_RECEIVER,
     )
 
-    def __init__(self):
+    def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
+
+        self.upload_dir = upload_dir
+        Path(upload_dir).mkdir(parents=True, exist_ok=True)
+        self.fwrite_cache = fwrite_cache
         self.file_name = ""
         self.file_data = b""
         self.file_data_len = 0
@@ -304,15 +298,21 @@ class EdlFileReciever:
         self.last_pdu_ts = 0.0
 
     def reset(self):
+        """Reset the EDL file receiver."""
+
         logger.info("reset")
+        if self.f is not None:
+            self.f.close()
+            self.f = None
+            try:
+                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
+            except (ValueError, FileNotFoundError) as e:
+                logger.error(e)
         self.offset = 0
         self.last_nak = 0
         self.file_name = ""
         self.file_data = b""
         self.file_data_len = 0
-        if self.f is not None:
-            self.f.close()
-            self.f = None
         self.last_indication = Indication.NONE
 
     def _init_recv(self, pdu: MetadataPdu):
@@ -321,7 +321,7 @@ class EdlFileReciever:
             self.file_name = pdu.dest_file_name
             self.file_data_len = pdu.file_size
             logger.info(f"{self.file_name} {self.file_data_len} started")
-            self.f = open(self.file_name, "wb")
+            self.f = open(f"{self.upload_dir}/{self.file_name}", "wb")
 
     def _recv_data(self, pdu: FileDataPdu) -> Union[NakPdu, None]:
         if pdu.offset != self.offset:
@@ -340,6 +340,10 @@ class EdlFileReciever:
         if self.f is not None:
             self.f.close()
             self.f = None
+            try:
+                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
+            except (ValueError, FileNotFoundError) as e:
+                logger.error(e)
             logger.info(f"{self.file_name} {self.file_data_len} ended")
         condition_code = ConditionCode.NO_ERROR
         checksum = zlib.crc32(self.file_data).to_bytes(4, "little")

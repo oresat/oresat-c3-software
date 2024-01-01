@@ -3,7 +3,7 @@ Engineering Data Link
 
 .. note:: Octets are used instead of bytes as octets are garunteed to be 8 bits and bytes are not.
 
-The main form of commication between OreSat and UniClOGS is thru the EDL (Engineering Data Link).
+The main form of communication between OreSat and UniClOGS is thru the EDL (Engineering Data Link).
 
 The EDL has Uplink and Downlink.
 
@@ -42,13 +42,13 @@ USLP Primary Header
 
 - **Transfer Frame Version Number**: 4 bits. Always ``"C"`` in ASCII.
 - **Space Craft ID**: 16 bits: Always ``"OS"`` in ASCII (short for OreSat) .
-- **Source or Destination Identifer**: 1 bit. Source (aka ``0b1``) is for OreSat and destination (aka
-  ``0b0``) is for UniClOGS.
+- **Source or Destination Identifer**: 1 bit. Source (aka ``0b1``) is for UniClOGS and destination (aka
+  ``0b0``) is for OreSat.
 - **Virtual Channel ID`**: 6 bits.
    - Virtual channel ``0b000000`` is used for C3 commands.
    - Virtual channel ``0b000001`` is used for file transfer.
 - **MAP ID: 6 bits**. Not used by OreSat (will always be ``0b000000``).
-- **End of Frame Primary Header Flag**: 1 bit. TBD
+- **End of Frame Primary Header Flag**: 1 bit. Always ``0b0``.
 - **Frame Length**: 16 bits. Length of entire packet **minus** one, in octets.
 - **Bypass / Sequnece Control Flag**: 1 bit. Is set to ``0b0`` to mark the packet is sequence
   controlled QoS will Frame Accepts Check of the FARM will not be bypassed.
@@ -56,7 +56,7 @@ USLP Primary Header
   and not protocol controlled information, aka the packet contains a EDL payload.
 - **Reserve spare bits**: 2 bits.
 - **OCF (Operation Control Field) Flag**: 1 bit. Set to ``0b0``, to mark the OCF is not included in packet.
-- **VC Frame Count Length**: 3 bits. Is set to ``0b0`` for no VCF Count bits.
+- **VC Frame Count Length**: 3 bits. Is set to ``0b000`` for no VCF Count bits.
 
 Sequence Number
 ***************

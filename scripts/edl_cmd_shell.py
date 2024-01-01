@@ -2,8 +2,8 @@
 """Quick shell to manually send EDL commands."""
 
 import os
-import sys
 import socket
+import sys
 from argparse import ArgumentParser
 from cmd import Cmd
 from time import time

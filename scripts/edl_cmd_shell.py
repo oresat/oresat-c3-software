@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Quick shell to manually send EDL commands."""
 
+import os
+import sys
 import socket
 from argparse import ArgumentParser
 from cmd import Cmd

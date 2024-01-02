@@ -2,7 +2,8 @@
 
 import os
 import socket
-from threading import Event, Thread
+from threading import Thread
+import time
 
 from olaf import (
     Gpio,
@@ -59,19 +60,19 @@ def get_hw_id(mock: bool) -> int:
     return hw_id
 
 
-def watchdog(event: Event):
+def watchdog():
     """Pet the watchdog app (which pets the watchdog circuit)."""
 
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    while not event.is_set():
+    while True:
         failed = 0
         for service in app._services:  # pylint: disable=W0212
             failed += int(service.status == ServiceState.FAILED)
         if not app.od["flight_mode"].value or failed == 0:
             logger.debug("watchdog pet")
             udp_socket.sendto(b"PET", ("localhost", 20001))
-            event.wait(10)
+            time.sleep(10)
 
 
 def main():
@@ -84,8 +85,7 @@ def main():
     mock_hw = len(mock_args) != 0
 
     # start watchdog thread ASAP
-    event = Event()
-    thread = Thread(target=watchdog, args=(event,))
+    thread = Thread(target=watchdog, daemon=True)
     thread.start()
 
     app.od["versions"]["sw_version"].value = __version__
@@ -111,10 +111,6 @@ def main():
     app.set_factory_reset_callback(state_service.clear_state)
 
     olaf_run()
-
-    # stop watchdog thread
-    event.set()
-    thread.join()
 
 
 if __name__ == "__main__":

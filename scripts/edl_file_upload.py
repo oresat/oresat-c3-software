@@ -44,33 +44,23 @@ sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
-EDL_UPLINK_ADDR = ("localhost", 10025)
-EDL_DOWNLINK_ADDR = ("localhost", 10016)
-DATA_BUFFER_LEN = 950  # must be 969 or less ??
-SOCKET_BUFFER_LEN = 2048
-
-
-# EDL uplink: UDP server
-edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# EDL downlink: UDP client
-edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-edl_downlink_socket.bind(EDL_DOWNLINK_ADDR)
-edl_downlink_socket.settimeout(0.1)
-
-
 recv_queue = []
 HMAC_KEY = b"\x00" * 32
 
 
-def recv_thread(bad_connection: bool, event: Event):
+def recv_thread(address: tuple, bad_connection: bool, event: Event):
     """Thread to receive packets from the satellite and put them into the queue."""
+
+    edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    edl_downlink_socket.bind(address)
+    edl_downlink_socket.settimeout(0.1)
+
     loop_num = 0
     while not event.is_set():
         loop_num += 1
 
         try:
-            res_message, _ = edl_downlink_socket.recvfrom(SOCKET_BUFFER_LEN)
+            res_message, _ = edl_downlink_socket.recvfrom(0xFFFFF)
         except socket.timeout:
             continue
 
@@ -114,7 +104,7 @@ class GroundEntity:
         direction=Direction.TOWARDS_RECEIVER,
     )
 
-    def __init__(self, file_name: str, file_data: bytes):
+    def __init__(self, file_name: str, file_data: bytes, buffer_size: int):
         self.f = None
         self.offset = 0
         self.file_name = file_name
@@ -122,6 +112,7 @@ class GroundEntity:
         self.file_data_len = len(file_data)
         self.last_indication = Indication.NONE
         self.got_eof_ack = False
+        self.buffer_size = buffer_size
 
     def loop(self):
         """Entity loop"""
@@ -154,8 +145,8 @@ class GroundEntity:
                 req_pdu = MetadataPdu(pdu_conf=self.PDU_CONF, params=metadata_params)
             else:
                 data = None
-                if self.offset < self.file_data_len - DATA_BUFFER_LEN:
-                    end = self.offset + DATA_BUFFER_LEN
+                if self.offset < self.file_data_len - self.buffer_size:
+                    end = self.offset + self.buffer_size
                     data = self.file_data[self.offset : end]
                     print(f"file data {self.offset}-{end} of {self.file_data_len}")
                 elif self.offset < self.file_data_len:
@@ -177,8 +168,8 @@ class GroundEntity:
                     )
                     req_pdu = FileDataPdu(pdu_conf=self.PDU_CONF, params=fd_params)
 
-                    if self.offset + DATA_BUFFER_LEN <= self.file_data_len:
-                        self.offset += DATA_BUFFER_LEN
+                    if self.offset + self.buffer_size <= self.file_data_len:
+                        self.offset += self.buffer_size
                     else:
                         self.offset = self.file_data_len
         elif self.last_indication == Indication.EOF_SENT:
@@ -213,6 +204,23 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("file_path")
     parser.add_argument(
+        "-o", "--host", default="localhost", help="address to use, default is localhost"
+    )
+    parser.add_argument(
+        "-u",
+        "--uplink-port",
+        default=10025,
+        type=int,
+        help="port to use for the uplink, default is 10025",
+    )
+    parser.add_argument(
+        "-d",
+        "--downlink-port",
+        default=10016,
+        type=int,
+        help="port to use for the downlink, default is 10016",
+    )
+    parser.add_argument(
         "-r",
         "--random-data",
         type=int,
@@ -221,6 +229,12 @@ def main():
     )
     parser.add_argument(
         "-b", "--bad-connection", action="store_true", help="simulate a bad connection"
+    )
+    parser.add_argument(
+        "-l", "--loop-delay", type=int, default=50, help="upload loop delay in milliseconds"
+    )
+    parser.add_argument(
+        "-s", "--buffer-size", type=int, default=950, help="file data buffer size"
     )
     args = parser.parse_args()
 
@@ -242,13 +256,19 @@ def main():
         file_data = bytes([random.randint(0, 255) for _ in range(args.random_data)])
 
     event = Event()
-    t = Thread(target=recv_thread, args=(args.bad_connection, event))
+    uplink_address = (args.host, args.uplink_port)
+    downlink_address = (args.host, args.downlink_port)
+
+    t = Thread(target=recv_thread, args=(downlink_address, args.bad_connection, event))
     t.start()
 
-    entity = GroundEntity(args.file_path, file_data)
+    entity = GroundEntity(args.file_path, file_data, args.buffer_size)
+
+    edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     loop_num = 0
     seq_num = 1
+    delay = args.loop_delay / 1000
     try:
         while not event.is_set():
             loop_num += 1
@@ -268,8 +288,8 @@ def main():
             if req_pdu is not None:
                 packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
                 req_message = packet.pack(HMAC_KEY)
-                edl_uplink_socket.sendto(req_message, EDL_UPLINK_ADDR)
-            sleep(0.05)
+                edl_uplink_socket.sendto(req_message, uplink_address)
+            sleep(delay)
     except KeyboardInterrupt:
         pass
 

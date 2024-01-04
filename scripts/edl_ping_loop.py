@@ -15,17 +15,22 @@ from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
 sent = 0
 recv = 0
+last_ts = {}
+seq_num = 0
 
 
-def send_thread(address: tuple, hmac_key: bytes, event: Event, delay: float, verbose: bool):
+def send_thread(address: tuple, hmac_key: bytes, delay: float, verbose: bool):
     """Send ping thread"""
     global sent  # pylint: disable=W0603
+    global seq_num  # pylint: disable=W0603
     uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     start_time = monotonic()
-    seq_num = 0
 
-    while not event.is_set():
-        values = (int(time()),)
+    while True:
+        seq_num += 1
+        seq_num &= 0xFF_FF_FF_FF
+
+        values = (seq_num,)
         print(f"Request PING: {values}")
 
         try:
@@ -37,6 +42,10 @@ def send_thread(address: tuple, hmac_key: bytes, event: Event, delay: float, ver
                 print(req_message.hex())
 
             uplink_socket.sendto(req_message, address)
+            last_ts[seq_num] = time()
+            for i in last_ts:
+                if i > seq_num + 10:
+                    del last_ts[seq_num]
             sent += 1
         except Exception:  # pylint: disable=W0718
             pass
@@ -84,30 +93,27 @@ def main():
     downlink_socket.bind(downlink_address)
     downlink_socket.settimeout(1)
 
-    event = Event()
-
     t = Thread(
         target=send_thread,
-        args=(uplink_address, hmac_key, event, args.loop_delay / 1000, args.verbose),
+        args=(uplink_address, hmac_key, args.loop_delay / 1000, args.verbose),
     )
     t.start()
 
-    while not event.is_set():
+    while True:
         try:
-            res_message = downlink_socket.recv(0xFFFF)
+            res_message = downlink_socket.recv(0xFF_FF)
             if args.verbose:
                 print(res_message.hex())
 
             res_packet = EdlPacket.unpack(res_message, hmac_key)
             recv += 1
-            print(f"Response PING: {res_packet.payload.values}")
-        except KeyboardInterrupt:
-            event.set()
+
+            timediff = -1.0
+            if seq_num in last_ts:
+                timediff = time() - last_ts[seq_num]
+            print(f"Response PING: {res_packet.payload.values} | {timediff * 1000} ms")
         except Exception:  # pylint: disable=W0718
             continue
-
-    event.set()
-    t.join()
 
 
 if __name__ == "__main__":

@@ -254,7 +254,9 @@ def main():
         file_data = bytes([random.randint(0, 255) for _ in range(args.random_data)])
 
     uplink_address = (args.host, args.uplink_port)
-    downlink_address = (args.host, args.downlink_port)
+
+    downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
+    downlink_address = (downlink_host, args.downlink_port)
 
     t = Thread(target=recv_thread, args=(downlink_address, args.bad_connection), daemon=True)
     t.start()

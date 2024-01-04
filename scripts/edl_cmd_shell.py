@@ -31,6 +31,9 @@ class EdlCommandShell(Cmd):
         self._uplink_address = (host, uplink_port)
         self._uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+        if host not in ["localhost", "127.0.0.1"]:
+            host = ""
+
         self._downlink_address = (host, downlink_port)
         self._downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._downlink_socket.bind(self._downlink_address)

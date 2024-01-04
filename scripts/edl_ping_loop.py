@@ -88,7 +88,8 @@ def main():
 
     uplink_address = (args.host, args.uplink_port)
 
-    downlink_address = (args.host, args.downlink_port)
+    downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
+    downlink_address = (downlink_host, args.downlink_port)
     downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     downlink_socket.bind(downlink_address)
     downlink_socket.settimeout(1)

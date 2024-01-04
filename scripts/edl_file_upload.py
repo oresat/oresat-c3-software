@@ -104,10 +104,11 @@ class GroundEntity:
         direction=Direction.TOWARDS_RECEIVER,
     )
 
-    def __init__(self, file_name: str, file_data: bytes, buffer_size: int):
+    def __init__(self, file_path: str, file_data: bytes, buffer_size: int):
         self.f = None
         self.offset = 0
-        self.file_name = file_name
+        self.file_path = file_path
+        self.file_name = os.path.basename(file_path)
         self.file_data = file_data
         self.file_data_len = len(file_data)
         self.last_indication = Indication.NONE
@@ -138,7 +139,7 @@ class GroundEntity:
                 metadata_params = MetadataParams(
                     closure_requested=False,
                     file_size=self.file_data_len,
-                    source_file_name=self.file_name,
+                    source_file_name=self.file_path,
                     dest_file_name=self.file_name,
                     checksum_type=ChecksumType.CRC_32,
                 )
@@ -236,9 +237,9 @@ def main():
     parser.add_argument("-s", "--buffer-size", type=int, default=950, help="file data buffer size")
     args = parser.parse_args()
 
-    file_name = args.file_path.split("/")[-1]
+    file_path = args.file_path.split("/")[-1]
     try:
-        OreSatFile(file_name)  # pylint: disable=E0602
+        OreSatFile(file_path)  # pylint: disable=E0602
     except ValueError:
         print("file name must be in card-name_key_unix-time.extension format")
         print("example: c3_test_123.txt")

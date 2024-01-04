@@ -183,7 +183,7 @@ class EdlPacket:
 
         crc16_raw = raw[-cls.FECF_LEN :]
         crc16_raw_calc = crc16_bytes(raw[: -cls.FECF_LEN])
-        if ignore_hmac and crc16_raw_calc != crc16_raw:
+        if crc16_raw_calc != crc16_raw:
             raise EdlPacketError(f"invalid FECF: {crc16_raw.hex()} vs {crc16_raw_calc.hex()}")
 
         try:

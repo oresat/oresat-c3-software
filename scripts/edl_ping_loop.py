@@ -5,7 +5,7 @@ import os
 import socket
 import sys
 from argparse import ArgumentParser
-from threading import Event, Thread
+from threading import Thread
 from time import monotonic, sleep, time
 
 sys.path.insert(0, os.path.abspath(".."))
@@ -96,6 +96,7 @@ def main():
     t = Thread(
         target=send_thread,
         args=(uplink_address, hmac_key, args.loop_delay / 1000, args.verbose),
+        daemon=True,
     )
     t.start()
 
@@ -112,6 +113,8 @@ def main():
             if seq_num in last_ts:
                 timediff = time() - last_ts[seq_num]
             print(f"Response PING: {res_packet.payload.values} | {timediff * 1000} ms")
+        except KeyboardInterrupt:
+            break
         except Exception:  # pylint: disable=W0718
             continue
 

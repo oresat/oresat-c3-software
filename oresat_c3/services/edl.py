@@ -139,21 +139,19 @@ class EdlService(Service):
             logger.error(f"got an EDL packet with unknown VCID: {req_packet.vcid}")
             return
 
-        if not isinstance(res_payload, list):
-            res_payload = [res_payload]
+        if res_payload is None:
+            return
 
-        for i in res_payload:
-            if i is None:
-                continue
+        try:
+            res_peacket = EdlPacket(
+                res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
+            )
+            res_message = res_peacket.pack(self._hmac_key)
+        except (EdlCommandError, EdlPacketError, ValueError) as e:
+            logger.error(f"EDL response generation raised: {e}")
+            return
 
-            try:
-                res_peacket = EdlPacket(i, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS)
-                res_message = res_peacket.pack(self._hmac_key)
-            except (EdlCommandError, EdlPacketError, ValueError) as e:
-                logger.error(f"EDL response generation raised: {e}")
-                return
-
-            self._radios_service.send_edl_response(res_message)
+        self._radios_service.send_edl_response(res_message)
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None
@@ -280,6 +278,8 @@ class EdlFileReciever:
         direction=Direction.TOWARDS_RECEIVER,
     )
 
+    FIN_DELAY_S = 0.5
+
     def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
         self.upload_dir = upload_dir
         Path(upload_dir).mkdir(parents=True, exist_ok=True)
@@ -292,6 +292,7 @@ class EdlFileReciever:
         self.last_nak = 0
         self.last_indication = Indication.NONE
         self.last_pdu_ts = 0.0
+        self.send_fin_ts = 0.0
 
     def reset(self):
         """Reset the EDL file receiver."""
@@ -365,7 +366,7 @@ class EdlFileReciever:
         )
         return pdu
 
-    def loop(self, req_pdu: AbstractFileDirectiveBase) -> list[bytes]:
+    def loop(self, req_pdu: AbstractFileDirectiveBase) -> AbstractFileDirectiveBase:
         """
         The receiver entity loop.
 
@@ -383,11 +384,11 @@ class EdlFileReciever:
         res_pdu = None
 
         if req_pdu is None and self.last_indication == Indication.NONE:
-            return []  # nothing to do
+            return None  # nothing to do
 
         if time() > self.last_pdu_ts + 5 and self.last_indication != Indication.NONE:
             self.reset()
-            return []
+            return None
 
         if req_pdu:
             self.last_pdu_ts = time()
@@ -413,23 +414,19 @@ class EdlFileReciever:
             elif isinstance(req_pdu, EofPdu):
                 res_pdu = self._eof(req_pdu)
                 self.last_indication = Indication.EOF_RECV
+                self.send_fin_ts = time() + self.FIN_DELAY_S
             elif isinstance(req_pdu, AckPdu):
                 logger.info("fin ack!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 self.last_indication = Indication.TRANSACTION_FINISHED
                 if req_pdu.directive_code_of_acked_pdu == DirectiveType.FINISHED_PDU:
                     self.reset()
+                self.send_fin_ts = time() + self.FIN_DELAY_S
+            elif self.send_fin_ts != 0.0 and self.send_fin_ts > time():
+                res_pdu = FinishedPdu(
+                    pdu_conf=self.PDU_CONF, params=FinishedParams.success_params()
+                )
+                self.last_indication = Indication.TRANSACTION_FINISHED
 
-        res_pdus = []
-        if self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
-            res_pdu2 = FinishedPdu(pdu_conf=self.PDU_CONF, params=FinishedParams.success_params())
-            if res_pdu is not None:
-                res_pdus = [res_pdu, res_pdu2]
-            else:
-                res_pdus = [res_pdu2]
-            self.last_indication = Indication.TRANSACTION_FINISHED
-        else:
-            res_pdus = [res_pdu]
-
-        if len(res_pdus) != 0:
+        if res_pdu is not None:
             logger.debug(self.last_indication.name)
-        return res_pdus
+        return res_pdu

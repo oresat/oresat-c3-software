@@ -134,7 +134,9 @@ class RadiosService(Service):
         """bool: check if the si41xx is locked."""
 
         # si41xx_nlock is active low
-        return not bool(self._si41xx_nlock_gpio.value)
+        state = not bool(self._si41xx_nlock_gpio.value)
+        self.node.od["lband"]["synth_lock"].value = state
+        return state
 
 
     def send_beacon(self, message: bytes):

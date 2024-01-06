@@ -138,7 +138,6 @@ class RadiosService(Service):
         self.node.od["lband"]["synth_lock"].value = state
         return state
 
-
     def send_beacon(self, message: bytes):
         """Send a beacon."""
 

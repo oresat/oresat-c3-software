@@ -40,19 +40,27 @@
     </div>
   </form>
   <script>
+    async function updateFeedbackValues() {
+      console.log("Updating feedback values");
+    }
 
     async function applyControlSignals() {
       console.log("submitting control signals");
       let ctrl_inputs = document.getElementsByClassName("ctrl_input");
       console.log(ctrl_inputs);
+      let ctrl_signals = {};
       for (const ctrl_input_element of ctrl_inputs) {
         // Send write values for c3 card to send control signal
+	
 	let name = ctrl_input_element.id.split("_")[1];
 	console.debug(name);
 	let ctrl_signal = document.getElementById(`signal_${name}`);
 	console.debug(ctrl_signal);
 	ctrl_signal.innerText = ctrl_input_element.value;
+
+	ctrl_signals[name] = ctrl_input_element.value;
       }
+      writeValue("adcs_manager", "signals", JSON.stringify(ctrl_signals));
       return 0;
     }
 
@@ -68,12 +76,16 @@
 
     async function buildTable() {
       let tbodyRef = document.getElementById("adcsMgrTable").getElementsByTagName("tbody")[0];
-      for (let i =0; i< 10; i++) {
+      let feedback_json = await readValue("adcs_manager", "feedback");
+      let i = 0;
+      let feedback = JSON.parse(feedback_json.value);
+      for (let actuator in feedback) {
+	console.log(actuator);
 	let newRow = tbodyRef.insertRow();
 
 	// Row name
 	let nameCell = newRow.insertCell();
-	let nameText = document.createTextNode(i);
+	let nameText = document.createTextNode(actuator);
 	nameCell.appendChild(nameText);
 
 	// Form input values
@@ -101,15 +113,17 @@
 	let feedbackSpan = document.createElement("span");
 	feedbackSpan.id = `feedback_${i}`;
 	feedbackSpan.class = "ctrl_feedback"
-	feedbackSpan.innerText = "0";
+	feedbackSpan.innerText = feedback[actuator];
 	feedbackCell.appendChild(feedbackSpan);
+
+	i++;
       }
     }
     
     /** Update data in the table */
     async function updateStatus() {
-      const hey = await writeValue("adcs_manager", "reserved_rw", 2);
-      console.log(hey);
+      //const hey = await writeValue("adcs_manager", "reserved_rw", 2);
+      console.log("I'm alive!");
     }
 
     // setup

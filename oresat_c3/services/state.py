@@ -266,6 +266,21 @@ class StateService(Service):
             offset += size
 
     def clear_state(self):
-        """Clear the state from F-RAM."""
+        """Clear the state from F-RAM, key will be stored again after clear."""
 
         self._fram.clear()
+
+        offset = 0
+        for obj in self._fram_objs:
+            if obj.data_type == canopen.objectdictionary.DOMAIN:
+                continue
+
+            if obj.name.startswith("crypto_key"):
+                raw = obj.value
+                raw_len = len(obj.default)
+                self._fram.write(offset, raw)
+            else:
+                raw = obj.encode_raw(obj.value)
+                raw_len = len(raw)
+
+            offset += raw_len

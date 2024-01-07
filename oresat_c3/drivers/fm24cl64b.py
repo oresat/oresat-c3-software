@@ -147,4 +147,4 @@ class Fm24cl64b:
     def clear(self):
         """Clear the bytes in the F-RAM."""
 
-        self.write(0, b"\x00" * self.SIZE)
+        self.write(0, b"\x00" * self.SIZE // 2)

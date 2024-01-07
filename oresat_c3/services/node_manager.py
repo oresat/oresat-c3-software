@@ -66,8 +66,8 @@ class NodeManagerService(Service):
 
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 5
-    _STM32_BOOT_TIMEOUT = 5
-    _OCTAVO_BOOT_TIMEOUT = 30
+    _STM32_BOOT_TIMEOUT = 10
+    _OCTAVO_BOOT_TIMEOUT = 90
     _HB_TIMEOUT = 5
 
     # opd hardware constants

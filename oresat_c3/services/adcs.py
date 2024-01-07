@@ -18,8 +18,9 @@ class AdcsService(Service):
     """ADCS Service"""
 
 
-    def __init__(self, config: dict):
-        super().__init__()
+    def on_start(self):
+        logger.info("Starting ADCS")
+
         self.xyz_sensor_names = ['accelerometer',
                                    'gyroscope',
                                    'pos_z_magnetometer_1',
@@ -39,21 +40,13 @@ class AdcsService(Service):
             self.control_signals[actuator] = 0.0
             self.actuator_feedback[actuator] = 0.0
 
-        logger.info("ADCS service object initiated")
 
 
-    def on_start(self):
-        logger.info("Starting ADCS")
-
-        # Calibrate sensors and actuators
-        self.gyro_calibrate()
-        self.mag_calibrate()
-        #self.rw_calibrate()
+        # Calibrate sensors and actuators, if needed
 
         # for ADCS testing
-        #self.node.add_sdo_callbacks("adcs_manager", "reserved_rw", self.test_sdo_read, self.test_sdo_write)
         self.node.add_sdo_callbacks("adcs_manager", "feedback", self.mngr_feedback, None)
-        self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals_w)
+        self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals)
 
         # ADCS startup complete
         logger.info("Completed ADCS startup")
@@ -66,8 +59,7 @@ class AdcsService(Service):
 
         # print(self.node._remote_nodes.keys())
         # Read sensors, data is stored in self.sensor_data
-        self.gyro_monitor()
-        self.mag_monitor()
+        self.xyz_monitor()
         self.gps_monitor()
         self.gps_time()
         ecef_data = self.gps_ecef_monitor()
@@ -91,80 +83,37 @@ class AdcsService(Service):
         # End of ADCS control loop
         sleep(0.1)
 
-    
-    def mngr_signals_w(self, controls):
+
+
+    # FUNTIONS FOR ADCS MANAGER WEB PAGE
+
+    def mngr_signals(self, signals):
         """Apply control signals from ADCS manager SDO callback"""
-        self.control_signals = json.loads(controls)
+        self.control_signals = json.loads(signals)
         logger.debug(self.control_signals)
 
     def mngr_feedback(self):
         logger.debug(self.actuator_feedback)
         return json.dumps(self.actuator_feedback)
-        #return json.dumps(self.control_signals)
 
-    # gyro Functions
-    def gyro_calibrate(self):
-        #logger.info("Calibrating gyroscopes")
-        pass
 
-    def gyro_monitor(self):
-        """Monitors the gyroscope"""
-        logger.debug("Monitoring gyroscope")
-        # pitch roll and yaw should be relative to velocity, convert back to xyz
-        directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
-        for name,axis in directions.items():
+
+    def xyz_monitor(self):
+        """Monitors xyz sensors"""
+
+        # get data from accelerometer and magnetometers
+        for name in ['accelerometer', 'pos_z_magnetometer_1', 'pos_z_magnetometer_2', 'min_z_magnetometer_1', 'min_z_magnetometer_2']:
+            for axis in ['x', 'y', 'z']:
+                self.sensor_data[name][axis] = self.node.od['adcs'][name + "_" + axis].value
+
+        # get data from gyroscope, its different
+        gyro_map = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
+        for name,axis in gyro_map.items():
             self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
-    def gps_monitor(self, log_it=False):
-        """Monitors the GPS readings"""
-        #logger.debug("Monitoring GPS")
-        if log_it:
-            for name, item in self.node.od["gps"].items():
-                logger.info(f"Key: {name} Value: {item.value}")
-
-    def gps_time(self):
-        """Gets the gps time since midnight"""
-        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
-
-    def gps_ecef_monitor(self):
-        axis_list = ["x", "y", "z"]
-        ecef_data = dict()
-        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
-        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
-        
-        return ecef_data
 
 
 
-
-    # MAG Functions
-    def mag_calibrate(self):
-        """Calibrates the magnetometers"""
-        #logger.info("Calibrating Magnetometers")
-        pass
-
-    def mag_monitor(self):
-        """Monitors the magnetometer readings"""
-        logger.debug("Monitoring magnetometers")
-        # full names are a little long, shorten them for now
-        mag_map = {'pos_z_magnetometer_1': 'mag_pz1',
-                   'pos_z_magnetometer_2': 'mag_pz2',
-                   'min_z_magnetometer_1': 'mag_nz1',
-                   'min_z_magnetometer_2': 'mag_nz2',
-                   }
-        directions = ["x", "y", "z"]
-        for name,nick in mag_map.items():
-            self.sensor_data[nick] = dict()
-            for axis in directions:
-                self.sensor_data[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
-
-
-
-    # Magnetorquer Functions
-    def mt_calibrate(self):
-        """Calibrate magnetorquers"""
-        #logger.info("Calibrating magnetorquers")
-        pass
 
     def mt_monitor(self):
         """Monitor magnetorquers"""
@@ -272,6 +221,25 @@ class AdcsService(Service):
                 for subindex in ["right_ascension", "declination", "roll", "time_since_midnight"]}
                 for tracker_num in range(1, num_modules+1)}
 
+    def gps_monitor(self, log_it=False):
+        """Monitors the GPS readings"""
+        #logger.debug("Monitoring GPS")
+        if log_it:
+            for name, item in self.node.od["gps"].items():
+                logger.info(f"Key: {name} Value: {item.value}")
+
+    def gps_time(self):
+        """Gets the gps time since midnight"""
+        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
+
+    def gps_ecef_monitor(self):
+        axis_list = ["x", "y", "z"]
+        ecef_data = dict()
+        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+        
+        return ecef_data
+
 
     # Additional data retrieval to consider control type
     def temperature_monitor(self, num_solar_modules=6):
@@ -290,6 +258,13 @@ class AdcsService(Service):
                 self.node.od["battery_%s"%battery]["pack_%s_reported_capacity"%pack].value
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
+
+
+
+
+
+
+
 
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):

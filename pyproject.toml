@@ -33,7 +33,7 @@ oresat-c3 = "oresat_c3.__main__:main"
 version = {attr = "oresat_c3.__version__"}
 
 [tool.setuptools.packages.find]
-exclude = ["docs*", "tests*"]
+exclude = ["docs*", "tests*", "scripts*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html"]

@@ -95,7 +95,9 @@ class EdlService(Service):
         req_message = self._radios_service.recv_queue.pop()
 
         try:
-            req_packet = EdlPacket.unpack(req_message, self._hmac_key, not self._flight_mode_obj.value)
+            req_packet = EdlPacket.unpack(
+                req_message, self._hmac_key, not self._flight_mode_obj.value
+            )
         except Exception as e:  # pylint: disable=W0718
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF

@@ -95,16 +95,16 @@ class EdlService(Service):
         req_message = self._radios_service.recv_queue.pop()
 
         try:
-            req_packet = EdlPacket.unpack(req_message, self._hmac_key, self._flight_mode_obj.value)
+            req_packet = EdlPacket.unpack(req_message, self._hmac_key, not self._flight_mode_obj.value)
         except Exception as e:  # pylint: disable=W0718
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
-            return req_packet  # no responses to invalid packets
+            return None  # no responses to invalid packets
 
-        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_rejected_count_obj.value:
+        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
             logger.error("invalid EDL request packet sequence number")
-            return req_packet  # no responses to invalid packets
+            return None  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
 

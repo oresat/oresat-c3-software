@@ -280,7 +280,9 @@ def main():
     downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
     downlink_address = (downlink_host, args.downlink_port)
 
-    t = Thread(target=recv_thread, args=(downlink_address, hmac_key, args.bad_connection), daemon=True)
+    t = Thread(
+        target=recv_thread, args=(downlink_address, hmac_key, args.bad_connection), daemon=True
+    )
     t.start()
 
     entity = GroundEntity(args.file_path, file_data, args.buffer_size)

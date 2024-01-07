@@ -72,6 +72,8 @@ class BeaconService(Service):
     def send(self):
         """Send a beacon now."""
 
+        logger.debug("beacon")
+
         payload = bytes()
         for obj in self._beacon_def:
             payload += obj.encode_raw(obj.value)

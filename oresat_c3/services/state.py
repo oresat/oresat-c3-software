@@ -136,7 +136,7 @@ class StateService(Service):
             self._c3_state_obj.value = C3State.EDL.value
         elif self.has_reset_timed_out:
             self.node.stop(NodeStop.HARD_RESET)
-        elif self.has_tx_timed_out and self.is_bat_lvl_good:
+        elif not self.has_tx_timed_out and self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.BEACON.value
 
     def _beacon(self):
@@ -146,20 +146,21 @@ class StateService(Service):
             self._c3_state_obj.value = C3State.EDL.value
         elif self.has_reset_timed_out:
             self.node.stop(NodeStop.HARD_RESET)
-        elif not self.has_tx_timed_out or not self.is_bat_lvl_good:
+        elif self.has_tx_timed_out or not self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.STANDBY.value
 
     def _edl(self):
         """EDL state method."""
 
         if not self.has_edl_timed_out:
-            if self.has_tx_timed_out and self.is_bat_lvl_good:
+            if not self.has_tx_timed_out and self.is_bat_lvl_good:
                 self._c3_state_obj.value = C3State.BEACON.value
             else:
                 self._c3_state_obj.value = C3State.STANDBY.value
 
     def on_loop(self):
-        if self.has_tx_timed_out:
+        if self.has_tx_timed_out and self._tx_enable_obj.value:
+            logger.info("tx enable timeout")
             self._tx_enable_obj.value = False
 
         state_a = self._c3_state_obj.value
@@ -204,7 +205,7 @@ class StateService(Service):
     def has_tx_timed_out(self) -> bool:
         """bool: Helper property to check if the tx timeout has been reached."""
 
-        return (time() - self._last_tx_enable_obj.value) < self._tx_timeout_obj.value
+        return (time() - self._last_tx_enable_obj.value) > self._tx_timeout_obj.value
 
     @property
     def has_edl_timed_out(self) -> bool:

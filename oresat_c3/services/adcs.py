@@ -64,8 +64,7 @@ class AdcsService(Service):
         #logger.info("Starting iteration of ADCS loop")
         logger.info("START OF ADCS LOOP")
 
-        print(self.node._remote_nodes.keys())
-        print(self.node.od['adcs'])
+        # print(self.node._remote_nodes.keys())
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
@@ -75,7 +74,7 @@ class AdcsService(Service):
 
         # Read actuators
         self.mt_monitor()
-        #reaction_wheels = self.rw_monitor(log_it=True)
+        self.rw_monitor()
 
         # More things to read
         star_orientation = self.star_monitor()
@@ -89,24 +88,14 @@ class AdcsService(Service):
         self.mt_control()
         #self.rw_control()        
 
-
         # End of ADCS control loop
         sleep(1)
-
-    def test_sdo_read(self, *args):
-        logger.info("SDO read called!")
-        logger.info(args)
-        return 222
-
-    def test_sdo_write(self, *args):
-        logger.info("SDO write called!")
-        logger.info(args)
 
     
     def mngr_signals_w(self, controls):
         """Apply control signals from ADCS manager SDO callback"""
-        logger.info("write")
-        logger.info(controls)
+        self.control_signals = json.loads(controls)
+        logger.info(self.control_signals)
 
     def mngr_feedback(self):
         logger.info(self.actuator_feedback)
@@ -184,6 +173,7 @@ class AdcsService(Service):
         self.sensor_data["magnetorquer"] = dict()
         for name,axis in directions.items():
             self.sensor_data["magnetorquer"][axis] = self.node.od["adcs"]["magnetorquer_" +name].value
+            self.actuator_feedback["mt_"+axis] = self.node.od["adcs"]["magnetorquer_"+name].value
 
     def mt_control(self, name=None, signal=0):
         """Send control signal to magnetorquers"""
@@ -227,6 +217,8 @@ class AdcsService(Service):
 
     def rw_monitor(self, num_rws=4, log_it=False):
         """Retreives reaction wheel states"""
+        logger.info("Monitoring reaction wheels")
+
         endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
         for num in range(1, num_rws+1):
             self.sensor_data['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
@@ -237,12 +229,16 @@ class AdcsService(Service):
                 logger.info("RW %s state: %s"%(num, self.sensor_data['rw_'+str(num)]))
         
 
-    def rw_control(self):
+    def rw_control(self, num_rws=4):
         """Sends the control signal to the reaction wheels"""
         
         logger.info("Sending control signal to reaction wheels")
         # request velocity control (6???)
         self.write_sdo('rw_1', 'requested', 'state', 5)
+        
+        for num in range(1, num_rws+1):
+            pass
+
         pass
 
 

@@ -37,7 +37,7 @@ class AdcsService(Service):
         for actuator in self.actuator_names:
             self.sensor_data[actuator] = dict()
             self.control_signals[actuator] = 0.0
-            self.actuator_feedback[actuator] = 1.5
+            self.actuator_feedback[actuator] = 0.0
 
         logger.info("ADCS service object initiated")
 
@@ -86,21 +86,21 @@ class AdcsService(Service):
         # Send control signal
         # Control signals turned off for sensor testing, for now
         self.mt_control()
-        #self.rw_control()        
+        self.rw_control()        
 
         # End of ADCS control loop
-        sleep(1)
+        sleep(0.1)
 
     
     def mngr_signals_w(self, controls):
         """Apply control signals from ADCS manager SDO callback"""
         self.control_signals = json.loads(controls)
-        logger.info(self.control_signals)
+        logger.debug(self.control_signals)
 
     def mngr_feedback(self):
-        logger.info(self.actuator_feedback)
+        logger.debug(self.actuator_feedback)
         return json.dumps(self.actuator_feedback)
-
+        #return json.dumps(self.control_signals)
 
     # gyro Functions
     def gyro_calibrate(self):
@@ -175,12 +175,13 @@ class AdcsService(Service):
             self.sensor_data["magnetorquer"][axis] = self.node.od["adcs"]["magnetorquer_" +name].value
             self.actuator_feedback["mt_"+axis] = self.node.od["adcs"]["magnetorquer_"+name].value
 
-    def mt_control(self, name=None, signal=0):
+    def mt_control(self):
         """Send control signal to magnetorquers"""
         logger.info("Sending control signal to magnetorquers")
-        if name is None:
-            return
-        self.write_sdo('adcs', 'magnetorquer', name, signal)
+        controller_map = {"mt_x": "x", "mt_y": "y", "mt_z":"z"}
+
+        for key, val in controller_map.items():
+            self.write_sdo('adcs', 'magnetorquer', f'current_{val}_setpoint', self.control_signals[key])
 
     
     # Reaction wheel functions
@@ -188,7 +189,7 @@ class AdcsService(Service):
         self.write_sdo(rw_name, 'requested', 'state', 1)
         self.write_sdo(rw_name, 'requested', 'state', state)
 
-    def rw_calibrate(self):
+    def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
         
         def calibrate(rw_name, calibration_state):
@@ -213,6 +214,10 @@ class AdcsService(Service):
         # set velocity control
         #self.rw_apply_state("rw_1", 5)
 
+        # Put all reaction wheels in velocity control for now
+        for num in range(1, num_rws+1):
+            self.write_sdo('rw_'+str(num), 'requested', 'state', 5)
+
         pass
 
     def rw_monitor(self, num_rws=4, log_it=False):
@@ -234,11 +239,9 @@ class AdcsService(Service):
         
         logger.info("Sending control signal to reaction wheels")
         # request velocity control (6???)
-        self.write_sdo('rw_1', 'requested', 'state', 5)
         
         for num in range(1, num_rws+1):
-            pass
-
+            self.write_sdo('rw_'+str(num), 'signals', 'setpoint', self.control_signals['rw_'+str(num)])
         pass
 
 

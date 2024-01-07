@@ -41,6 +41,7 @@ class AdcsService(Service):
 
         logger.info("ADCS service object initiated")
 
+
     def on_start(self):
         logger.info("Starting ADCS")
 
@@ -63,6 +64,8 @@ class AdcsService(Service):
         #logger.info("Starting iteration of ADCS loop")
         logger.info("START OF ADCS LOOP")
 
+        print(self.node._remote_nodes.keys())
+        print(self.node.od['adcs'])
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor()
@@ -72,7 +75,7 @@ class AdcsService(Service):
 
         # Read actuators
         self.mt_monitor()
-        #self.rw_monitor()
+        #reaction_wheels = self.rw_monitor(log_it=True)
 
         # More things to read
         star_orientation = self.star_monitor()

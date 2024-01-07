@@ -8,6 +8,8 @@ import hmac
 from enum import IntEnum
 from typing import Union
 
+from spacepackets.cfdp.pdu import PduFactory
+from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
 from spacepackets.uslp.frame import (  # type: ignore
     FrameType,
@@ -26,8 +28,8 @@ from spacepackets.uslp.header import (  # type: ignore
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
 
-SRC_DEST_ORESAT = SourceOrDestField.SOURCE
-SRC_DEST_UNICLOGS = SourceOrDestField.DEST
+SRC_DEST_ORESAT = SourceOrDestField.DEST
+SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
 
 
 class EdlPacketError(Exception):
@@ -79,14 +81,14 @@ class EdlPacket:
 
     def __init__(
         self,
-        payload: Union[EdlCommandRequest, EdlCommandResponse],
+        payload: Union[EdlCommandRequest, EdlCommandResponse, AbstractPduBase],
         seq_num: int,
         src_dest: SourceOrDestField,
     ):
         """
         Parameters
         ----------
-        payload: EdlCommandRequest or EdlCommandResponse
+        payload: EdlCommandRequest, EdlCommandResponse, or AbstractPduBase
             The payload object.
         seq_num: int
             The sequence number for packet.
@@ -96,6 +98,8 @@ class EdlPacket:
 
         if isinstance(payload, (EdlCommandRequest, EdlCommandResponse)):
             vcid = EdlVcid.C3_COMMAND
+        elif isinstance(payload, AbstractPduBase):
+            vcid = EdlVcid.FILE_TRANSFER
         else:
             raise EdlCommandCode(f"unknown payload object: {type(payload)}")
 
@@ -126,7 +130,7 @@ class EdlPacket:
 
         try:
             payload_raw = self.payload.pack()
-        except EdlCommandError as e:
+        except Exception as e:
             raise EdlPacketError(e) from e
 
         tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
@@ -201,6 +205,11 @@ class EdlPacket:
                 else:
                     payload = EdlCommandResponse.unpack(payload_raw)
             except EdlCommandError as e:
+                raise EdlPacketError(e) from e
+        elif frame.header.vcid == EdlVcid.FILE_TRANSFER:
+            try:
+                payload = PduFactory.from_raw(payload_raw)
+            except ValueError as e:
                 raise EdlPacketError(e) from e
         else:
             raise EdlPacketError(f"unknown vcid {frame.header.vcid}")

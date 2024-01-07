@@ -43,6 +43,12 @@ def node_mgr_template():
     return render_olaf_template("node_manager.html", name="Node Manager")
 
 
+@rest_api.app.route("/keys")
+def keys_template():
+    """Render keys template."""
+    return render_olaf_template("keys.html", name="Keys")
+
+
 def get_hw_id(mock: bool) -> int:
     """
     Get the hardware ID of the C3 card.
@@ -103,9 +109,8 @@ def main():
     app.add_service(edl_service)
     app.add_service(node_mgr_service)
 
-    rest_api.add_template(f"{path}/templates/beacon.html")
-    rest_api.add_template(f"{path}/templates/state.html")
-    rest_api.add_template(f"{path}/templates/node_manager.html")
+    for file_name in os.listdir(f"{path}/templates"):
+        rest_api.add_template(f"{path}/templates/{file_name}")
 
     # on factory reset clear F-RAM
     app.set_factory_reset_callback(state_service.clear_state)

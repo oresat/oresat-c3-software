@@ -15,22 +15,23 @@ from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
 sent = 0
 recv = 0
+loop = 0
 last_ts = {}
-seq_num = 0
 
 
-def send_thread(address: tuple, hmac_key: bytes, delay: float, verbose: bool):
+def send_thread(address: tuple, hmac_key: bytes, seq_num: int, delay: float, verbose: bool):
     """Send ping thread"""
     global sent  # pylint: disable=W0603
-    global seq_num  # pylint: disable=W0603
+    global loop  # pylint: disable=W0603
     uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     start_time = monotonic()
 
     while True:
+        loop += 1
         seq_num += 1
         seq_num &= 0xFF_FF_FF_FF
 
-        values = (seq_num,)
+        values = (loop,)
         print(f"Request PING: {values}")
 
         try:
@@ -42,10 +43,10 @@ def send_thread(address: tuple, hmac_key: bytes, delay: float, verbose: bool):
                 print(req_message.hex())
 
             uplink_socket.sendto(req_message, address)
-            last_ts[seq_num] = time()
+            last_ts[loop] = time()
             for i in last_ts:
-                if i > seq_num + 10:
-                    del last_ts[seq_num]
+                if i > loop + 10:
+                    del last_ts[loop]
             sent += 1
         except Exception:  # pylint: disable=W0718
             pass
@@ -82,9 +83,29 @@ def main():
         "-l", "--loop-delay", type=int, default=1000, help="delay between loops in milliseconds"
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="print out packet hex")
+    parser.add_argument(
+        "-n",
+        "--sequence-number",
+        type=int,
+        default=0,
+        help="edl sequence number, default 0",
+    )
+    parser.add_argument(
+        "-m",
+        "--hmac",
+        default="",
+        help="edl hmac, must be 32 bytes, default all zero",
+    )
     args = parser.parse_args()
 
-    hmac_key = b"\x00" * 32
+    if args.hmac:
+        if len(args.hmac) != 64:
+            print("Invalid hmac, must be hex string of 32 bytes")
+            sys.exit(1)
+        else:
+            hmac_key = bytes.fromhex(args.hmac)
+    else:
+        hmac_key = b"\x00" * 32
 
     uplink_address = (args.host, args.uplink_port)
 
@@ -96,7 +117,7 @@ def main():
 
     t = Thread(
         target=send_thread,
-        args=(uplink_address, hmac_key, args.loop_delay / 1000, args.verbose),
+        args=(uplink_address, hmac_key, args.sequence_number, args.loop_delay / 1000, args.verbose),
         daemon=True,
     )
     t.start()
@@ -111,9 +132,9 @@ def main():
             recv += 1
 
             timediff = -1.0
-            if seq_num in last_ts:
-                timediff = time() - last_ts[seq_num]
-            print(f"Response PING: {res_packet.payload.values} | {timediff * 1000} ms")
+            if loop in last_ts:
+                timediff = time() - last_ts[loop]
+            print(f"Response PING: {res_packet.payload.values} | {int(timediff * 1000)} ms")
         except KeyboardInterrupt:
             break
         except Exception:  # pylint: disable=W0718

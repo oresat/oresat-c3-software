@@ -45,10 +45,9 @@ sys.path.insert(0, os.path.abspath(".."))
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
 recv_queue = []
-HMAC_KEY = b"\x00" * 32
 
 
-def recv_thread(address: tuple, bad_connection: bool):
+def recv_thread(address: tuple, hmac_key: bytes, bad_connection: bool):
     """Thread to receive packets from the satellite and put them into the queue."""
 
     edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -68,7 +67,7 @@ def recv_thread(address: tuple, bad_connection: bool):
             continue  # simulate dropped packets
 
         try:
-            packet = EdlPacket.unpack(res_message, HMAC_KEY, True)
+            packet = EdlPacket.unpack(res_message, hmac_key, True)
             recv_queue.append(packet.payload)
         except Exception as e:  # pylint: disable=W0718
             print(e)
@@ -234,7 +233,20 @@ def main():
     parser.add_argument(
         "-l", "--loop-delay", type=int, default=50, help="upload loop delay in milliseconds"
     )
+    parser.add_argument(
+        "-n",
+        "--sequence-number",
+        type=int,
+        default=0,
+        help="edl sequence number, default 0",
+    )
     parser.add_argument("-s", "--buffer-size", type=int, default=950, help="file data buffer size")
+    parser.add_argument(
+        "-m",
+        "--hmac",
+        default="",
+        help="edl hmac, must be 32 bytes, default all zero",
+    )
     args = parser.parse_args()
 
     file_path = args.file_path.split("/")[-1]
@@ -253,6 +265,15 @@ def main():
             file_data = f.read()
     else:
         file_data = bytes([random.randint(0, 255) for _ in range(args.random_data)])
+
+    if args.hmac:
+        if len(args.hmac) != 64:
+            print("Invalid hmac, must be hex string of 32 bytes")
+            sys.exit(1)
+        else:
+            hmac_key = bytes.fromhex(args.hmac)
+    else:
+        hmac_key = b"\x00" * 32
 
     uplink_address = (args.host, args.uplink_port)
 
@@ -284,8 +305,8 @@ def main():
             continue  # simulate dropped packets
 
         if req_pdu is not None:
-            packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
-            req_message = packet.pack(HMAC_KEY)
+            packet = EdlPacket(req_pdu, args.sequence_number, SRC_DEST_ORESAT)
+            req_message = packet.pack(hmac_key)
             edl_uplink_socket.sendto(req_message, uplink_address)
         sleep(delay)
 

@@ -21,12 +21,14 @@ class EdlCommandShell(Cmd):
     intro = "Welcome to the EDL shell. Type help or ? to list commands.\n"
     prompt = "> "
 
-    def __init__(self, host: str, uplink_port: int, downlink_port: int):
+    def __init__(
+        self, host: str, uplink_port: int, downlink_port: int, hmac_key: bytes, seq_num: int
+    ):
         super().__init__()
 
-        self._hmac_key = b"\x00" * 32
+        self._hmac_key = hmac_key
         self._timeout = 5
-        self._seq_num = 0
+        self._seq_num = seq_num
 
         self._uplink_address = (host, uplink_port)
         self._uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -157,9 +159,33 @@ def main():
         type=int,
         help="port to use for the downlink, default is 10016",
     )
+    parser.add_argument(
+        "-n",
+        "--sequence-number",
+        type=int,
+        default=0,
+        help="edl sequence number, default 0",
+    )
+    parser.add_argument(
+        "-m",
+        "--hmac",
+        default="",
+        help="edl hmac, must be 32 bytes, default all zero",
+    )
     args = parser.parse_args()
 
-    shell = EdlCommandShell(args.host, args.uplink_port, args.downlink_port)
+    if args.hmac:
+        if len(args.hmac) != 64:
+            print("Invalid hmac, must be hex string of 32 bytes")
+            sys.exit(1)
+        else:
+            hmac_key = bytes.fromhex(args.hmac)
+    else:
+        hmac_key = b"\x00" * 32
+
+    shell = EdlCommandShell(
+        args.host, args.uplink_port, args.downlink_port, hmac_key, args.sequence_number
+    )
 
     try:
         shell.cmdloop()

@@ -293,6 +293,95 @@ class EdlCommandShell(Cmd):
         if respone and respone[0] != 0:
             print(f"SDO error code: 0x{respone[0]:08X}")
 
+    def help_c3_soft_reset(self):
+        """Print help message for c3_soft_reset command."""
+        print("c3_soft_reset")
+        print("  no args")
+
+    def do_c3_soft_reset(self, _):
+        """Do the c3_soft_reset command."""
+
+        self._send_packet(EdlCommandCode.C3_SOFT_RESET, None)
+
+    def help_c3_hard_reset(self):
+        """Print help message for c3_hard_reset command."""
+        print("c3_hard_reset")
+        print("  no args")
+
+    def do_c3_hard_reset(self, _):
+        """Do the c3_hard_reset command."""
+
+        self._send_packet(EdlCommandCode.C3_HARD_RESET, None)
+
+    def help_c3_factory_reset(self):
+        """Print help message for c3_factory_reset command."""
+        print("c3_factory_reset")
+        print("  no args")
+
+    def do_c3_factory_reset(self, _):
+        """Do the c3_factory_reset command."""
+
+        self._send_packet(EdlCommandCode.C3_FACTORY_RESET, None)
+
+    def help_opd_sysenable(self):
+        """Print help message for opd_sysenable command."""
+        print("opd_sysenable <enable>")
+        print("  <enable> is 0, 1, true, false")
+
+    def do_opd_sysenable(self, arg: str):
+        """Do the opd_sysenable command."""
+
+        arg = arg.lower()
+        if arg in ["true", "1"]:
+            enable = True
+        elif arg in ["false", "0"]:
+            enable = False
+        else:
+            self.help_opd_sysenable()
+            return
+
+        self._send_packet(EdlCommandCode.OPD_SYSENABLE, (enable,))
+
+    def help_opd_enable(self):
+        """Print help message for opd_enable command."""
+        print("opd_enable <name> <enable>")
+        print("  <name> is the name of card or opd address in hex")
+        print("  <enable> is 0, 1, true, false")
+
+    def do_opd_enable(self, arg: str):
+        """Do the opd_enable command."""
+
+        args = arg.split(" ")
+        if len(args) != 2:
+            self.help_opd_sysenable()
+            return
+
+        if args[0].startswith("0x"):
+            opd_addr = int(args[0], 16)
+        else:
+            opd_addr = 0
+            for name, card in self.configs.cards.items():
+                if name == args[0]:
+                    opd_addr = card.opd_address
+                    break
+            if opd_addr == 0:
+                print("invalid name / address")
+                self.help_opd_enable()
+                return
+
+        arg1 = args[1].lower()
+        if arg1 in ["true", "1"]:
+            enable = True
+        elif arg1 in ["false", "0"]:
+            enable = False
+        else:
+            print("invalid enable value")
+            self.help_opd_enable()
+            return
+
+        self._send_packet(EdlCommandCode.OPD_ENABLE, (opd_addr, enable))
+
+
 
 def main():
     """Main for EDL shell script"""

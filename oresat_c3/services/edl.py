@@ -161,7 +161,7 @@ class EdlService(Service):
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None
 
-        logger.info(f"EDL command response: {request.code.name}, args: {request.args}")
+        logger.info(f"EDL command request: {request.code.name}, args: {request.args}")
 
         if request.code == EdlCommandCode.TX_CTRL:
             if request.args[0] == 0:

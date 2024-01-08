@@ -382,7 +382,6 @@ class EdlCommandShell(Cmd):
         self._send_packet(EdlCommandCode.OPD_ENABLE, (opd_addr, enable))
 
 
-
 def main():
     """Main for EDL shell script"""
     parser = ArgumentParser("Send a EDL command via socket")

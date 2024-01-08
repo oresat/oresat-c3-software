@@ -101,10 +101,7 @@ class StateService(Service):
         logger.info("system reset")
 
         result = subprocess.run(
-            ["systemctl", "stop", "oresat-c3-watchdog"],
-            shell=True,
-            check=True,
-            capture_output=True
+            ["systemctl", "stop", "oresat-c3-watchdog"], shell=True, check=True, capture_output=True
         )
 
         if result.returncode == 0:

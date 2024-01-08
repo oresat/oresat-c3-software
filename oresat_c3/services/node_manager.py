@@ -133,7 +133,7 @@ class NodeManagerService(Service):
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
         for name in self._data:
-            if self._data[name].opd_address == 0:
+            if self._data[name].node_id == 0:
                 continue  # not a CANopen node
             self.node.add_sdo_callbacks(
                 "node_status",

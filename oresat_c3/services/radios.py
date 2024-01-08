@@ -78,6 +78,7 @@ class RadiosService(Service):
             self.enable()
         if not self.is_si41xx_locked:
             logger.error("si41xx unlocked, resetting lband synth")
+            self.node.od["lband"]["synth_relock_count"].value += 1
             self._si41xx.stop()
             self._si41xx.start()
         recv = self._recv_edl_request()
@@ -98,6 +99,7 @@ class RadiosService(Service):
         self._lband_enable_gpio.high()
         self.uhf_tot_clear()
         self._si41xx.start()
+        self.node.od["lband"]["synth_relock_count"].value += 1
         if not self._mock_hw:
             self.node.daemons["uhf"].start()
             self.node.daemons["lband"].start()

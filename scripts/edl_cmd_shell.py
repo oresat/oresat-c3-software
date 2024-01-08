@@ -7,7 +7,10 @@ import sys
 from argparse import ArgumentParser
 from cmd import Cmd
 from time import time
-from typing import Union
+from typing import Any, Union
+
+import canopen
+from oresat_configs import OreSatConfig, OreSatId
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -26,6 +29,7 @@ class EdlCommandShell(Cmd):
     ):
         super().__init__()
 
+        self.configs = OreSatConfig(OreSatId.ORESAT0_5)
         self._hmac_key = hmac_key
         self._timeout = 5
         self._seq_num = seq_num
@@ -41,7 +45,7 @@ class EdlCommandShell(Cmd):
         self._downlink_socket.bind(self._downlink_address)
         self._downlink_socket.settimeout(self._timeout)
 
-    def _send_packet(self, code: EdlCommandCode, args: Union[tuple, None] = None):
+    def _send_packet(self, code: EdlCommandCode, args: Union[tuple, None] = None) -> tuple:
         print(f"Request {code.name}: {args}")
 
         res_packet = None
@@ -50,26 +54,24 @@ class EdlCommandShell(Cmd):
             req = EdlCommandRequest(code, args)
             req_packet = EdlPacket(req, self._seq_num, SRC_DEST_ORESAT)
             req_packet_raw = req_packet.pack(self._hmac_key)
-            print(req_packet_raw.hex())
 
             # send request
             self._uplink_socket.sendto(req_packet_raw, self._uplink_address)
 
-            if EDL_COMMANDS[code].res_fmt is not None:
+            edl_command = EDL_COMMANDS[code]
+            if edl_command.res_fmt is not None or edl_command.res_unpack_func is not None:
                 # recv response
                 res_packet_raw = self._downlink_socket.recv(1024)
-                print(res_packet_raw.hex())
-
                 # parse respone
                 res_packet = EdlPacket.unpack(res_packet_raw, self._hmac_key)
         except Exception as e:  # pylint: disable=W0718
             print(e)
-            return
+            return tuple()
 
-        if res_packet:
-            print(f"Response {code.name}: {res_packet.payload.values}")
-        else:
-            print(f"Response {code.name}: None")
+        ret = res_packet.payload.values if res_packet else None
+        print(f"Response {code.name}: {ret}")
+
+        return ret
 
     def help_tx_control(self):
         """Print help message for tx control command."""
@@ -137,6 +139,179 @@ class EdlCommandShell(Cmd):
         """Do the rx_test command."""
 
         self._send_packet(EdlCommandCode.RX_TEST, None)
+
+    def help_sdo_read(self):
+        """Print help message for sdo_read command."""
+        print("sdo_read <node> <index> <subindex>")
+        print("  <node> is the node id or node name")
+        print("  <index> is the index or object name")
+        print("  <subindex> is the subindex or object name")
+
+    def do_sdo_read(self, arg: str):
+        """Do the sdo_read command."""
+
+        args = arg.split(" ")
+        if len(args) != 3:
+            self.help_sdo_read()
+            return
+
+        node_id = None
+        index = None
+        subindex = None
+
+        if args[0].startswith("0x"):
+            node_id = int(args[0], 16)
+            for i in self.configs.cards:
+                if node_id == i.node_id:
+                    name = i
+                    break
+        elif args[0] in self.configs.cards:
+            name = args[0]
+            node_id = self.configs.cards[args[0]].node_id
+        else:
+            print("invalid node arg")
+            return
+
+        if args[1].startswith("0x"):
+            index = int(args[1], 16)
+        else:
+            print("invalid index arg")
+            return
+
+        if args[2].startswith("0x"):
+            subindex = int(args[2], 16)
+        else:
+            print("invalid subindex arg")
+            return
+
+        respone = self._send_packet(EdlCommandCode.CO_SDO_READ, (node_id, index, subindex))
+
+        if not respone:
+            return
+
+        if respone[0] != 0:
+            print(f"SDO error code: 0x{respone[0]:08X}")
+            return
+
+        od = self.configs.od_db[name]
+        if isinstance(od[index], canopen.objectdictionary.Variable):
+            obj = od[index]
+        else:
+            obj = od[index][subindex]
+        value = obj.decode_raw(respone[2])
+        print("Value from SDO read: ", value)
+
+    def help_sdo_write(self):
+        """Print help message for sdo_write command."""
+        print("sdo_write <node> <index> <subindex> <value>")
+        print("  <node> is the node id or node name")
+        print("  <index> is the index or object name")
+        print("  <subindex> is the subindex or object name")
+        print("  <value> is value to write")
+
+    def do_sdo_write(self, arg: str):
+        """Do the sdo_write command."""
+
+        args = arg.split(" ")
+        if len(args) != 4:
+            self.help_sdo_write()
+            return
+
+        node_id = None
+        index = None
+        subindex = None
+
+        if args[0].startswith("0x"):
+            node_id = int(args[0], 16)
+            for i in self.configs.cards:
+                if node_id == i.node_id:
+                    name = i
+                    break
+        elif args[0] in self.configs.cards:
+            name = args[0]
+            node_id = self.configs.cards[args[0]].node_id
+        else:
+            print("invalid node arg")
+            return
+
+        if args[1].startswith("0x"):
+            index = int(args[1], 16)
+        else:
+            print("invalid index arg")
+            return
+
+        if args[2].startswith("0x"):
+            subindex = int(args[2], 16)
+        else:
+            print("invalid subindex arg")
+            return
+
+        od = self.configs.od_db[name]
+        if isinstance(od[index], canopen.objectdictionary.Variable):
+            obj = od[index]
+        else:
+            obj = od[index][subindex]
+
+        value: Any = None
+        if obj.data_type == canopen.objectdictionary.BOOLEAN:
+            value = args[3].lower() == "true"
+        elif obj.data_type in canopen.objectdictionary.INTEGER_TYPES:
+            value = int(args[3], 16) if args[3].startswith("0x") else int(args[3])
+        elif obj.data_type in canopen.objectdictionary.FLOAT_TYPES:
+            value = float(args[3])
+        elif obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
+            value = args[3]
+        else:
+            print("invaid")
+            return
+
+        raw = obj.encode_raw(value)
+        respone = self._send_packet(
+            EdlCommandCode.CO_SDO_WRITE, (node_id, index, subindex, len(raw), raw)
+        )
+
+        if respone and respone[0] != 0:
+            print(f"SDO error code: 0x{respone[0]:08X}")
+
+
+def main():
+    """Main for EDL shell script"""
+    parser = ArgumentParser("Send a EDL command via socket")
+    parser.add_argument(
+        "-o", "--host", default="localhost", help="address to use, default is localhost"
+    )
+    parser.add_argument(
+        "-u",
+        "--uplink-port",
+        default=10025,
+        type=int,
+        help="port to use for the uplink, default is 10025",
+    )
+    parser.add_argument(
+        "-d",
+        "--downlink-port",
+        default=10016,
+        type=int,
+        help="port to use for the downlink, default is 10016",
+    )
+    parser.add_argument(
+        "-n",
+        "--sequence-number",
+        type=int,
+        default=0,
+        help="edl sequence number, default 0",
+    )
+    parser.add_argument(
+        "-m",
+        "--hmac",
+        default="",
+        help="edl hmac, must be 32 bytes, default all zero",
+    )
+    args = parser.parse_args()
+
+    if args.hmac:
+        if len(args.hmac) != 64:
+            print("Invalid hmac, must be hex string of 32 bytes")
 
 
 def main():

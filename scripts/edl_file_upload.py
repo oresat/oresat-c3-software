@@ -290,7 +290,7 @@ def main():
     edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     loop_num = 0
-    seq_num = 1
+    seq_num = args.sequence_number
     delay = args.loop_delay / 1000
     while True:
         loop_num += 1
@@ -307,7 +307,7 @@ def main():
             continue  # simulate dropped packets
 
         if req_pdu is not None:
-            packet = EdlPacket(req_pdu, args.sequence_number, SRC_DEST_ORESAT)
+            packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
             req_message = packet.pack(hmac_key)
             edl_uplink_socket.sendto(req_message, uplink_address)
         sleep(delay)

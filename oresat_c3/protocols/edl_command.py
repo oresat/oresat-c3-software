@@ -12,7 +12,9 @@ from collections import namedtuple
 from enum import IntEnum, auto
 
 EdlCommand = namedtuple(
-    "EdlCommand", ["req_fmt", "res_fmt", "req_func", "res_func"], defaults=(None, None, None, None)
+    "EdlCommand",
+    ["req_fmt", "res_fmt", "req_pack_func", "req_unpack_func", "res_pack_func", "res_unpack_func"],
+    defaults=(None, None, None, None, None, None),
 )
 """
 Parameters
@@ -21,10 +23,14 @@ req_fmt: str
     The struct.unpack() format for request packet.
 res_fmt: str
     The struct.pack() format for response packet.
-req_func: Callable[[bytes], tuple]
+req_pack_func: Callable[[tuple], bytes]
+    Optional callback function to use instead of req_fmt for packing the request packet.
+req_unpack_func: Callable[[bytes], tuple]
     Optional callback function to use instead of req_fmt for unpacking the request packet.
-res_func: Callable[[tuple], bytes]
+res_pack_func: Callable[[tuple], bytes]
     Optional callback function to use instead of res_fmt for packing the response packet.
+res_unpack_func: Callable[[bytes], tuple]
+    Optional callback function to use instead of res_fmt for unpacking the response packet.
 """
 
 
@@ -268,11 +274,53 @@ class EdlCommandCode(IntEnum):
     Empty command for C3 Rx testing.
     """
 
+    CO_SDO_READ = auto()
+    """
+    Read a value from a node's OD over the CAN bus using a CANopen SDO message.
 
-def _edl_res_sdo_write_cb(request_raw: bytes) -> tuple:
-    res = struct.unpack("<2BHI", request_raw[:8])
-    res += (request_raw[8:],)
+    Parameters
+    ----------
+    node_id: uint8
+        The id of The CANopen node to write to.
+    index: uint16
+        The OD index to write to.
+    subindex: uint8
+        The OD subindex to write to.
 
+    Returns
+    -------
+    uint32
+        SDO error code (0 is no error).
+    uint32
+        Size of the data buffer.
+    bytes
+        Data buffer.
+    """
+
+
+def _edl_req_sdo_write_pack_cb(values: tuple) -> bytes:
+    req = struct.pack("<BHBI", *values[:4])
+    return req + values[4]
+
+
+def _edl_req_sdo_write_unpack_cb(raw: bytes) -> tuple:
+    fmt = "<BHBI"
+    size = struct.calcsize(fmt)
+    values = struct.unpack(fmt, raw[:size])
+    return values + (raw[size:],)
+
+
+def _edl_res_sdo_read_pack_cb(values: tuple) -> bytes:
+    res = struct.pack("<2I", *values[:2])
+    res += values[2]
+    return res
+
+
+def _edl_res_sdo_read_unpack_cb(raw: bytes) -> tuple:
+    fmt = "<2I"
+    size = struct.calcsize(fmt)
+    res = struct.unpack(fmt, raw[:size])
+    res += (raw[size:],)
     return res
 
 
@@ -283,7 +331,9 @@ EDL_COMMANDS = {
     EdlCommandCode.C3_FACTORY_RESET: EdlCommand(),
     EdlCommandCode.CO_NODE_ENABLE: EdlCommand("B?", "B"),
     EdlCommandCode.CO_NODE_STATUS: EdlCommand("B", "B"),
-    EdlCommandCode.CO_SDO_WRITE: EdlCommand(None, "I", _edl_res_sdo_write_cb),
+    EdlCommandCode.CO_SDO_WRITE: EdlCommand(
+        None, "I", _edl_req_sdo_write_pack_cb, _edl_req_sdo_write_unpack_cb
+    ),
     EdlCommandCode.CO_SYNC: EdlCommand(None, "?"),
     EdlCommandCode.OPD_SYSENABLE: EdlCommand(None, "?"),
     EdlCommandCode.OPD_SCAN: EdlCommand(None, "B"),
@@ -295,6 +345,14 @@ EDL_COMMANDS = {
     EdlCommandCode.BEACON_PING: EdlCommand(),
     EdlCommandCode.PING: EdlCommand("I", "I"),
     EdlCommandCode.RX_TEST: EdlCommand(),
+    EdlCommandCode.CO_SDO_READ: EdlCommand(
+        "BHB",
+        None,
+        None,
+        None,
+        _edl_res_sdo_read_pack_cb,
+        _edl_res_sdo_read_unpack_cb,
+    ),
 }
 """All valid EDL commands lookup table"""
 
@@ -323,7 +381,7 @@ class EdlCommandRequest:
         if not isinstance(args, tuple) and args is not None:
             raise EdlCommandError("EdlCommandRequest args must be a tuple or None")
 
-        self.code: EdlCommandCode = code
+        self.code = code
         self.command = EDL_COMMANDS[code]
         self.args = args
 
@@ -344,8 +402,8 @@ class EdlCommandRequest:
 
         if self.command.req_fmt is not None:
             raw += struct.pack(self.command.req_fmt, *self.args)
-        elif self.command.req_func is not None:
-            raw += self.command.res_func(self.args)
+        elif self.command.req_pack_func is not None:
+            raw += self.command.req_pack_func(self.args)
 
         return raw
 
@@ -365,8 +423,8 @@ class EdlCommandRequest:
 
         if command.req_fmt is not None:
             args = struct.unpack(command.req_fmt, raw[1:])
-        elif command.req_func is not None:
-            args = command.req_func(raw[1:])
+        elif command.req_unpack_func is not None:
+            args = command.req_unpack_func(raw[1:])
         else:
             args = tuple()
 
@@ -409,10 +467,10 @@ class EdlCommandResponse:
 
         raw = self.code.value.to_bytes(1, "little")
 
-        if self.command.req_fmt is not None:
+        if self.command.res_fmt is not None:
             raw += struct.pack(self.command.res_fmt, *self.values)
-        elif self.command.req_func is not None:
-            raw += self.command.res_func(self.values)
+        elif self.command.res_pack_func is not None:
+            raw += self.command.res_pack_func(self.values)
 
         return raw
 
@@ -430,10 +488,10 @@ class EdlCommandResponse:
         code = EdlCommandCode(raw[0])
         command = EDL_COMMANDS[code]
 
-        if command.req_fmt is not None:
+        if command.res_fmt is not None:
             values = struct.unpack(command.res_fmt, raw[1:])
-        elif command.req_func is not None:
-            values = command.req_func(raw[1:])
+        elif command.res_unpack_func is not None:
+            values = command.res_unpack_func(raw[1:])
         else:
             values = tuple()
 

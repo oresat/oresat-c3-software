@@ -105,7 +105,10 @@ class EdlService(Service):
             return None  # no responses to invalid packets
 
         if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
-            logger.error("invalid EDL request packet sequence number")
+            logger.error(
+                f"invalid EDL request packet sequence number of {req_packet.seq_num}, shoudl be > "
+                f"{self._edl_sequence_count_obj.value}"
+            )
             return None  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
@@ -145,10 +148,10 @@ class EdlService(Service):
             return
 
         try:
-            res_peacket = EdlPacket(
+            res_packet = EdlPacket(
                 res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
             )
-            res_message = res_peacket.pack(self._hmac_key)
+            res_message = res_packet.pack(self._hmac_key)
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.error(f"EDL response generation raised: {e}")
             return
@@ -194,12 +197,21 @@ class EdlService(Service):
             name = self._node_mgr_service.node_id_to_name[node_id]
             logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
             try:
-                self.node.sdo_write(name, index, subindex, data)
+                if node_id == 1:
+                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = self.node.od[index]
+                    elif not var_index:
+                        obj = self.node.od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    self.node._on_sdo_write(index, subindex, obj, data)  # pylint: disable=W0212
+                else:
+                    self.node.sdo_write(name, index, subindex, data)
                 ret = 0
-            except canopen.sdo.exceptions.SdoError as e:
+            except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
-                e_str = str(e)
-                ret = int(e_str[-10:], 16)  # last 10 chars is always the sdo error code in hex
+                ret = e.code
         elif request.code == EdlCommandCode.CO_SYNC:
             logger.info("EDL sending CANopen SYNC message")
             self.node.send_sync()
@@ -256,6 +268,29 @@ class EdlService(Service):
             ret = request.args[0]
         elif request.code == EdlCommandCode.RX_TEST:
             logger.info("EDL Rx test")
+        elif request.code == EdlCommandCode.CO_SDO_READ:
+            node_id, index, subindex = request.args
+            name = self._node_mgr_service.node_id_to_name[node_id]
+            logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
+            data = b""
+            ecode = 0
+            try:
+                if node_id == 1:
+                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = self.node.od[index]
+                    elif not var_index:
+                        obj = self.node.od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    value = self.node._on_sdo_read(index, subindex, obj)  # pylint: disable=W0212
+                    data = obj.encode_raw(value)
+                else:
+                    data = self.node.sdo_read(name, index, subindex)
+            except canopen.sdo.exceptions.SdoAbortedError as e:
+                logger.error(e)
+                ecode = e.code
+            ret = (ecode, len(data), data)
 
         if ret is not None and not isinstance(ret, tuple):
             ret = (ret,)  # make ret a tuple
@@ -295,6 +330,7 @@ class EdlFileReciever:
         self.last_indication = Indication.NONE
         self.last_pdu_ts = 0.0
         self.send_fin_ts = 0.0
+        self.checksum_matched = False
 
     def reset(self):
         """Reset the EDL file receiver."""
@@ -304,7 +340,8 @@ class EdlFileReciever:
             self.f.close()
             self.f = None
             try:
-                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
+                if len(self.data) == self.file_data_len:
+                    self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
             except (ValueError, FileNotFoundError) as e:
                 logger.error(e)
         self.offset = 0
@@ -313,6 +350,7 @@ class EdlFileReciever:
         self.file_data = b""
         self.file_data_len = 0
         self.last_indication = Indication.NONE
+        self.checksum_matched = False
 
     def _init_recv(self, pdu: MetadataPdu):
         if self.f is None:
@@ -349,6 +387,7 @@ class EdlFileReciever:
         if checksum == pdu.file_checksum:
             condition_code = ConditionCode.FILE_CHECKSUM_FAILURE
             logger.info("file checksum matched")
+            self.checksum_matched = True
         else:
             logger.info("file checksum does not match")
         ack_pdu = AckPdu(

@@ -172,17 +172,28 @@ class EdlCommandShell(Cmd):
             print("invalid node arg")
             return
 
+        od = self.configs.od_db[name]
+
         if args[1].startswith("0x"):
             index = int(args[1], 16)
         else:
-            print("invalid index arg")
-            return
+            try:
+                index = od[args[1]].index
+            except Exception:  # pylint: disable=W0718
+                print("invalid index arg")
+                return
 
         if args[2].startswith("0x"):
             subindex = int(args[2], 16)
         else:
-            print("invalid subindex arg")
-            return
+            try:
+                if isinstance(od[index], canopen.objectdictionary.Variable):
+                    subindex = 0
+                else:
+                    subindex = od[args[1]][args[2]].subindex
+            except Exception:  # pylint: disable=W0718
+                print("invalid subindex arg")
+                return
 
         respone = self._send_packet(EdlCommandCode.CO_SDO_READ, (node_id, index, subindex))
 
@@ -193,7 +204,6 @@ class EdlCommandShell(Cmd):
             print(f"SDO error code: 0x{respone[0]:08X}")
             return
 
-        od = self.configs.od_db[name]
         if isinstance(od[index], canopen.objectdictionary.Variable):
             obj = od[index]
         else:
@@ -234,19 +244,29 @@ class EdlCommandShell(Cmd):
             print("invalid node arg")
             return
 
+        od = self.configs.od_db[name]
+
         if args[1].startswith("0x"):
             index = int(args[1], 16)
         else:
-            print("invalid index arg")
-            return
+            try:
+                index = od[args[1]].index
+            except Exception:  # pylint: disable=W0718
+                print("invalid index arg")
+                return
 
         if args[2].startswith("0x"):
             subindex = int(args[2], 16)
         else:
-            print("invalid subindex arg")
-            return
+            try:
+                if isinstance(od[index], canopen.objectdictionary.Variable):
+                    subindex = 0
+                else:
+                    subindex = od[args[1]][args[2]].subindex
+            except Exception:  # pylint: disable=W0718
+                print("invalid subindex arg")
+                return
 
-        od = self.configs.od_db[name]
         if isinstance(od[index], canopen.objectdictionary.Variable):
             obj = od[index]
         else:

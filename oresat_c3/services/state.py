@@ -4,6 +4,7 @@ C3 State Service
 This handles the main C3 state machine and saving state.
 """
 
+import subprocess
 from time import time
 
 import canopen
@@ -96,6 +97,20 @@ class StateService(Service):
             logger.info("disabling tx")
             self._last_tx_enable_obj.value = 0
 
+    def _reset(self):
+        logger.info("system reset")
+
+        result = subprocess.run(
+            ["systemctl", "stop", "oresat-c3-watchdog"],
+            shell=True,
+            check=True,
+            capture_output=True
+        )
+
+        if result.returncode == 0:
+            logger.error("stopping watchdog app failed, doing a hard reset")
+            self.node.stop(NodeStop.HARD_RESET)
+
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""
 
@@ -135,7 +150,7 @@ class StateService(Service):
         if self.has_edl_timed_out:
             self._c3_state_obj.value = C3State.EDL.value
         elif self.has_reset_timed_out:
-            self.node.stop(NodeStop.HARD_RESET)
+            self._reset()
         elif not self.has_tx_timed_out and self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.BEACON.value
 
@@ -145,7 +160,7 @@ class StateService(Service):
         if self.has_edl_timed_out:
             self._c3_state_obj.value = C3State.EDL.value
         elif self.has_reset_timed_out:
-            self.node.stop(NodeStop.HARD_RESET)
+            self._reset()
         elif self.has_tx_timed_out or not self.is_bat_lvl_good:
             self._c3_state_obj.value = C3State.STANDBY.value
 

@@ -73,6 +73,8 @@ class StateService(Service):
         self._vbatt_bp2_obj = bat_1_rec["pack_2_vbatt"]
 
         self.restore_state()
+        if self._c3_state_obj.value == C3State.EDL:
+            self._c3_state_obj.value = C3State.STANDBY.value
 
         self.node.add_sdo_callbacks("tx_control", "enable", None, self._on_write_tx_enable)
 

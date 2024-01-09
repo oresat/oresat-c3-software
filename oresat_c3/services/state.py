@@ -8,7 +8,7 @@ import subprocess
 from time import time
 
 import canopen
-from olaf import NodeStop, Service, logger, UpdaterState
+from olaf import NodeStop, Service, UpdaterState, logger
 
 from .. import C3State
 from ..drivers.fm24cl64b import Fm24cl64b
@@ -101,7 +101,6 @@ class StateService(Service):
             self._last_tx_enable_obj.value = 0
 
     def _reset(self):
-
         if self.node.od["updater"]["status"].value == UpdaterState.UPDATING:
             return
 

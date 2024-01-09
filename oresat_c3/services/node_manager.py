@@ -338,4 +338,7 @@ class NodeManagerService(Service):
         if value == 0:
             self.opd.disable()
         elif value == 1:
+            if self.opd.status == OpdState.DISABLED:
+                for node in self._data.values():
+                    node.last_enable = time()
             self.opd.enable()

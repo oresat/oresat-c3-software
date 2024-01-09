@@ -73,6 +73,7 @@ class StateService(Service):
         self._vbatt_bp2_obj = bat_1_rec["pack_2_vbatt"]
 
         self.restore_state()
+        self._last_tx_enable_obj.value = 0
         if self._c3_state_obj.value == C3State.EDL:
             self._c3_state_obj.value = C3State.STANDBY.value
 

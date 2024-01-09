@@ -9,15 +9,17 @@ from olaf import (
     Gpio,
     GpioError,
     ServiceState,
+    UpdaterState,
     app,
     logger,
     olaf_run,
     olaf_setup,
     render_olaf_template,
     rest_api,
+    set_cpufreq_gov,
 )
 
-from . import __version__
+from . import C3State, __version__
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
@@ -69,16 +71,37 @@ def get_hw_id(mock: bool) -> int:
 def watchdog():
     """Pet the watchdog app (which pets the watchdog circuit)."""
 
+    performance = True
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    loop = 0
 
     while True:
+        time.sleep(1)
+        loop += 1
+
         failed = 0
+        flight_mode = app.od["flight_mode"].value
+
         for service in app._services:  # pylint: disable=W0212
             failed += int(service.status == ServiceState.FAILED)
-        if not app.od["flight_mode"].value or failed == 0:
+        if loop % 10 == 0 and (not flight_mode or failed == 0):
             logger.debug("watchdog pet")
             udp_socket.sendto(b"PET", ("localhost", 20001))
-            time.sleep(10)
+
+        if not flight_mode:
+            continue
+
+        updating = app.od["updater"]["status"].value == UpdaterState.UPDATING
+        edl = app.od["status"].value == C3State.EDL
+
+        if not performance and (updating or edl):
+            logger.info("setting cpufreq governor to performance mode")
+            set_cpufreq_gov("performance")
+            performance = True
+        elif performance and not updating and not edl:
+            logger.info("setting cpufreq governor to powersave mode")
+            set_cpufreq_gov("powersave")
+            performance = False
 
 
 def main():

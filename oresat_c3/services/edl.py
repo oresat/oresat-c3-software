@@ -286,7 +286,16 @@ class EdlService(Service):
                     value = self.node._on_sdo_read(index, subindex, obj)  # pylint: disable=W0212
                     data = obj.encode_raw(value)
                 else:
-                    data = self.node.sdo_read(name, index, subindex)
+                    value = self.node.sdo_read(name, index, subindex)
+                    od = self.node.od_db[name]
+                    var_index = isinstance(od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = od[index]
+                    elif not var_index:
+                        obj = od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    data = obj.encode_raw(value)
             except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
                 ecode = e.code

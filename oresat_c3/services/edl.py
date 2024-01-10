@@ -77,14 +77,19 @@ class EdlService(Service):
         edl_rec = node.od["edl"]
         tx_rec = node.od["tx_control"]
         self._flight_mode_obj = node.od["flight_mode"]
-        active_key = edl_rec["active_crypto_key"].value
-        self._hmac_key = edl_rec[f"crypto_key_{active_key}"].value
         self._seq_num = edl_rec["sequence_count"].value
         self._tx_enable_obj = tx_rec["enable"]
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+
+    def _get_hmac_key(self) -> bytes:
+        """GEt the active HMAC key."""
+
+        edl_rec = self.node.od["edl"]
+        active_key = edl_rec["active_crypto_key"].value
+        return edl_rec[f"crypto_key_{active_key}"].value
 
     def _upack_last_recv(self) -> Union[EdlPacket, None]:
         req_packet = None
@@ -96,7 +101,7 @@ class EdlService(Service):
 
         try:
             req_packet = EdlPacket.unpack(
-                req_message, self._hmac_key, not self._flight_mode_obj.value
+                req_message, self._get_hmac_key(), not self._flight_mode_obj.value
             )
         except Exception as e:  # pylint: disable=W0718
             self._edl_rejected_count_obj.value += 1
@@ -151,7 +156,7 @@ class EdlService(Service):
             res_packet = EdlPacket(
                 res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
             )
-            res_message = res_packet.pack(self._hmac_key)
+            res_message = res_packet.pack(self._get_hmac_key())
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.error(f"EDL response generation raised: {e}")
             return

@@ -348,11 +348,6 @@ class EdlFileReciever:
         if self.f is not None:
             self.f.close()
             self.f = None
-            try:
-                if len(self.data) == self.file_data_len:
-                    self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
-            except (ValueError, FileNotFoundError) as e:
-                logger.error(e)
         self.offset = 0
         self.last_nak = 0
         self.file_name = ""
@@ -383,14 +378,6 @@ class EdlFileReciever:
         return None
 
     def _eof(self, pdu: EofPdu) -> AckPdu:
-        if self.f is not None:
-            self.f.close()
-            self.f = None
-            try:
-                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
-            except (ValueError, FileNotFoundError) as e:
-                logger.error(e)
-            logger.info(f"{self.file_name} {self.file_data_len} ended")
         condition_code = ConditionCode.NO_ERROR
         checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
         if checksum == pdu.file_checksum:
@@ -399,6 +386,17 @@ class EdlFileReciever:
             self.checksum_matched = True
         else:
             logger.info("file checksum does not match")
+
+        if self.f is not None and self.checksum_matched:
+            self.f.close()
+            self.f = None
+            try:
+                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
+                logger.info(f"file {self.file_name} moved to fwrite cache")
+            except (ValueError, FileNotFoundError) as e:
+                logger.error(e)
+            logger.info(f"{self.file_name} {self.file_data_len} ended")
+
         ack_pdu = AckPdu(
             directive_code_of_acked_pdu=DirectiveType.EOF_PDU,
             condition_code_of_acked_pdu=condition_code,
@@ -436,7 +434,7 @@ class EdlFileReciever:
         if req_pdu is None and self.last_indication == Indication.NONE:
             return None  # nothing to do
 
-        if time() > self.last_pdu_ts + 5 and self.last_indication != Indication.NONE:
+        if time() > self.last_pdu_ts + 10 and self.last_indication != Indication.NONE:
             self.reset()
             return None
 

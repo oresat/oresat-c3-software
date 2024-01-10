@@ -32,7 +32,7 @@ def send_thread(address: tuple, hmac_key: bytes, seq_num: int, delay: float, ver
         seq_num &= 0xFF_FF_FF_FF
 
         values = (loop,)
-        print(f"Request PING: {values}")
+        print(f"Request PING: {values} | seq_num: {seq_num}")
 
         try:
             req = EdlCommandRequest(EdlCommandCode.PING, values)

@@ -293,28 +293,30 @@ def main():
     seq_num = args.sequence_number
     delay = args.loop_delay / 1000
     while True:
-        loop_num += 1
+        try:
+            loop_num += 1
 
-        if entity.last_indication == Indication.TRANSACTION_FINISHED:
+            if entity.last_indication == Indication.TRANSACTION_FINISHED:
+                break
+
+            req_pdu = entity.loop()
+
+            if req_pdu is not None:
+                seq_num += 1
+
+            if args.bad_connection and loop_num % random.randint(1, 5):
+                continue  # simulate dropped packets
+
+            if req_pdu is not None:
+                packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
+                req_message = packet.pack(hmac_key)
+                edl_uplink_socket.sendto(req_message, uplink_address)
+            sleep(delay)
+        except KeyboardInterrupt:
             break
 
-        req_pdu = entity.loop()
-
-        if req_pdu is not None:
-            seq_num += 1
-
-        if args.bad_connection and loop_num % random.randint(1, 5):
-            continue  # simulate dropped packets
-
-        if req_pdu is not None:
-            packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
-            req_message = packet.pack(hmac_key)
-            edl_uplink_socket.sendto(req_message, uplink_address)
-        sleep(delay)
+    print(f"last sequence number: {seq_num}")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        pass
+    main()

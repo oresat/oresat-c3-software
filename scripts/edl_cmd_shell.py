@@ -46,7 +46,7 @@ class EdlCommandShell(Cmd):
         self._downlink_socket.settimeout(self._timeout)
 
     def _send_packet(self, code: EdlCommandCode, args: Union[tuple, None] = None) -> tuple:
-        print(f"Request {code.name}: {args}")
+        print(f"Request {code.name}: {args} | seq_num: {self._seq_num}")
 
         res_packet = None
         try:
@@ -64,6 +64,7 @@ class EdlCommandShell(Cmd):
                 res_packet_raw = self._downlink_socket.recv(1024)
                 # parse respone
                 res_packet = EdlPacket.unpack(res_packet_raw, self._hmac_key)
+            self._seq_num += 1
         except Exception as e:  # pylint: disable=W0718
             print(e)
             return tuple()
@@ -475,6 +476,8 @@ def main():
         shell.cmdloop()
     except KeyboardInterrupt:
         pass
+
+    print(f"last sequence number: {shell._seq_num}")  # pylint: disable=W0212
 
 
 if __name__ == "__main__":

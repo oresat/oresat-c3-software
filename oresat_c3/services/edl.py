@@ -119,7 +119,7 @@ class EdlService(Service):
         self._last_edl_obj.value = int(time())
 
         if self._flight_mode_obj.value:
-            self._edl_sequence_count_obj.value += 1
+            self._edl_sequence_count_obj.value = req_packet.seq_num
             self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
 
         return req_packet

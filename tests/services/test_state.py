@@ -89,6 +89,7 @@ class TestState(unittest.TestCase):
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.node._reset = NodeStop.SOFT_RESET
+        self.service._last_edl_obj.value = 0
 
         # test STANDBY -> STANDBY; battery level is too low for deployment and tx disabled
         self.service._standby()

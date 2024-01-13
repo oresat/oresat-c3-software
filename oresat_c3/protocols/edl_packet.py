@@ -44,7 +44,7 @@ class EdlVcid(IntEnum):
 
 
 def crc16_bytes(data: bytes) -> bytes:
-    """Helper function to generate the crc16 of a message as bytes"""
+    """Helper function to generate the CRC16 of a message as bytes"""
 
     return binascii.crc_hqx(data, 0).to_bytes(2, "little")
 
@@ -62,7 +62,7 @@ class EdlPacket:
     Only packs and unpacks the packet (does not process/run it).
     """
 
-    SPACECRAFT_ID = 0x4F53  # aka "OS" in ascii
+    SPACECRAFT_ID = 0x4F53  # aka "OS" in ASCII
 
     PRIMARY_HEADER_LEN = 7
     SEQ_NUM_LEN = 4

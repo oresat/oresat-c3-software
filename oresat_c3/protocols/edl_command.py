@@ -1,10 +1,10 @@
 """
 Anything dealing with packing and unpacking EDL (Engineering Data Link) C3 command packets.
 
-These package are defined as 1 octect for code and X octects for the data.
+These package are defined as 1 octet for code and X octets for the data.
 
 The EDL code is used to identify the message the rest of message is for argument for
-request, and values for responeses.
+request, and values for responses.
 """
 
 import struct
@@ -230,7 +230,7 @@ class EdlCommandCode(IntEnum):
     Parameters
     ----------
     time: uint32
-        The unix time in seconds.
+        The Unix time in seconds.
 
     Returns
     -------
@@ -251,7 +251,7 @@ class EdlCommandCode(IntEnum):
 
     BEACON_PING = auto()
     """
-    C3 will response with a beacon reguardless of tx state.
+    C3 will response with a beacon regardless of tx state.
     """
 
     PING = auto()

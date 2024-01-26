@@ -25,6 +25,7 @@ from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
+from .subsystems.rtc import set_system_time_to_rtc_time
 
 
 @rest_api.app.route("/beacon")
@@ -106,6 +107,8 @@ def watchdog():
 
 def main():
     """OreSat C3 app main."""
+
+    set_system_time_to_rtc_time()
 
     path = os.path.dirname(os.path.abspath(__file__))
 

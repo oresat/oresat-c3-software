@@ -108,7 +108,10 @@ class StateService(Service):
         logger.info("system reset")
 
         result = subprocess.run(
-            ["systemctl", "stop", "oresat-c3-watchdog"], shell=True, check=True, capture_output=True
+            ["systemctl", "stop", "oresat-c3-watchdog"],
+            shell=True,
+            check=False,
+            capture_output=True,
         )
 
         if result.returncode == 0:
@@ -245,7 +248,7 @@ class StateService(Service):
     def has_reset_timed_out(self) -> bool:
         """bool: Helper property to check if the reset timeout has been reached."""
 
-        return monotonic() >= self._reset_timeout_obj.value
+        return monotonic() > self._reset_timeout_obj.value
 
     def store_state(self):
         """Store the state in F-RAM."""

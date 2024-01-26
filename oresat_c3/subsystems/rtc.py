@@ -6,37 +6,23 @@ from datetime import datetime, timezone
 from fcntl import ioctl
 from time import CLOCK_REALTIME, clock_settime, time
 
-
-class RtcError(Exception):
-    """Base exception for RTC functions."""
-
-
-class RtcNotFoundError(RtcError, FileNotFoundError):
-    """RTC was not found exception."""
-
-
-class RtcPermissionError(RtcError, PermissionError):
-    """RTC time cannot be changed due to Permissions."""
+from olaf import logger
 
 
 def get_rtc_time() -> float:
     """
     Get the RTC time.
 
-    Raises
-    ------
-    RtcNotFoundError
-        No RTC found.
-
     Returns
     -------
     float:
-        The RTC time.
+        The RTC time or -1.0 on error.
     """
 
     rtc_time_path = "/sys/class/rtc/rtc0/since_epoch"
     if not os.path.exists(rtc_time_path):
-        raise RtcNotFoundError("RTC does not exist")
+        logger.error("RTC does not exist")
+        return -1.0
 
     with open(rtc_time_path, "r") as f:
         ts = float(f.read())
@@ -54,20 +40,15 @@ def set_rtc_time(ts: float):
     -----------
     float: ts
         The timestamp to set the RTC to.
-
-    Raises
-    ------
-    RtcNotFoundError
-        No RTC found.
-    RtcPermissionError
-        Not running as root.
     """
 
     rtc_path = "/dev/rtc"
     if not os.path.exists(rtc_path):
-        raise RtcNotFoundError("RTC does not exist")
+        logger.error("RTC does not exist")
+        return
     if os.geteuid() != 0:
-        raise RtcPermissionError("failed to set RTC time due to permission error")
+        logger.error("failed to set RTC time due to permission error")
+        return
 
     if ts < 946713600:  # Januay 1, 2000 midnight
         values = (0, 0, 0, 1, 0, 100, 0, 0, 0)
@@ -83,34 +64,24 @@ def set_rtc_time(ts: float):
 def set_rtc_time_to_system_time():
     """
     Set the RTC time to the system time.
-
-    Raises
-    ------
-    RtcNotFoundError
-        No RTC found.
-    RtcPermissionError
-        Not running as root.
     """
 
     if os.geteuid() != 0:
-        raise RtcPermissionError("failed to set RTC time from system time due to permission error")
-
-    set_rtc_time(time())
+        logger.error("failed to set RTC time from system time due to permission error")
+    else:
+        set_rtc_time(time())
 
 
 def set_system_time_to_rtc_time():
     """
     Set the system time to the RTC time.
-
-    Raises
-    ------
-    RtcNotFoundError
-        No RTC found.
-    RtcPermissionError
-        Not running as root.
     """
 
     if os.geteuid() != 0:
-        raise RtcPermissionError("failed to set system time from RTC time due to permission error")
-
-    clock_settime(CLOCK_REALTIME, get_rtc_time())
+        logger.error("failed to set system time from RTC time due to permission error")
+    else:
+        ts = get_rtc_time()
+        if ts < 0:
+            logger.error("RTC does not exist")
+        else:
+            clock_settime(CLOCK_REALTIME, ts)

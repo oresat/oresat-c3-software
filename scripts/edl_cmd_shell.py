@@ -422,46 +422,6 @@ def main():
     if args.hmac:
         if len(args.hmac) != 64:
             print("Invalid hmac, must be hex string of 32 bytes")
-
-
-def main():
-    """Main for EDL shell script"""
-    parser = ArgumentParser("Send a EDL command via socket")
-    parser.add_argument(
-        "-o", "--host", default="localhost", help="address to use, default is localhost"
-    )
-    parser.add_argument(
-        "-u",
-        "--uplink-port",
-        default=10025,
-        type=int,
-        help="port to use for the uplink, default is 10025",
-    )
-    parser.add_argument(
-        "-d",
-        "--downlink-port",
-        default=10016,
-        type=int,
-        help="port to use for the downlink, default is 10016",
-    )
-    parser.add_argument(
-        "-n",
-        "--sequence-number",
-        type=int,
-        default=0,
-        help="edl sequence number, default 0",
-    )
-    parser.add_argument(
-        "-m",
-        "--hmac",
-        default="",
-        help="edl hmac, must be 32 bytes, default all zero",
-    )
-    args = parser.parse_args()
-
-    if args.hmac:
-        if len(args.hmac) != 64:
-            print("Invalid hmac, must be hex string of 32 bytes")
             sys.exit(1)
         else:
             hmac_key = bytes.fromhex(args.hmac)

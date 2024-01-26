@@ -286,7 +286,7 @@ class StateService(Service):
             offset += size
 
     def clear_state(self):
-        """Clear the state from F-RAM, key will be stored again after clear."""
+        """Clear the rtc time and state from F-RAM; keys will be stored again after clear."""
 
         self._fram.clear()
 
@@ -304,3 +304,5 @@ class StateService(Service):
                 raw_len = len(raw)
 
             offset += raw_len
+
+        set_rtc_time(0)

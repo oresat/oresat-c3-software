@@ -32,6 +32,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
+from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
@@ -261,7 +262,10 @@ class EdlService(Service):
             logger.info(f"EDL getting the status for OPD node {name} (0x{opd_addr:02X})")
             ret = self._node_mgr_service.opd[name].status.value
         elif request.code == EdlCommandCode.RTC_SET_TIME:
-            logger.info(f"EDL setting the RTC to {request.args[0]}")
+            ts = request.args[0]
+            logger.info(f"EDL setting the RTC time to {ts}")
+            set_rtc_time(ts)
+            set_system_time_to_rtc_time()
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info("EDL sending time sync TPDO")
             self.node.send_tpdo(0)

@@ -383,6 +383,30 @@ class EdlCommandShell(Cmd):
 
         self._send_packet(EdlCommandCode.OPD_ENABLE, (opd_addr, enable))
 
+    def help_rtc_set_time(self):
+        """Print help message for rtc_set_time command."""
+        print("rtc_set_time <number>")
+        print(
+            "  where <number> is unix time in seconds or the word 'now' to use the local system "
+            "time"
+        )
+
+    def do_rtc_set_time(self, arg: str):
+        """Do the rtc_set_time command."""
+
+        args = arg.split(" ")
+        if len(args) != 1:
+            self.help_rtc_set_time()
+            return
+
+        arg0 = args[0]
+        if arg0 in ["", "now"]:
+            value = int(time())
+        else:
+            value = int(arg0)
+
+        self._send_packet(EdlCommandCode.RTC_SET_TIME, (value,))
+
 
 def main():
     """Main for EDL shell script"""

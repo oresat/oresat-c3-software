@@ -3,7 +3,7 @@
 import zlib
 from enum import IntEnum, auto
 from pathlib import Path
-from time import time
+from time import monotonic, time
 from typing import Any, Union
 
 import canopen
@@ -439,12 +439,12 @@ class EdlFileReciever:
         if req_pdu is None and self.last_indication == Indication.NONE:
             return None  # nothing to do
 
-        if time() > self.last_pdu_ts + 10 and self.last_indication != Indication.NONE:
+        if monotonic() > self.last_pdu_ts + 10 and self.last_indication != Indication.NONE:
             self.reset()
             return None
 
         if req_pdu:
-            self.last_pdu_ts = time()
+            self.last_pdu_ts = monotonic()
 
         if self.last_indication == Indication.NONE:
             if isinstance(req_pdu, MetadataPdu):
@@ -462,19 +462,19 @@ class EdlFileReciever:
             elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
                 res_pdu = self._make_nak(req_pdu)
         elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
-            if self.last_pdu_ts > time() + 10:
+            if self.last_pdu_ts > monotonic() + 10:
                 self.reset()
             elif isinstance(req_pdu, EofPdu):
                 res_pdu = self._eof(req_pdu)
                 self.last_indication = Indication.EOF_RECV
-                self.send_fin_ts = time() + self.FIN_DELAY_S
+                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
             elif isinstance(req_pdu, AckPdu):
                 logger.info("fin ack!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 self.last_indication = Indication.TRANSACTION_FINISHED
                 if req_pdu.directive_code_of_acked_pdu == DirectiveType.FINISHED_PDU:
                     self.reset()
-                self.send_fin_ts = time() + self.FIN_DELAY_S
-            elif self.send_fin_ts != 0.0 and self.send_fin_ts > time():
+                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
+            elif self.send_fin_ts != 0.0 and self.send_fin_ts > monotonic():
                 res_pdu = FinishedPdu(
                     pdu_conf=self.PDU_CONF, params=FinishedParams.success_params()
                 )

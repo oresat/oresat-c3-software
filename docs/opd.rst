@@ -3,8 +3,8 @@ OPD (OreSat Power Domain)
 
 The OPD allows the C3 to turn other cards on or off, with the exception of the solar cards. The
 solar cards are directly power off the output their solar panels and not the batteries. Yes, the
-battery cards are also on the OPD, as the batteries will work reguardless of the whether the card
-is enable or not. Enabling the battery card(s), allows for telemetery from the battery card; i.e.; 
+battery cards are also on the OPD, as the batteries will work regardless of the whether the card
+is enable or not. Enabling the battery card(s), allows for telemetry from the battery card; i.e.;
 voltage level, charge level, etc.
 
 How It Works
@@ -47,7 +47,7 @@ On top of the standard 3 pins, the STM32-based cards also utilizes pins for boot
 enabling a UART connection.
 
 - **Boot Pin**: Is an output pin. When set high, the card will boot off of the eMMC; when set low,
-  the card wil boot off of the SD card.
+  the card will boot off of the SD card.
 - **UART ENABLE Pin**: Is a output pin. When set high, the cards will be connected to the C3's
   UART bus. This will allow the cards eMMC to be reflashed.
 

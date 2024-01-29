@@ -1,7 +1,7 @@
 Engineering Data Link
 =====================
 
-.. note:: Octets are used instead of bytes as octets are garunteed to be 8 bits and bytes are not.
+.. note:: Octets are used instead of bytes as octets are guaranteed to be 8 bits and bytes are not.
 
 The main form of communication between OreSat and UniClOGS is thru the EDL (Engineering Data Link).
 
@@ -19,8 +19,8 @@ The EDL has Uplink and Downlink.
       oresat -.-> |EDL UHF Downlink| uniclogs
 
 
-EDL Packet Stucture
--------------------
+EDL Packet Structure
+--------------------
 
 The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
 
@@ -42,15 +42,15 @@ USLP Primary Header
 
 - **Transfer Frame Version Number**: 4 bits. Always ``"C"`` in ASCII.
 - **Space Craft ID**: 16 bits: Always ``"OS"`` in ASCII (short for OreSat) .
-- **Source or Destination Identifer**: 1 bit. Source (aka ``0b1``) is for UniClOGS and destination (aka
-  ``0b0``) is for OreSat.
+- **Source or Destination Identifier**: 1 bit. Source (aka ``0b1``) is for UniClOGS and destination
+  (aka ``0b0``) is for OreSat.
 - **Virtual Channel ID`**: 6 bits.
    - Virtual channel ``0b000000`` is used for C3 commands.
    - Virtual channel ``0b000001`` is used for file transfer.
 - **MAP ID: 6 bits**. Not used by OreSat (will always be ``0b000000``).
 - **End of Frame Primary Header Flag**: 1 bit. Always ``0b0``.
 - **Frame Length**: 16 bits. Length of entire packet **minus** one, in octets.
-- **Bypass / Sequnece Control Flag**: 1 bit. Is set to ``0b0`` to mark the packet is sequence
+- **Bypass / Sequence Control Flag**: 1 bit. Is set to ``0b0`` to mark the packet is sequence
   controlled QoS will Frame Accepts Check of the FARM will not be bypassed.
 - **Protocol Control Command Flag**: 1 bit. Will be set to ``0b0`` to mark the TFDF is user data
   and not protocol controlled information, aka the packet contains a EDL payload.
@@ -63,7 +63,7 @@ Sequence Number
 
 The sequence number is used to prevent repeat attacks. Is a 32-bit unsigned integer.
 
-On every received packet, the C3 will increment its count. Any EDL packet recived must have a
+On every received packet, the C3 will increment its count. Any EDL packet received must have a
 higher number that the C3 internal count, otherwise the C3 will ignore it. Number rolls over at
 ``FF FF FF FF``.
 
@@ -75,7 +75,7 @@ USLP Data Field Header
 
 - TFDZ Construction Rules: 3 bits. Set to ``0b111`` to mark variable length TFDZ that is not
   segmented.
-- UPID (USLP Protocol Identifer): 5 bits. Set to ``0b000101`` to mark the protocol in the TFDZ
+- UPID (USLP Protocol Identifier): 5 bits. Set to ``0b000101`` to mark the protocol in the TFDZ
   is mission specific.
 
   - See https://sanaregistry.org/r/uslp_protocol_id/ for all definitions.
@@ -89,13 +89,13 @@ no payload, there is no reason for the EDL packet.
 HMAC
 ****
 
-32 octets HMAC used for authenication. If the HMAC fails, the packet will be rejected and no response
+32 octets HMAC used for authentication. If the HMAC fails, the packet will be rejected and no response
 will be sent back. For HMAC basics, see https://en.wikipedia.org/wiki/HMAC.
 
-FECF (Fram Error Control Field)
-*******************************
+FECF (Frame Error Control Field)
+********************************
 
-For packet checking. Will be CRC16 (Cylic rendundancy check - length 16 bits) checksum of the rest
+For packet checking. Will be CRC16 (Cyclic redundancy check - length 16 bits) checksum of the rest
 of the packet. For CRC basics, see https://en.wikipedia.org/wiki/Cyclic_redundancy_check.
 
 EDL C3 Command Packet
@@ -112,7 +112,7 @@ arbitrary octets for data.
 EDL File Transfer Packet
 ------------------------
 
-The EDL uses CCSDS File Delivery Protocol (CFDP) for file transfer. The CSSDS PDU packets will be
+The EDL uses CCSDS File Delivery Protocol (CFDP) for file transfer. The CCSDS PDU packets will be
 used as the payload of the main USLP packet.
 
 References

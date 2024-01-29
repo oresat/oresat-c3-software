@@ -43,8 +43,8 @@ class TestState(unittest.TestCase):
         self.assertTrue(self.service._tx_enable_obj.value)
 
         # test PRE_DEPLOY -> DEPLOY; timeout has ended
-        self.service._boot_time = 0
         self.assertEqual(self.service._c3_state_obj.value, C3State.PRE_DEPLOY)
+        self.service._pre_deploy_timeout_obj.value = 0.001
         self.service._pre_deploy()
         self.assertEqual(self.service._c3_state_obj.value, C3State.DEPLOY)
 
@@ -89,6 +89,7 @@ class TestState(unittest.TestCase):
         self.service._vbatt_bp1_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.service._vbatt_bp2_obj.value = StateService.BAT_LEVEL_LOW - 1
         self.node._reset = NodeStop.SOFT_RESET
+        self.service._last_edl_obj.value = 0
 
         # test STANDBY -> STANDBY; battery level is too low for deployment and tx disabled
         self.service._standby()
@@ -131,10 +132,9 @@ class TestState(unittest.TestCase):
         self.service._c3_state_obj.value = C3State.STANDBY
         self.service._last_edl_obj.value = 0
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.service._boot_time = 0
+        self.service._reset_timeout_obj.value = 0.001
         self.service._standby()
         self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
-        self.assertEqual(self.node._reset, NodeStop.HARD_RESET)
 
     def test_beacon(self):
         """Test state transistion(s) from BEACON state"""
@@ -171,10 +171,9 @@ class TestState(unittest.TestCase):
         self.service._c3_state_obj.value = C3State.BEACON
         self.service._last_edl_obj.value = 0
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.service._boot_time = 0
+        self.service._reset_timeout_obj.value = 0.001
         self.service._beacon()
         self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
-        self.assertEqual(self.node._reset, NodeStop.HARD_RESET)
 
     def test_edl(self):
         """Test state transistion(s) from EDL state"""

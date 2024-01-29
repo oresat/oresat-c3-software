@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+  </style>
+  <a>Active Key:</a>
+  <select id="activeKey" onchange="setActiveNumber()">
+    <option>0</option>
+    <option>1</option>
+    <option>2</option>
+    <option>3</option>
+  </select>
+  <br/>
+  <br/>
+  <table>
+    <thead>
+      <tr>
+        <td>Number</td>
+        <td>Hex Value (32 bytes)</td>
+        <td>Set</td>
+      </tr>
+    </thead>
+    <tbody>
+        <td>0</td>
+        <td><input type="text" maxlength=64 size=64 id="key0Value"></input></td>
+        <td><button id="key0Button" onclick="setKey(0)">Set</button></td>
+    </tbody>
+    <tbody>
+        <td>1</td>
+        <td><input type="text" maxlength=64 size=64 id="key1Value"></input></td>
+        <td><button id="key1Button" onclick="setKey(1)">Set</button></td>
+    </tbody>
+    <tbody>
+        <td>2</td>
+        <td><input type="text" maxlength=64 size=64 id="key2Value"></input></td>
+        <td><button id="key2Button" onclick="setKey(2)">Set</button></td>
+    </tbody>
+    <tbody>
+        <td>3</td>
+        <td><input type="text" maxlength=64 size=64 id="key3Value"></input></td>
+        <td><button id="key3Button" onclick="setKey(3)">Set</button></td>
+    </tbody>
+  </table>
+  <script>
+    async function setActiveNumber() {
+      const value = document.getElementById("activeKey").selectedIndex;
+      await writeValue("edl", "active_crypto_key", value);
+    }
+
+    async function setKey(number) {
+      const value = document.getElementById(`key${number}Value`).value;
+      const raw = hexStringToBase64(value);
+      await writeValue("edl", `crypto_key_${number}`, raw);
+    }
+
+    function base64ToHexString(base64String) {
+      var raw = atob(base64String);
+      let hex = "";
+      for (var i = 0; i < raw.length; i++) {
+        hex += ('00' + raw.charCodeAt(i).toString(16)).slice(-2);
+      }
+      return hex;
+    }
+
+    function hexStringToBase64(hexstring) {
+      return btoa(hexstring.match(/\w{2}/g).map(function(a) {
+          return String.fromCharCode(parseInt(a, 16));
+      }).join(""));
+    }
+
+    async function getKeys() {
+      let obj, hexString;
+
+      obj = await readValue("edl", "active_crypto_key");
+      document.getElementById("activeKey").selectedIndex = obj.value;
+
+      obj = await readValue("edl", "crypto_key_0");
+      hexString = base64ToHexString(obj.value);
+      document.getElementById("key0Value").value = hexString;
+
+      obj = await readValue("edl", "crypto_key_1");
+      hexString = base64ToHexString(obj.value);
+      document.getElementById("key1Value").value = hexString;
+
+      obj = await readValue("edl", "crypto_key_2");
+      hexString = base64ToHexString(obj.value);
+      document.getElementById("key2Value").value = hexString;
+
+      obj = await readValue("edl", "crypto_key_3");
+      hexString = base64ToHexString(obj.value);
+      document.getElementById("key3Value").value = hexString;
+    }
+
+    getKeys();
+  </script>
+{% endblock %}

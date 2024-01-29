@@ -72,9 +72,12 @@ class BeaconService(Service):
     def send(self):
         """Send a beacon now."""
 
+        logger.debug("beacon")
+
         payload = bytes()
         for obj in self._beacon_def:
-            payload += obj.encode_raw(obj.value)
+            value = self.node._on_sdo_read(obj.index, obj.subindex, obj)  # pylint: disable=W0212
+            payload += obj.encode_raw(value)
         payload += zlib.crc32(payload, 0).to_bytes(4, "little")
 
         packet = ax25_pack(

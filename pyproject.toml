@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "bitstring",
     "oresat-configs",
-    "oresat-olaf>=3.0.0",
+    "oresat-olaf>=3.3.0",
     "smbus2",
     "spacepackets",
 ]
@@ -33,7 +33,7 @@ oresat-c3 = "oresat_c3.__main__:main"
 version = {attr = "oresat_c3.__version__"}
 
 [tool.setuptools.packages.find]
-exclude = ["docs*", "tests*"]
+exclude = ["docs*", "tests*", "scripts*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html"]
@@ -61,9 +61,10 @@ linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
 # R0902:    Too many instance attributes
 # R0913:    Too many arguments
 # W0707:    Consider explicitly re-raising
-# R1732:    Consider using 'with' for resource-allocating operations 
+# R1732:    Consider using 'with' for resource-allocating operations
 # R0903:    Too few public methods
-ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R0902,R0913,W0707,R1732,R0903"
+# R0904:    Too many public methods
+ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R0902,R0913,W0707,R1732,R0903,R0904"
 max_line_length = 100
 
 [[tool.pylama.files]]

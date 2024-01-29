@@ -75,21 +75,24 @@ def ax25_pack(
         raise Ax25Error("pid must fit into a uint8")
 
     # callsigns must be 6 chars, add trailing spaces as padding
-    src_callsign += " " * (AX25_CALLSIGN_LEN - len(src_callsign))
     dest_callsign += " " * (AX25_CALLSIGN_LEN - len(dest_callsign))
+    src_callsign += " " * (AX25_CALLSIGN_LEN - len(src_callsign))
 
     # move ssid to bits 4-1
-    src_ssid <<= 1
     dest_ssid <<= 1
+    src_ssid <<= 1
 
     # set reserve bits
     reserve_bits = 0b0110_0000
-    src_ssid |= reserve_bits
     dest_ssid |= reserve_bits
+    src_ssid |= reserve_bits
 
     # set the c-bits
-    src_ssid |= int(response) << 7
     dest_ssid |= int(command) << 7
+    src_ssid |= int(response) << 7
+
+    # set end of address bit
+    src_ssid |= 1
 
     # make AX25 packet header
     # callsigns are bitshifted by 1

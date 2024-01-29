@@ -66,8 +66,8 @@ class NodeManagerService(Service):
 
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 5
-    _STM32_BOOT_TIMEOUT = 5
-    _OCTAVO_BOOT_TIMEOUT = 30
+    _STM32_BOOT_TIMEOUT = 10
+    _OCTAVO_BOOT_TIMEOUT = 90
     _HB_TIMEOUT = 5
 
     # opd hardware constants
@@ -133,7 +133,7 @@ class NodeManagerService(Service):
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
         for name in self._data:
-            if self._data[name].opd_address == 0:
+            if self._data[name].node_id == 0:
                 continue  # not a CANopen node
             self.node.add_sdo_callbacks(
                 "node_status",
@@ -338,4 +338,7 @@ class NodeManagerService(Service):
         if value == 0:
             self.opd.disable()
         elif value == 1:
+            if self.opd.status == OpdState.DISABLED:
+                for node in self._data.values():
+                    node.last_enable = time()
             self.opd.enable()

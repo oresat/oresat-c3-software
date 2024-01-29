@@ -49,6 +49,9 @@ class RadiosService(Service):
         self._uhf_enable_gpio = Gpio("UHF_ENABLE", mock_hw)
         self._lband_enable_gpio = Gpio("LBAND_ENABLE", mock_hw)
 
+        # si41xx synth info
+        self._relock_count = 0
+
         # beacon downlink: UDP client
         logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
         self._beacon_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -78,6 +81,8 @@ class RadiosService(Service):
             self.enable()
         if not self.is_si41xx_locked:
             logger.error("si41xx unlocked, resetting lband synth")
+            self._relock_count += 1
+            self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
             self._si41xx.stop()
             self._si41xx.start()
         recv = self._recv_edl_request()
@@ -98,6 +103,8 @@ class RadiosService(Service):
         self._lband_enable_gpio.high()
         self.uhf_tot_clear()
         self._si41xx.start()
+        self._relock_count += 1
+        self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
         if not self._mock_hw:
             self.node.daemons["uhf"].start()
             self.node.daemons["lband"].start()

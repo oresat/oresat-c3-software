@@ -3,7 +3,7 @@
 import zlib
 from enum import IntEnum, auto
 from pathlib import Path
-from time import time
+from time import monotonic, time
 from typing import Any, Union
 
 import canopen
@@ -32,6 +32,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
+from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
@@ -77,14 +78,19 @@ class EdlService(Service):
         edl_rec = node.od["edl"]
         tx_rec = node.od["tx_control"]
         self._flight_mode_obj = node.od["flight_mode"]
-        active_key = edl_rec["active_crypto_key"].value
-        self._hmac_key = edl_rec[f"crypto_key_{active_key}"].value
         self._seq_num = edl_rec["sequence_count"].value
         self._tx_enable_obj = tx_rec["enable"]
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+
+    def _get_hmac_key(self) -> bytes:
+        """GEt the active HMAC key."""
+
+        edl_rec = self.node.od["edl"]
+        active_key = edl_rec["active_crypto_key"].value
+        return edl_rec[f"crypto_key_{active_key}"].value
 
     def _upack_last_recv(self) -> Union[EdlPacket, None]:
         req_packet = None
@@ -95,21 +101,26 @@ class EdlService(Service):
         req_message = self._radios_service.recv_queue.pop()
 
         try:
-            req_packet = EdlPacket.unpack(req_message, self._hmac_key, self._flight_mode_obj.value)
+            req_packet = EdlPacket.unpack(
+                req_message, self._get_hmac_key(), not self._flight_mode_obj.value
+            )
         except Exception as e:  # pylint: disable=W0718
             self._edl_rejected_count_obj.value += 1
             self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
-            return req_packet  # no responses to invalid packets
+            return None  # no responses to invalid packets
 
-        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_rejected_count_obj.value:
-            logger.error("invalid EDL request packet sequence number")
-            return req_packet  # no responses to invalid packets
+        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
+            logger.error(
+                f"invalid EDL request packet sequence number of {req_packet.seq_num}, shoudl be > "
+                f"{self._edl_sequence_count_obj.value}"
+            )
+            return None  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
 
         if self._flight_mode_obj.value:
-            self._edl_sequence_count_obj.value += 1
+            self._edl_sequence_count_obj.value = req_packet.seq_num
             self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
 
         return req_packet
@@ -143,10 +154,10 @@ class EdlService(Service):
             return
 
         try:
-            res_peacket = EdlPacket(
+            res_packet = EdlPacket(
                 res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
             )
-            res_message = res_peacket.pack(self._hmac_key)
+            res_message = res_packet.pack(self._get_hmac_key())
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.error(f"EDL response generation raised: {e}")
             return
@@ -156,7 +167,7 @@ class EdlService(Service):
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None
 
-        logger.info(f"EDL command response: {request.code.name}, args: {request.args}")
+        logger.info(f"EDL command request: {request.code.name}, args: {request.args}")
 
         if request.code == EdlCommandCode.TX_CTRL:
             if request.args[0] == 0:
@@ -192,12 +203,21 @@ class EdlService(Service):
             name = self._node_mgr_service.node_id_to_name[node_id]
             logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
             try:
-                self.node.sdo_write(name, index, subindex, data)
+                if node_id == 1:
+                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = self.node.od[index]
+                    elif not var_index:
+                        obj = self.node.od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    self.node._on_sdo_write(index, subindex, obj, data)  # pylint: disable=W0212
+                else:
+                    self.node.sdo_write(name, index, subindex, data)
                 ret = 0
-            except canopen.sdo.exceptions.SdoError as e:
+            except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
-                e_str = str(e)
-                ret = int(e_str[-10:], 16)  # last 10 chars is always the sdo error code in hex
+                ret = e.code
         elif request.code == EdlCommandCode.CO_SYNC:
             logger.info("EDL sending CANopen SYNC message")
             self.node.send_sync()
@@ -242,7 +262,10 @@ class EdlService(Service):
             logger.info(f"EDL getting the status for OPD node {name} (0x{opd_addr:02X})")
             ret = self._node_mgr_service.opd[name].status.value
         elif request.code == EdlCommandCode.RTC_SET_TIME:
-            logger.info(f"EDL setting the RTC to {request.args[0]}")
+            ts = request.args[0]
+            logger.info(f"EDL setting the RTC time to {ts}")
+            set_rtc_time(ts)
+            set_system_time_to_rtc_time()
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info("EDL sending time sync TPDO")
             self.node.send_tpdo(0)
@@ -254,6 +277,38 @@ class EdlService(Service):
             ret = request.args[0]
         elif request.code == EdlCommandCode.RX_TEST:
             logger.info("EDL Rx test")
+        elif request.code == EdlCommandCode.CO_SDO_READ:
+            node_id, index, subindex = request.args
+            name = self._node_mgr_service.node_id_to_name[node_id]
+            logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
+            data = b""
+            ecode = 0
+            try:
+                if node_id == 1:
+                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = self.node.od[index]
+                    elif not var_index:
+                        obj = self.node.od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    value = self.node._on_sdo_read(index, subindex, obj)  # pylint: disable=W0212
+                    data = obj.encode_raw(value)
+                else:
+                    value = self.node.sdo_read(name, index, subindex)
+                    od = self.node.od_db[name]
+                    var_index = isinstance(od[index], canopen.objectdictionary.Variable)
+                    if var_index and subindex == 0:
+                        obj = od[index]
+                    elif not var_index:
+                        obj = od[index][subindex]
+                    else:
+                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
+                    data = obj.encode_raw(value)
+            except canopen.sdo.exceptions.SdoAbortedError as e:
+                logger.error(e)
+                ecode = e.code
+            ret = (ecode, len(data), data)
 
         if ret is not None and not isinstance(ret, tuple):
             ret = (ret,)  # make ret a tuple
@@ -293,6 +348,7 @@ class EdlFileReciever:
         self.last_indication = Indication.NONE
         self.last_pdu_ts = 0.0
         self.send_fin_ts = 0.0
+        self.checksum_matched = False
 
     def reset(self):
         """Reset the EDL file receiver."""
@@ -301,16 +357,13 @@ class EdlFileReciever:
         if self.f is not None:
             self.f.close()
             self.f = None
-            try:
-                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
-            except (ValueError, FileNotFoundError) as e:
-                logger.error(e)
         self.offset = 0
         self.last_nak = 0
         self.file_name = ""
         self.file_data = b""
         self.file_data_len = 0
         self.last_indication = Indication.NONE
+        self.checksum_matched = False
 
     def _init_recv(self, pdu: MetadataPdu):
         if self.f is None:
@@ -334,21 +387,25 @@ class EdlFileReciever:
         return None
 
     def _eof(self, pdu: EofPdu) -> AckPdu:
-        if self.f is not None:
-            self.f.close()
-            self.f = None
-            try:
-                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
-            except (ValueError, FileNotFoundError) as e:
-                logger.error(e)
-            logger.info(f"{self.file_name} {self.file_data_len} ended")
         condition_code = ConditionCode.NO_ERROR
         checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
         if checksum == pdu.file_checksum:
             condition_code = ConditionCode.FILE_CHECKSUM_FAILURE
             logger.info("file checksum matched")
+            self.checksum_matched = True
         else:
             logger.info("file checksum does not match")
+
+        if self.f is not None and self.checksum_matched:
+            self.f.close()
+            self.f = None
+            try:
+                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
+                logger.info(f"file {self.file_name} moved to fwrite cache")
+            except (ValueError, FileNotFoundError) as e:
+                logger.error(e)
+            logger.info(f"{self.file_name} {self.file_data_len} ended")
+
         ack_pdu = AckPdu(
             directive_code_of_acked_pdu=DirectiveType.EOF_PDU,
             condition_code_of_acked_pdu=condition_code,
@@ -386,12 +443,12 @@ class EdlFileReciever:
         if req_pdu is None and self.last_indication == Indication.NONE:
             return None  # nothing to do
 
-        if time() > self.last_pdu_ts + 5 and self.last_indication != Indication.NONE:
+        if monotonic() > self.last_pdu_ts + 10 and self.last_indication != Indication.NONE:
             self.reset()
             return None
 
         if req_pdu:
-            self.last_pdu_ts = time()
+            self.last_pdu_ts = monotonic()
 
         if self.last_indication == Indication.NONE:
             if isinstance(req_pdu, MetadataPdu):
@@ -409,19 +466,19 @@ class EdlFileReciever:
             elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
                 res_pdu = self._make_nak(req_pdu)
         elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
-            if self.last_pdu_ts > time() + 10:
+            if self.last_pdu_ts > monotonic() + 10:
                 self.reset()
             elif isinstance(req_pdu, EofPdu):
                 res_pdu = self._eof(req_pdu)
                 self.last_indication = Indication.EOF_RECV
-                self.send_fin_ts = time() + self.FIN_DELAY_S
+                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
             elif isinstance(req_pdu, AckPdu):
                 logger.info("fin ack!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 self.last_indication = Indication.TRANSACTION_FINISHED
                 if req_pdu.directive_code_of_acked_pdu == DirectiveType.FINISHED_PDU:
                     self.reset()
-                self.send_fin_ts = time() + self.FIN_DELAY_S
-            elif self.send_fin_ts != 0.0 and self.send_fin_ts > time():
+                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
+            elif self.send_fin_ts != 0.0 and self.send_fin_ts > monotonic():
                 res_pdu = FinishedPdu(
                     pdu_conf=self.PDU_CONF, params=FinishedParams.success_params()
                 )

@@ -78,6 +78,9 @@ class AdcsService(Service):
         self.mt_monitor()
         #self.rw_monitor()
 
+        for key,val in self.actuator_feedback.items():
+            logger.info("%s\t%s"%(key,val))
+
         # More things to read
         star_orientation = self.star_monitor()
         solar_power = self.solar_monitor()

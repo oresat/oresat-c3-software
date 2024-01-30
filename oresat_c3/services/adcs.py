@@ -39,6 +39,8 @@ class AdcsService(Service):
             self.control_signals[actuator] = 0.0
             self.actuator_feedback[actuator] = 0.0
 
+        self.control_signals['mt_x'] = 100.0
+
         logger.info("ADCS service object initiated")
 
 
@@ -74,7 +76,7 @@ class AdcsService(Service):
 
         # Read actuators
         self.mt_monitor()
-        self.rw_monitor()
+        #self.rw_monitor()
 
         # More things to read
         star_orientation = self.star_monitor()
@@ -86,7 +88,7 @@ class AdcsService(Service):
         # Send control signal
         # Control signals turned off for sensor testing, for now
         self.mt_control()
-        self.rw_control()        
+        #self.rw_control()        
 
         # End of ADCS control loop
         sleep(0.1)

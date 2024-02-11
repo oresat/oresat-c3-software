@@ -53,7 +53,8 @@ class AdcsService(Service):
         # for ADCS testing
         #self.node.add_sdo_callbacks("adcs_manager", "reserved_rw", self.test_sdo_read, self.test_sdo_write)
         self.node.add_sdo_callbacks("adcs_manager", "feedback", self.mngr_feedback, None)
-        self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals_w)
+        self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals)
+        self.node.add_sdo_callbacks("adcs_manager", "calibrate", None, self.mngr_calibrate)
 
         # ADCS startup complete
         logger.info("Completed ADCS startup")
@@ -92,15 +93,22 @@ class AdcsService(Service):
         sleep(0.1)
 
     
-    def mngr_signals_w(self, controls):
+    def mngr_calibrate(self, *args):
+        """calibrate actuators, namely reaction wheels"""
+        self.rw_calibrate()
+        pass
+
+    def mngr_signals(self, controls):
         """Apply control signals from ADCS manager SDO callback"""
         self.control_signals = json.loads(controls)
         logger.debug(self.control_signals)
 
     def mngr_feedback(self):
+        """Return string of feedback signals for ADCS manager SDO callback"""
         logger.debug(self.actuator_feedback)
         return json.dumps(self.actuator_feedback)
         #return json.dumps(self.control_signals)
+
 
     # gyro Functions
     def gyro_calibrate(self):
@@ -187,32 +195,44 @@ class AdcsService(Service):
     # Reaction wheel functions
     def rw_apply_state(self, rw_name, state):
         self.write_sdo(rw_name, 'requested', 'state', 1)
+        sleep(0.5)
         self.write_sdo(rw_name, 'requested', 'state', state)
 
     def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
-        
+
         def calibrate(rw_name, calibration_state):
             self.rw_apply_state(rw_name, calibration_state)
-            for i in range(3):
-                logger.info(rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value)
+            for i in range(25):
+                logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value))
+                
+                # state 3 is a system error
                 if rw_state == 3:
                     while True:
-                        logger.info(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
+                        logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
+                
+                # state 4 is a controller error
                 if rw_state == 4:
-                    logger.info(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
+                    logger.error(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
                     self.rw_apply_state(rw_name, 13)
                     self.rw_apply_state(rw_name, calibration_state)
 
-                sleep(1)
+                sleep(0.2)
 
         # Calibrate
-        #calibrate("rw_1", 7)
-        #calibrate("rw_1", 8)
-        #calibrate("rw_1", 9)
-        #calibrate("rw_1", 10)
+        # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
+
+        logger.info("CALIBRATING: rw_1 resistance")
+        calibrate("rw_1", 7)
+        logger.info("CALIBRATING: rw_1 inductance")
+        calibrate("rw_1", 8)
+        logger.info("CALIBRATING: rw_1 encoder direction")
+        calibrate("rw_1", 9)
+        logger.info("CALIBRATING: rw_1 encoder offset")
+        calibrate("rw_1", 10)
         # set velocity control
-        #self.rw_apply_state("rw_1", 5)
+        logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
+        self.rw_apply_state("rw_1", 5)
 
         # Put all reaction wheels in velocity control for now
         for num in range(1, num_rws+1):

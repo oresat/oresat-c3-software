@@ -40,10 +40,12 @@ class AdcsService(Service):
             self.actuator_feedback[actuator] = 0.0
 
         logger.info("ADCS service object initiated")
-
+        self.calibrating = False
 
     def on_start(self):
         logger.info("Starting ADCS")
+        
+        self.calibrating = False
 
         # Calibrate sensors and actuators
         self.gyro_calibrate()
@@ -95,7 +97,9 @@ class AdcsService(Service):
     
     def mngr_calibrate(self, *args):
         """calibrate actuators, namely reaction wheels"""
+        self.calibrating=True
         self.rw_calibrate()
+        self.calibrating=False
         pass
 
     def mngr_signals(self, controls):
@@ -203,13 +207,12 @@ class AdcsService(Service):
 
         def calibrate(rw_name, calibration_state):
             self.rw_apply_state(rw_name, calibration_state)
-            for i in range(25):
+            for i in range(5):
                 logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value))
                 
                 # state 3 is a system error
                 if rw_state == 3:
-                    while True:
-                        logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
+                    logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
                 
                 # state 4 is a controller error
                 if rw_state == 4:
@@ -217,19 +220,19 @@ class AdcsService(Service):
                     self.rw_apply_state(rw_name, 13)
                     self.rw_apply_state(rw_name, calibration_state)
 
-                sleep(0.2)
+                sleep(1)
 
         # Calibrate
         # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
-
+        rw_name = "rw_4"
         logger.info("CALIBRATING: rw_1 resistance")
-        calibrate("rw_1", 7)
+        calibrate(rw_name, 7)
         logger.info("CALIBRATING: rw_1 inductance")
-        calibrate("rw_1", 8)
+        calibrate(rw_name, 8)
         logger.info("CALIBRATING: rw_1 encoder direction")
-        calibrate("rw_1", 9)
+        calibrate(rw_name, 9)
         logger.info("CALIBRATING: rw_1 encoder offset")
-        calibrate("rw_1", 10)
+        calibrate(rw_name, 10)
         # set velocity control
         logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
         self.rw_apply_state("rw_1", 5)
@@ -237,6 +240,7 @@ class AdcsService(Service):
         # Put all reaction wheels in velocity control for now
         for num in range(1, num_rws+1):
             self.write_sdo('rw_'+str(num), 'requested', 'state', 5)
+
 
         pass
 
@@ -246,20 +250,26 @@ class AdcsService(Service):
 
         endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
         for num in range(1, num_rws+1):
+            logger.info("RW NAME: {}  RW STATE: {}".format('rw_'+str(num),rw_state:=self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value))
+            # state 3 is a system error
+            if rw_state == 3:
+                logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
+            # state 4 is a controller error
+            if rw_state == 4:
+                logger.error(f"CONTROLLER ERROR FOR {rw_name}, PLEASE CLEAR ERRORS")
+
             self.sensor_data['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
             self.actuator_feedback['rw_'+str(num)] = self.node.od['rw_'+str(num)]['motor_velocity'].value
 
-        if log_it:
-            for num in range(1, num_rws+1):
-                logger.info("RW %s state: %s"%(num, self.sensor_data['rw_'+str(num)]))
-        
 
     def rw_control(self, num_rws=4):
         """Sends the control signal to the reaction wheels"""
         
         logger.info("Sending control signal to reaction wheels")
         # request velocity control (6???)
-        
+        if self.calibrating:
+            return
+
         for num in range(1, num_rws+1):
             self.write_sdo('rw_'+str(num), 'signals', 'setpoint', self.control_signals['rw_'+str(num)])
         pass

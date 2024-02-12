@@ -258,6 +258,9 @@ class AdcsService(Service):
             if rw_state == 4:
                 logger.error(f"CONTROLLER ERROR FOR {rw_name}, PLEASE CLEAR ERRORS")
 
+            if rw_state == 3 or rw_state == 4:
+                logger.error("RW {} ERROR BITMAP: {}".format(num, self.node.od['rw_'+str(num)]['ctrl_stat_errors'].value))
+
             self.sensor_data['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
             self.actuator_feedback['rw_'+str(num)] = self.node.od['rw_'+str(num)]['motor_velocity'].value
 

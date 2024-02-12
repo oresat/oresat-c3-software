@@ -207,35 +207,39 @@ class AdcsService(Service):
 
         def calibrate(rw_name, calibration_state):
             self.rw_apply_state(rw_name, calibration_state)
-            for i in range(5):
-                logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value))
+            while (rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value) != 1:
+                logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state))
                 
-                # state 3 is a system error
-                if rw_state == 3:
+                # state 2 is a system error
+                if rw_state == 2:
                     logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
                 
-                # state 4 is a controller error
-                if rw_state == 4:
+                # state 3 is a controller error
+                if rw_state == 3:
                     logger.error(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
                     self.rw_apply_state(rw_name, 13)
                     self.rw_apply_state(rw_name, calibration_state)
 
                 sleep(1)
+            sleep(1)
 
         # Calibrate
         # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
         rw_name = "rw_4"
-        logger.info("CALIBRATING: rw_1 resistance")
+        logger.info("REBOOTING: {rw_name}")
+        self.write_sdo(rw_name, 'reboot', 'request', 1)
+        sleep(20) 
+        logger.info("CALIBRATING: {rw_name} resistance")
         calibrate(rw_name, 7)
-        logger.info("CALIBRATING: rw_1 inductance")
+        logger.info("CALIBRATING: {rw_name} inductance")
         calibrate(rw_name, 8)
-        logger.info("CALIBRATING: rw_1 encoder direction")
+        logger.info("CALIBRATING: {rw_name} encoder direction")
         calibrate(rw_name, 9)
-        logger.info("CALIBRATING: rw_1 encoder offset")
+        logger.info("CALIBRATING: {rw_name} encoder offset")
         calibrate(rw_name, 10)
         # set velocity control
         logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
-        self.rw_apply_state("rw_1", 5)
+        self.rw_apply_state(rw_name, 5)
 
         # Put all reaction wheels in velocity control for now
         for num in range(1, num_rws+1):
@@ -251,14 +255,14 @@ class AdcsService(Service):
         endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
         for num in range(1, num_rws+1):
             logger.info("RW NAME: {}  RW STATE: {}".format('rw_'+str(num),rw_state:=self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value))
-            # state 3 is a system error
-            if rw_state == 3:
+            # state 2 is a system error
+            if rw_state == 2:
                 logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
-            # state 4 is a controller error
-            if rw_state == 4:
+            # state 3 is a controller error
+            if rw_state == 3:
                 logger.error(f"CONTROLLER ERROR FOR {rw_name}, PLEASE CLEAR ERRORS")
 
-            if rw_state == 3 or rw_state == 4:
+            if rw_state == 2 or rw_state == 3:
                 logger.error("RW {} ERROR BITMAP: {}".format(num, self.node.od['rw_'+str(num)]['ctrl_stat_errors'].value))
 
             self.sensor_data['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
@@ -268,11 +272,12 @@ class AdcsService(Service):
     def rw_control(self, num_rws=4):
         """Sends the control signal to the reaction wheels"""
         
-        logger.info("Sending control signal to reaction wheels")
         # request velocity control (6???)
         if self.calibrating:
             return
 
+        # also check for state
+        logger.info("Sending control signal to reaction wheels")
         for num in range(1, num_rws+1):
             self.write_sdo('rw_'+str(num), 'signals', 'setpoint', self.control_signals['rw_'+str(num)])
         pass

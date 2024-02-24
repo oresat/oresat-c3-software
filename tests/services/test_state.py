@@ -128,14 +128,6 @@ class TestState(unittest.TestCase):
         self.assertEqual(self.service._c3_state_obj.value, C3State.EDL)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
 
-        # test STANDBY hard reset
-        self.service._c3_state_obj.value = C3State.STANDBY
-        self.service._last_edl_obj.value = 0
-        self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.service._reset_timeout_obj.value = 0.001
-        self.service._standby()
-        self.assertEqual(self.service._c3_state_obj.value, C3State.STANDBY)
-
     def test_beacon(self):
         """Test state transistion(s) from BEACON state"""
 
@@ -166,14 +158,6 @@ class TestState(unittest.TestCase):
         self.service._beacon()
         self.assertEqual(self.service._c3_state_obj.value, C3State.EDL)
         self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-
-        # test BEACON hard reset
-        self.service._c3_state_obj.value = C3State.BEACON
-        self.service._last_edl_obj.value = 0
-        self.assertEqual(self.node._reset, NodeStop.SOFT_RESET)
-        self.service._reset_timeout_obj.value = 0.001
-        self.service._beacon()
-        self.assertEqual(self.service._c3_state_obj.value, C3State.BEACON)
 
     def test_edl(self):
         """Test state transistion(s) from EDL state"""

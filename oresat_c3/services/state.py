@@ -4,6 +4,7 @@ C3 State Service
 This handles the main C3 state machine and saving state.
 """
 
+import os
 import subprocess
 from time import monotonic, time
 
@@ -247,6 +248,9 @@ class StateService(Service):
     @property
     def has_reset_timed_out(self) -> bool:
         """bool: Helper property to check if the reset timeout has been reached."""
+
+        if os.geteuid() != 0 or not self.node.od["flight_mode"].value:
+            return False
 
         return monotonic() > self._reset_timeout_obj.value
 

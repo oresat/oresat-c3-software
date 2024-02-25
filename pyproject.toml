@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -37,6 +37,9 @@ exclude = ["docs*", "tests*", "scripts*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.html"]
+
+[tool.setuptools_scm]
+write_to = "oresat_c3/_version.py"
 
 [tool.black]
 line_length = 100

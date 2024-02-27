@@ -3,7 +3,7 @@ Node manager service.
 """
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from enum import IntEnum
 from time import time
 from typing import Union

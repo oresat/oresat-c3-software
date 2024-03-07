@@ -34,6 +34,7 @@ class StateService(Service):
         self._loops = 0
         self._last_state = C3State.OFFLINE
         self._last_antennas_deploy = 0
+        self._start_time = monotonic()
 
         self._c3_state_obj: canopen.objectdictionary.Variable = None
         self._reset_timeout_obj: canopen.objectdictionary.Variable = None
@@ -88,6 +89,8 @@ class StateService(Service):
         self._last_state = self._c3_state_obj.value
         logger.info(f"C3 initial state: {C3State(self._last_state).name}")
 
+        self._start_time = monotonic()
+
     def on_stop(self):
         self.store_state()
 
@@ -115,14 +118,14 @@ class StateService(Service):
             capture_output=True,
         )
 
-        if result.returncode == 0:
+        if result.returncode != 0:
             logger.error("stopping watchdog app failed, doing a hard reset")
             self.node.stop(NodeStop.HARD_RESET)
 
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""
 
-        if self._pre_deploy_timeout_obj.value > monotonic():
+        if (monotonic() - self._start_time) < self._pre_deploy_timeout_obj.value:
             if not self._tx_enable_obj.value:
                 self._tx_enable_obj.value = True  # start beacons
                 self._last_tx_enable_obj.value = int(time())
@@ -135,7 +138,7 @@ class StateService(Service):
 
         if not self._deployed_obj.value and self._attempts < self._attempts_obj.value:
             if (
-                monotonic() > self._last_antennas_deploy + self._ant_reattempt_timeout_obj.value
+                monotonic() > (self._last_antennas_deploy + self._ant_reattempt_timeout_obj.value)
                 and self.is_bat_lvl_good
             ):
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
@@ -252,7 +255,7 @@ class StateService(Service):
         if os.geteuid() != 0 or not self.node.od["flight_mode"].value:
             return False
 
-        return monotonic() > self._reset_timeout_obj.value
+        return (monotonic() - self._start_time) > self._reset_timeout_obj.value
 
     def store_state(self):
         """Store the state in F-RAM."""

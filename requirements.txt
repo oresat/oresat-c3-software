@@ -3,7 +3,7 @@ black
 build
 isort
 oresat-configs
-oresat-olaf>=3.1.0
+oresat-olaf>=3.4.0
 pylama[all]
 pylama[toml]
 setuptools

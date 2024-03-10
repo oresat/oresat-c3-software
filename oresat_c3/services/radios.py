@@ -39,13 +39,18 @@ class RadiosService(Service):
         )
 
         # gpio pins
+        self._si41xx_nlock_gpio = Gpio("LBAND_LO_nLOCKED", mock_hw)
         self._uhf_tot_ok_gpio = Gpio("UHF_TOT_OK", mock_hw)
         if mock_hw:
+            self._si41xx_nlock_gpio._mock_value = 0
             self._uhf_tot_ok_gpio._mock_value = 1
         self._uhf_tot_clear_gpio = Gpio("UHF_TOT_CLEAR", mock_hw)
         self._radio_enable_gpio = Gpio("RADIO_ENABLE", mock_hw)
         self._uhf_enable_gpio = Gpio("UHF_ENABLE", mock_hw)
         self._lband_enable_gpio = Gpio("LBAND_ENABLE", mock_hw)
+
+        # si41xx synth info
+        self._relock_count = 0
 
         # beacon downlink: UDP client
         logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
@@ -74,7 +79,12 @@ class RadiosService(Service):
             logger.error("tot okay was low, resetting radios")
             self.disable()
             self.enable()
-
+        if not self.is_si41xx_locked:
+            logger.error("si41xx unlocked, resetting lband synth")
+            self._relock_count += 1
+            self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
+            self._si41xx.stop()
+            self._si41xx.start()
         recv = self._recv_edl_request()
         if recv:
             self.recv_queue.append(recv)
@@ -93,6 +103,8 @@ class RadiosService(Service):
         self._lband_enable_gpio.high()
         self.uhf_tot_clear()
         self._si41xx.start()
+        self._relock_count += 1
+        self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
         if not self._mock_hw:
             self.node.daemons["uhf"].start()
             self.node.daemons["lband"].start()
@@ -123,6 +135,15 @@ class RadiosService(Service):
         """bool: check if the UHF TOT is okay."""
 
         return bool(self._uhf_tot_ok_gpio.value)
+
+    @property
+    def is_si41xx_locked(self) -> bool:
+        """bool: check if the si41xx is locked."""
+
+        # si41xx_nlock is active low
+        state = not bool(self._si41xx_nlock_gpio.value)
+        self.node.od["lband"]["synth_lock"].value = state
+        return state
 
     def send_beacon(self, message: bytes):
         """Send a beacon."""

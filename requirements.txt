@@ -3,10 +3,11 @@ black
 build
 isort
 oresat-configs
-oresat-olaf>=3.0.0
+oresat-olaf>=3.4.0
 pylama[all]
 pylama[toml]
 setuptools
+setuptools-scm
 smbus2
 spacepackets
 sphinx

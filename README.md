@@ -3,7 +3,7 @@
 Main application for Octavo A8 with Debian Linux version of the C3 card.
 
 The C3 card is the "flight" computer of OreSat. C3 stands for command,
-control, and commuication. It handles all commuications and controls
+control, and communication. It handles all communications and controls
 the state of the satellite.
 
 **Note:** For OreSat0, the C3 card used STM32F4 and ChibiOS, for that project
@@ -13,12 +13,12 @@ by swapping from heavily embedded system using ChibiOS to a general
 Linux-environment using Python and make to use existing Python libraries.
 
 Like all OreSat software projects it is built using OLAF (OreSat Linux App
-Framework), which it built ontop of [CANopen for Python] project. See the
+Framework), which it built on top of [CANopen for Python] project. See the
 [oresat-olaf] repo for more info about OLAF.
 
-## Quickstart
+## Quick Start
 
-**For development**, install `oresat-configs` from the github repo at 
+**For development**, install `oresat-configs` from the GitHub repo at
 https://github.com/oresat/oresat-configs (not from PyPI). That repo may have
 changes that are not apart of the latest release yet.
 
@@ -41,7 +41,7 @@ Run the C3 app
 $ python3 -m oresat_c3
 ```
 
-Can select the CAN bus to use (`vcan0`, `can0`, etc) with the `-b BUS` arg.
+Can select the CAN bus to use (`vcan0`, `can0`, etc) with the `-b BUS` argument.
 
 Can mock hardware by using the `-m HARDWARE` flag.
 
@@ -89,7 +89,7 @@ To manually build the documentation:
 $ make -C docs html
 ```
 
-Open `docs/build/html/index.html` in a web broswer
+Open `docs/build/html/index.html` in a web browser
 
 ## Unit Tests
 

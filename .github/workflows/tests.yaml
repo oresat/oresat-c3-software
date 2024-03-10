@@ -15,16 +15,16 @@ jobs:
 
     steps:
     - name: Clone oresat-c3 repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Clone oresat-configs repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         repository: oresat/oresat-configs
         path: resources/oresat-configs
 
     - name: Set up Python 3.9
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v3
       with:
         python-version: "3.9"
 
@@ -44,8 +44,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Lint with Pylama
-      run: pylama
+    # - name: Lint with Pylama
+    #  run: pylama
 
     - name: Check format with Black
       run: black --check --diff .

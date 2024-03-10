@@ -160,12 +160,9 @@ class OpdNode:
 
         logger.info(f"disabling OPD node {self.name} (0x{self.addr:02X})")
 
-        if self._status == OpdNodeState.NOT_FOUND:
-            return self._status  # cannot disable node that is NOT_FOUND
-
         try:
-            self._max7310.output_clear(self._ENABLE_PIN)
             self._status = OpdNodeState.DISABLED
+            self._max7310.output_clear(self._ENABLE_PIN)
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 

@@ -3,9 +3,9 @@ Node manager service.
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import IntEnum
-from time import time
+from time import monotonic
 from typing import Union
 
 import canopen
@@ -104,7 +104,7 @@ class NodeManagerService(Service):
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
         self.node_id_to_name = {info.node_id: name for name, info in cards.items()}
 
-        self._data = {name: Node(**info.to_dict()) for name, info in cards.items()}
+        self._data = {name: Node(**asdict(info)) for name, info in cards.items()}
         self._data["c3"].status = NodeState.ON
         self._loops = -1
 
@@ -154,13 +154,15 @@ class NodeManagerService(Service):
         else:
             timeout = self._OCTAVO_BOOT_TIMEOUT
 
-        last_hb = self.node.node_status[name][1]
-        if self._data[name].last_enable + timeout > time():
-            if time() > last_hb + self._RESET_TIMEOUT_S:
+        last_hb = self.node.node_status[name][2]
+        if self._data[name].last_enable + timeout > monotonic():
+            if monotonic() > last_hb + self._RESET_TIMEOUT_S:
                 next_state = NodeState.BOOT
             else:
                 next_state = NodeState.ON
-        elif self._flight_mode_obj.value and time() > last_hb + self._RESET_TIMEOUT_S:
+        elif self._data[name].status == NodeState.ERROR:
+            next_state = NodeState.ERROR
+        elif self._flight_mode_obj.value and monotonic() > (last_hb + self._RESET_TIMEOUT_S):
             logger.error(
                 f"CANopen node {name} has had no heartbeats in " f"{self._RESET_TIMEOUT_S} seconds"
             )
@@ -175,7 +177,7 @@ class NodeManagerService(Service):
 
         # update status of data not on the OPD
         if self._data[name].opd_address == 0:
-            if time() > self.node.node_status[name][1] + self._HB_TIMEOUT:
+            if monotonic() > (self.node.node_status[name][2] + self._HB_TIMEOUT):
                 next_state = NodeState.OFF
             else:
                 next_state = NodeState.ON
@@ -288,7 +290,7 @@ class NodeManagerService(Service):
         self.opd[name].enable()
         if child_node:
             self.opd[node.child].enable()
-        node.last_enable = time()
+        node.last_enable = monotonic()
 
     def disable(self, name: Union[str, int]):
         """Disable a OreSat node."""
@@ -340,5 +342,5 @@ class NodeManagerService(Service):
         elif value == 1:
             if self.opd.status == OpdState.DISABLED:
                 for node in self._data.values():
-                    node.last_enable = time()
+                    node.last_enable = monotonic()
             self.opd.enable()

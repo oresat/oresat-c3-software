@@ -4,7 +4,7 @@ import zlib
 from enum import IntEnum, auto
 from pathlib import Path
 from time import monotonic, time
-from typing import Any, Union
+from typing import Any, Optional
 
 import canopen
 from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
@@ -85,45 +85,60 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
 
-    def _get_hmac_key(self) -> bytes:
-        """GEt the active HMAC key."""
-
+    @property
+    def _hmac_key(self) -> bytes:
         edl_rec = self.node.od["edl"]
         active_key = edl_rec["active_crypto_key"].value
         return edl_rec[f"crypto_key_{active_key}"].value
 
-    def _upack_last_recv(self) -> Union[EdlPacket, None]:
-        req_packet = None
+    @property
+    def _flight_mode(self) -> bool:
+        return bool(self._flight_mode_obj.value)
 
-        if len(self._radios_service.recv_queue) == 0:
-            return req_packet
+    @property
+    def _sequence_count(self) -> int:
+        return self._edl_sequence_count_obj.value
 
-        req_message = self._radios_service.recv_queue.pop()
+    @_sequence_count.setter
+    def _sequence_count(self, value):
+        self._edl_sequence_count_obj.value = value
+
+    @property
+    def _rejected_count(self) -> int:
+        return self._edl_rejected_count_obj.value
+
+    @_rejected_count.setter
+    def _rejected_count(self, value):
+        self._edl_rejected_count_obj.value = value
+
+    def _upack_last_recv(self) -> Optional[EdlPacket]:
+        try:
+            message = self._radios_service.recv_queue.pop()
+        except IndexError:
+            return None
 
         try:
-            req_packet = EdlPacket.unpack(
-                req_message, self._get_hmac_key(), not self._flight_mode_obj.value
-            )
-        except Exception as e:  # pylint: disable=W0718
-            self._edl_rejected_count_obj.value += 1
-            self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
+            packet = EdlPacket.unpack(message, self._hmac_key, not self._flight_mode)
+        except EdlPacketError as e:
+            self._rejected_count += 1
+            self._rejected_count &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
             return None  # no responses to invalid packets
 
-        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
+        if self._flight_mode and packet.seq_num < self._sequence_count:
             logger.error(
-                f"invalid EDL request packet sequence number of {req_packet.seq_num}, shoudl be > "
-                f"{self._edl_sequence_count_obj.value}"
+                f"invalid EDL request packet sequence number of {packet.seq_num}, should be > "
+                f"{self._sequence_count}"
             )
             return None  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
 
-        if self._flight_mode_obj.value:
-            self._edl_sequence_count_obj.value = req_packet.seq_num
-            self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
+        if self._flight_mode:
+            self._sequence_count = packet.seq_num
+            self._sequence_count &= 0xFF_FF_FF_FF
 
-        return req_packet
+        return packet
 
     def on_loop(self):
         req_packet = self._upack_last_recv()
@@ -154,10 +169,8 @@ class EdlService(Service):
             return
 
         try:
-            res_packet = EdlPacket(
-                res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
-            )
-            res_message = res_packet.pack(self._get_hmac_key())
+            res_packet = EdlPacket(res_payload, self._sequence_count, SRC_DEST_UNICLOGS)
+            res_message = res_packet.pack(self._hmac_key)
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.error(f"EDL response generation raised: {e}")
             return

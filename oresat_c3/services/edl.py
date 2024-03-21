@@ -3,6 +3,7 @@
 import zlib
 from enum import IntEnum, auto
 from pathlib import Path
+from queue import Empty
 from time import monotonic, time
 from typing import Any, Optional
 
@@ -113,8 +114,8 @@ class EdlService(Service):
 
     def _upack_last_recv(self) -> Optional[EdlPacket]:
         try:
-            message = self._radios_service.recv_queue.pop()
-        except IndexError:
+            message = self._radios_service.recv_queue.get_nowait()
+        except Empty:
             return None
 
         try:

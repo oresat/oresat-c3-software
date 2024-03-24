@@ -2,14 +2,15 @@
 
 import struct
 from collections.abc import Iterable
+from contextlib import suppress
 from datetime import timedelta
 from pathlib import Path
-from queue import Empty
+from queue import Empty, SimpleQueue
 from time import time
 from typing import Any, Optional
 
 import canopen
-from cfdppy import CfdpState
+from cfdppy import CfdpState, PacketDestination, get_packet_destination
 from cfdppy.exceptions import FsmNotCalledAfterPacketInsertion, SourceFileDoesNotExist
 from cfdppy.filestore import HostFilestore
 from cfdppy.handler.crc import CrcHelper
@@ -35,7 +36,12 @@ from cfdppy.user import (
 from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
 from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, TransmissionMode
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
-from spacepackets.cfdp.tlv import FilestoreResponseStatusCode, OriginatingTransactionId
+from spacepackets.cfdp.tlv import (
+    FilestoreResponseStatusCode,
+    OriginatingTransactionId,
+    ProxyPutResponse,
+    ProxyPutResponseParams,
+)
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
@@ -142,7 +148,7 @@ class EdlService(Service):
         req_packet = self._upack_last_recv()
 
         if req_packet is None:
-            if self._file_receiver.dest.state != CfdpState.IDLE:
+            if self._file_receiver.state == CfdpState.BUSY:
                 res_payload = self._file_receiver.loop(None)
             else:
                 self.sleep_ms(50)
@@ -506,43 +512,127 @@ class EdlFileReciever(CfdpUserBase):
         )
         self.dest._cksum_verif_helper = VFSCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
+        self.source = SourceHandler(
+            cfg=localcfg,
+            user=self,
+            remote_cfg_table=remote_entities,
+            check_timer_provider=DefaultCheckTimer(),
+            seq_num_provider=SeqCountProvider(16),
+        )
 
+        self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
+        self.active_requests: dict[TransactionId, TransactionId] = {}
+
+    @property
+    def state(self) -> CfdpState:
+        """Either BUSY or IDLE
+
+        The FileReceiver is BUSY if either source or dest are busy, or if there's a request yet
+        to be initiated.
+        """
+
+        if (
+            self.dest.state == CfdpState.BUSY
+            or self.source.state == CfdpState.BUSY
+            or not self.scheduled_requests.empty()
+        ):
+            return CfdpState.BUSY
+        return CfdpState.IDLE
 
     def loop(self, pdu: AbstractFileDirectiveBase):
         """The state machine driver for a CFDP dest, expected to be run by the service loop"""
 
-        # DestHandler is driven by either a new pdu to process or timers expiring.
+        # DestHandler is driven by either a new pdu to process or timers expiring and
+        # SourceHandler is additionally driven by Put requests.
         # Timers only expire when .state_machine() is called, and .state_machine() must
         # be called after all the packets have been drained, or after inserting a new
         # pdu.
+        if pdu:
+            logger.info(f"<--- {pdu}")
 
-        try:
-            if pdu:
-                self.dest.insert_packet(pdu)
-            self.dest.state_machine()
-        except FsmNotCalledAfterPacketInsertion:
-            # Usually this exception means the library is being used wrong, so we have
-            # to be careful here. However there is a bug in the presence of dropped packets
-            # where dest._params.last_inserted_packet does not get cleared.
-            logger.exception(".state_machine() didn't properly clear inserted packet")
-            self.dest.reset()
+            if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
+                try:
+                    self.dest.insert_packet(pdu)
+                except FsmNotCalledAfterPacketInsertion:
+                    # Usually this exception means the library is being used wrong, so we have
+                    # to be careful here. However there is a bug in the presence of dropped packets
+                    # where dest._params.last_inserted_packet does not get cleared.
+                    logger.exception("dest.state_machine() didn't properly clear inserted packet")
+                    self.dest.reset()
+            else:
+                try:
+                    self.source.insert_packet(pdu)
+                except FsmNotCalledAfterPacketInsertion:
+                    logger.exception("source.state_machine() didn't properly clear inserted packet")
+                    self.source.reset()
+
+        if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
+            with suppress(Empty):
+                self.source.put_request(self.scheduled_requests.get_nowait())
+
+        self.dest.state_machine()
+        self.source.state_machine()
 
         pdus = []
         while self.dest.packets_ready:
             pdus.append(self.dest.get_next_packet().pdu)
+        while self.source.packets_ready:
+            pdus.append(self.source.get_next_packet().pdu)
+
+        for out in pdus:
+            logger.info(f"---> {out}")
         return pdus or None
 
     def transaction_indication(self, transaction_indication_params: TransactionParams):
         logger.info(f"Indication: Transaction. {transaction_indication_params}")
+        t_id = transaction_indication_params.transaction_id
+        orig = transaction_indication_params.originating_transaction_id
+        if orig is not None:
+            self.active_requests[t_id] = orig
 
     def eof_sent_indication(self, transaction_id: TransactionId):
         logger.info(f"Indication: EOF Sent for {transaction_id}.")
 
     def transaction_finished_indication(self, params: TransactionFinishedParams):
         logger.info(f"Indication: Transaction Finished. {params}")
+        if params.transaction_id in self.active_requests:
+            originating_id = self.active_requests.get(params.transaction_id)
+            assert originating_id is not None
+            put = PutRequest(
+                destination_id=originating_id.source_id,
+                source_file=None,
+                dest_file=None,
+                trans_mode=None,
+                closure_requested=True,  # FIXME: upstream bug, dest does not respect
+                msgs_to_user=[
+                    ProxyPutResponse(
+                        ProxyPutResponseParams.from_finished_params(params.finished_params)
+                    ).to_generic_msg_to_user_tlv(),
+                    OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+                ],
+            )
+            self.scheduled_requests.put(put)
 
     def metadata_recv_indication(self, params: MetadataRecvParams):
         logger.info(f"Indication: Metadata Recv. {params}")
+        for msg in params.msgs_to_user or []:
+            if msg.is_reserved_cfdp_message():
+                reserved = msg.to_reserved_msg_tlv()
+                if reserved.is_cfdp_proxy_operation():
+                    proxyparams = reserved.get_proxy_put_request_params()
+                    put = PutRequest(
+                        destination_id=proxyparams.dest_entity_id,
+                        source_file=Path(proxyparams.source_file_as_path),
+                        dest_file=Path(proxyparams.dest_file_as_path),
+                        trans_mode=None,
+                        closure_requested=None,
+                        msgs_to_user=[
+                            OriginatingTransactionId(
+                                params.transaction_id
+                            ).to_generic_msg_to_user_tlv()
+                        ],
+                    )
+                    self.scheduled_requests.put(put)
 
     def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
         logger.info(f"Indication: File Segment Recv. {params}")

@@ -4,17 +4,19 @@ File upload to OreSat.
 """
 
 import random
+import signal
 import socket
 import sys
 import time
 from argparse import ArgumentParser
 from datetime import timedelta
 from pathlib import Path
-from queue import SimpleQueue
+from queue import Empty, SimpleQueue
 from threading import Lock, Thread
 from typing import Any
 
-from cfdppy import CfdpState
+from cfdppy import CfdpState, PacketDestination, get_packet_destination
+from cfdppy.handler.dest import DestHandler
 from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
@@ -34,7 +36,9 @@ from cfdppy.user import (
     TransactionParams,
 )
 from olaf import OreSatFile
+from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp.tlv import ProxyPutRequest, ProxyPutRequestParams
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
@@ -126,7 +130,7 @@ remote_entities = RemoteEntityCfgTable(
 class Uplink(Thread):
     """Manages the Uplink socketand queue.
 
-    Separate from Sender so that multiple Source/Dest handlers can share
+    Separate from Source/Dest so that multiple handlers can share
     the socket.
     """
 
@@ -158,13 +162,14 @@ class Uplink(Thread):
 class Downlink(Thread):
     """Manages the downlink socket and queue
 
-    Separate from Sender so that multiple Source/Dest handlers can
+    Separate from Source/Dest so that multiple handlers can
     share the socket.
     """
 
     def __init__(self, address, hmac_key, bad_connection):
         super().__init__(name=self.__class__.__name__, daemon=True)
-        self.queue = SimpleQueue()
+        self.source_queue = SimpleQueue()
+        self.dest_queue = SimpleQueue()
         self._address = address
         self._hmac_key = hmac_key
         self._bad_connection = bad_connection
@@ -177,9 +182,13 @@ class Downlink(Thread):
             message = downlink.recv(4096)
             if self._bad_connection and not random.randrange(5):
                 continue  # simulate dropped packets
-            packet = EdlPacket.unpack(message, self._hmac_key, True)
-            print("<---", packet.payload)
-            self.queue.put(packet.payload)
+            packet = EdlPacket.unpack(message, self._hmac_key, True).payload
+            print("<---", packet)
+
+            if get_packet_destination(packet) == PacketDestination.DEST_HANDLER:
+                self.dest_queue.put(packet)
+            else:
+                self.source_queue.put(packet)
 
 
 class CountdownProvider(CheckTimerProvider):
@@ -193,10 +202,11 @@ class CountdownProvider(CheckTimerProvider):
         return Countdown(timedelta(seconds=5.0))
 
 
-class Sender:
+class Source(Thread):
     """Responsible for running a SourceHandler statemachine"""
 
     def __init__(self, uplink, downlink, buffer_size):
+        super().__init__(name=self.__class__.__name__, daemon=True)
         self.uplink = uplink
         self.downlink = downlink
 
@@ -212,9 +222,8 @@ class Sender:
         )
 
         self.lock = Lock()
-        self.receiver = Thread(name="Sender-receive", target=self._receive_packets, daemon=True)
 
-    def _receive_packets(self):
+    def run(self):
         while packet := self.downlink.get():
             with self.lock:
                 self.src.insert_packet(packet)
@@ -231,8 +240,6 @@ class Sender:
         assert self.src.put_request(put)
         self.src.state_machine()
 
-        self.receiver.start()
-
         while True:
             with self.lock:
                 while self.src.packets_ready:
@@ -247,7 +254,36 @@ class Sender:
             if not self.src.packets_ready:
                 time.sleep(0.5)
 
-        self.downlink.put(None)
+
+class Dest(Thread):
+    """Responsible for running a DestHandler statemachine"""
+
+    def __init__(self, uplink, downlink, buffer_size):
+        super().__init__(name=self.__class__.__name__, daemon=True)
+        self.uplink = uplink
+        self.downlink = downlink
+
+        # FIXME this is a quick hack for buffer_size, where should the remote_entities table live?
+        remote_entities.get_cfg(DEST_ID).max_packet_len = buffer_size
+
+        self.dest = DestHandler(
+            cfg=localcfg,
+            user=PrintUser(),
+            remote_cfg_table=remote_entities,
+            check_timer_provider=CountdownProvider(),
+        )
+
+    def run(self):
+        while True:
+            try:
+                packet = self.downlink.get_nowait()
+                self.dest.insert_packet(packet)
+            except Empty:
+                time.sleep(0.1)
+            self.dest.state_machine()
+            while self.dest.packets_ready:
+                pdu = self.dest.get_next_packet().pdu
+                self.uplink.put(pdu)
 
 
 def main():
@@ -298,6 +334,12 @@ def main():
         default="",
         help="edl hmac, must be 32 bytes, default all zero",
     )
+    parser.add_argument(
+        "-p",
+        "--proxy",
+        action="store_true",
+        help="Initiate a proxy put request instead of a normal one",
+    )
     args = parser.parse_args()
 
     file_path = args.file_path.split("/")[-1]
@@ -331,34 +373,39 @@ def main():
     down = Downlink(downlink_address, hmac_key, args.bad_connection)
     down.start()
 
-    sender = Sender(up.queue, down.queue, args.buffer_size)
+    source = Source(up.queue, down.source_queue, args.buffer_size)
+    source.start()
+    dest = Dest(up.queue, down.dest_queue, args.buffer_size)
+    dest.start()
 
-    source_to_dest = PutRequest(
-        destination_id=DEST_ID,
-        source_file=Path(args.file_path),
-        dest_file=Path(args.file_path),
-        trans_mode=None,
-        closure_requested=None,
-    )
+    if args.proxy:
+        put = PutRequest(
+            destination_id=DEST_ID,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            closure_requested=True,  # FIXME: upstream bug - dest does not respect
+            msgs_to_user=[
+                ProxyPutRequest(
+                    ProxyPutRequestParams(
+                        SOURCE_ID,
+                        source_file_name=CfdpLv(args.file_path.encode()),
+                        dest_file_name=CfdpLv(args.file_path.encode()),
+                    )
+                ).to_generic_msg_to_user_tlv()
+            ],
+        )
+    else:
+        put = PutRequest(
+            destination_id=DEST_ID,
+            source_file=Path(args.file_path),
+            dest_file=Path(args.file_path),
+            trans_mode=None,
+            closure_requested=None,
+        )
 
-    # dest_to_source = PutRequest(
-    #     destination_id=DEST_ID,
-    #     source_file=None,
-    #     dest_file=None,
-    #     trans_mode=None,
-    #     closure_requested=None,
-    #     msgs_to_user=[
-    #         ProxyPutRequest(
-    #             ProxyPutRequestParams(
-    #                 SOURCE_ID,
-    #                 source_file_name=CfdpLv(b"c3_demo_0.txt"),
-    #                 dest_file_name=CfdpLv(b"c3_demo_1.txt")
-    #             )
-    #         ).to_generic_msg_to_user_tlv()
-    #     ],
-    # )
-
-    sender.send_packets(source_to_dest)
+    source.send_packets(put)
+    signal.pause()
 
 
 if __name__ == "__main__":

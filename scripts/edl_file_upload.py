@@ -103,30 +103,6 @@ class PrintUser(CfdpUserBase):
         print("Indication: EOF Recv for {transaction_id}")
 
 
-SOURCE_ID = ByteFieldU8(0)
-DEST_ID = ByteFieldU8(1)
-
-localcfg = LocalEntityCfg(
-    local_entity_id=SOURCE_ID,
-    indication_cfg=IndicationCfg(),
-    default_fault_handlers=PrintFaults(),
-)
-
-remote_entities = RemoteEntityCfgTable(
-    [
-        RemoteEntityCfg(
-            entity_id=DEST_ID,
-            max_file_segment_len=None,  # FIXME what should this be
-            max_packet_len=950,  # FIXME what should this be
-            closure_requested=False,
-            crc_on_transmission=False,
-            default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
-            crc_type=ChecksumType.CRC_32,
-        ),
-    ]
-)
-
-
 class Uplink(Thread):
     """Manages the Uplink socketand queue.
 
@@ -205,13 +181,10 @@ class CountdownProvider(CheckTimerProvider):
 class Source(Thread):
     """Responsible for running a SourceHandler statemachine"""
 
-    def __init__(self, uplink, downlink, buffer_size):
+    def __init__(self, uplink, downlink, localcfg, remote_entities):
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.uplink = uplink
         self.downlink = downlink
-
-        # FIXME this is a quick hack for buffer_size, where should the remote_entities table live?
-        remote_entities.get_cfg(DEST_ID).max_packet_len = buffer_size
 
         self.src = SourceHandler(
             cfg=localcfg,
@@ -258,13 +231,10 @@ class Source(Thread):
 class Dest(Thread):
     """Responsible for running a DestHandler statemachine"""
 
-    def __init__(self, uplink, downlink, buffer_size):
+    def __init__(self, uplink, downlink, localcfg, remote_entities):
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.uplink = uplink
         self.downlink = downlink
-
-        # FIXME this is a quick hack for buffer_size, where should the remote_entities table live?
-        remote_entities.get_cfg(DEST_ID).max_packet_len = buffer_size
 
         self.dest = DestHandler(
             cfg=localcfg,
@@ -373,9 +343,32 @@ def main():
     down = Downlink(downlink_address, hmac_key, args.bad_connection)
     down.start()
 
-    source = Source(up.queue, down.source_queue, args.buffer_size)
+    SOURCE_ID = ByteFieldU8(0)
+    DEST_ID = ByteFieldU8(1)
+
+    localcfg = LocalEntityCfg(
+        local_entity_id=SOURCE_ID,
+        indication_cfg=IndicationCfg(),
+        default_fault_handlers=PrintFaults(),
+    )
+
+    remote_entities = RemoteEntityCfgTable(
+        [
+            RemoteEntityCfg(
+                entity_id=DEST_ID,
+                max_file_segment_len=None,
+                max_packet_len=args.buffer_size,
+                closure_requested=False,
+                crc_on_transmission=False,
+                default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                crc_type=ChecksumType.CRC_32,
+            ),
+        ]
+    )
+
+    source = Source(up.queue, down.source_queue, localcfg, remote_entities)
     source.start()
-    dest = Dest(up.queue, down.dest_queue, args.buffer_size)
+    dest = Dest(up.queue, down.dest_queue, localcfg, remote_entities)
     dest.start()
 
     if args.proxy:

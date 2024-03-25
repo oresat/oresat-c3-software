@@ -321,7 +321,8 @@ def main():
         sys.exit(1)
 
     if args.random_data:
-        raise NotImplementedError  # TODO: write to a tmp file first
+        with open(args.file_path, mode="xb") as f:
+            f.write(random.randbytes(args.random_data))
 
     if args.hmac:
         if len(args.hmac) != 64:

@@ -2,7 +2,6 @@
 
 import struct
 from collections.abc import Iterable
-from contextlib import suppress
 from datetime import timedelta
 from pathlib import Path
 from queue import Empty, SimpleQueue
@@ -35,6 +34,7 @@ from cfdppy.user import (
 )
 from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
 from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
     FilestoreResponseStatusCode,
@@ -567,8 +567,15 @@ class EdlFileReciever(CfdpUserBase):
                     self.source.reset()
 
         if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
-            with suppress(Empty):
-                self.source.put_request(self.scheduled_requests.get_nowait())
+            try:
+                request = self.scheduled_requests.get_nowait()
+            except Empty:
+                pass
+            else:
+                try:
+                    self.source.put_request(request)
+                except SourceFileDoesNotExist:
+                    self.scheduled_requests.put(self.missing_file_response(request))
 
         self.dest.state_machine()
         self.source.state_machine()
@@ -582,6 +589,30 @@ class EdlFileReciever(CfdpUserBase):
         for out in pdus:
             logger.info(f"---> {out}")
         return pdus or None
+
+    def missing_file_response(self, invalid: PutRequest) -> PutRequest:
+        """Generates a resonse put for when a proxy request tries to access a missing file"""
+
+        originating_id = (
+            invalid.msgs_to_user[0].to_reserved_msg_tlv().get_originating_transaction_id()
+        )
+        return PutRequest(
+            destination_id=originating_id.source_id,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            closure_requested=True,  # FIXME: upstream bug, dest does not respect
+            msgs_to_user=[
+                ProxyPutResponse(
+                    ProxyPutResponseParams(
+                        condition_code=ConditionCode.FILESTORE_REJECTION,
+                        delivery_code=DeliveryCode.DATA_COMPLETE,
+                        file_status=FileStatus.DISCARDED_FILESTORE_REJECTION,
+                    )
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+            ],
+        )
 
     def transaction_indication(self, transaction_indication_params: TransactionParams):
         logger.info(f"Indication: Transaction. {transaction_indication_params}")
@@ -612,6 +643,7 @@ class EdlFileReciever(CfdpUserBase):
                 ],
             )
             self.scheduled_requests.put(put)
+            del self.active_requests[params.transaction_id]
 
     def metadata_recv_indication(self, params: MetadataRecvParams):
         logger.info(f"Indication: Metadata Recv. {params}")

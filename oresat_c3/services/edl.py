@@ -391,7 +391,7 @@ class PrefixedFilestore(HostFilestore):
         return super().list_directory(self._prefix.joinpath(dir_name), target_file, recursive)
 
 
-class VFSCrcHelper(CrcHelper):
+class VfsCrcHelper(CrcHelper):
     """CrcHelper but modified to only use Filestore operations.
 
     It previously would attempt to open the paths passed to it directly instead of asking the
@@ -460,30 +460,6 @@ class LogFaults(DefaultFaultHandlerBase):
         logger.info(f"Transaction {transaction_id} ignored: {cond}. Progress {progress}")
 
 
-SOURCE_ID = ByteFieldU8(0)
-DEST_ID = ByteFieldU8(1)
-
-localcfg = LocalEntityCfg(
-    local_entity_id=DEST_ID,
-    indication_cfg=IndicationCfg(),
-    default_fault_handlers=LogFaults(),
-)
-
-remote_entities = RemoteEntityCfgTable(
-    [
-        RemoteEntityCfg(
-            entity_id=SOURCE_ID,
-            max_file_segment_len=None,
-            max_packet_len=950,  # FIXME this value should come from EdlPacket
-            closure_requested=False,
-            crc_on_transmission=False,
-            default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
-            crc_type=ChecksumType.CRC_32,
-        ),
-    ]
-)
-
-
 class DefaultCheckTimer(CheckTimerProvider):
     """A straight copy of the example CheckTimerProvider
 
@@ -503,6 +479,32 @@ class EdlFileReciever(CfdpUserBase):
         path.mkdir(parents=True, exist_ok=True)
         super().__init__(vfs=PrefixedFilestore(path))
 
+        SOURCE_ID = ByteFieldU8(0)
+        DEST_ID = ByteFieldU8(1)
+
+        localcfg = LocalEntityCfg(
+            local_entity_id=DEST_ID,
+            indication_cfg=IndicationCfg(),
+            default_fault_handlers=LogFaults(),
+        )
+
+        remote_entities = RemoteEntityCfgTable(
+            [
+                RemoteEntityCfg(
+                    entity_id=SOURCE_ID,
+                    max_file_segment_len=None,
+                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
+                    # How does the exact value get determined? Currently it's just a mirror of the
+                    # value in edl_file_upload.py
+                    max_packet_len=950,
+                    closure_requested=False,
+                    crc_on_transmission=False,
+                    default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                    crc_type=ChecksumType.CRC_32,
+                ),
+            ]
+        )
+
         self.fwrite_cache = fwrite_cache
         self.dest = DestHandler(
             cfg=localcfg,
@@ -510,7 +512,7 @@ class EdlFileReciever(CfdpUserBase):
             remote_cfg_table=remote_entities,
             check_timer_provider=DefaultCheckTimer(),
         )
-        self.dest._cksum_verif_helper = VFSCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
+        self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.source = SourceHandler(
             cfg=localcfg,

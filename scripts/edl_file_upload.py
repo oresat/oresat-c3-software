@@ -3,6 +3,7 @@
 File upload to OreSat.
 """
 
+import os
 import random
 import signal
 import socket
@@ -44,6 +45,8 @@ from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
+
+sys.path.insert(0, os.path.abspath(".."))
 
 
 class PrintFaults(DefaultFaultHandlerBase):

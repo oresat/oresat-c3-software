@@ -19,6 +19,7 @@ classifiers = [
 ]
 dependencies = [
     "bitstring",
+    "cfdp-py",
     "oresat-configs",
     "oresat-olaf>=3.4.0",
     "smbus2",

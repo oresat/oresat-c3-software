@@ -1,6 +1,7 @@
 bitstring
 black
 build
+cfdp-py
 isort
 oresat-configs
 oresat-olaf>=3.4.0

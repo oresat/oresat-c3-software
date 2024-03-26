@@ -378,7 +378,9 @@ def main():
             source_file=None,
             dest_file=None,
             trans_mode=None,
-            closure_requested=True,  # FIXME: upstream bug - dest does not respect
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
             msgs_to_user=[
                 ProxyPutRequest(
                     ProxyPutRequestParams(

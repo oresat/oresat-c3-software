@@ -473,8 +473,8 @@ remote_entities = RemoteEntityCfgTable(
     [
         RemoteEntityCfg(
             entity_id=SOURCE_ID,
-            max_file_segment_len=None,  # FIXME what should this be
-            max_packet_len=950,  # FIXME what should this be
+            max_file_segment_len=None,
+            max_packet_len=950,  # FIXME this value should come from EdlPacket
             closure_requested=False,
             crc_on_transmission=False,
             default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
@@ -601,7 +601,9 @@ class EdlFileReciever(CfdpUserBase):
             source_file=None,
             dest_file=None,
             trans_mode=None,
-            closure_requested=True,  # FIXME: upstream bug, dest does not respect
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
             msgs_to_user=[
                 ProxyPutResponse(
                     ProxyPutResponseParams(
@@ -634,7 +636,9 @@ class EdlFileReciever(CfdpUserBase):
                 source_file=None,
                 dest_file=None,
                 trans_mode=None,
-                closure_requested=True,  # FIXME: upstream bug, dest does not respect
+                # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+                # trans_mode defaults to ACKNOWLEGED
+                closure_requested=True,
                 msgs_to_user=[
                     ProxyPutResponse(
                         ProxyPutResponseParams.from_finished_params(params.finished_params)

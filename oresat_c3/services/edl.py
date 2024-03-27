@@ -112,7 +112,7 @@ class EdlService(Service):
 
         if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
             logger.error(
-                f"invalid EDL request packet sequence number of {req_packet.seq_num}, shoudl be > "
+                f"invalid EDL request packet sequence number of {req_packet.seq_num}, should be > "
                 f"{self._edl_sequence_count_obj.value}"
             )
             return None  # no responses to invalid packets

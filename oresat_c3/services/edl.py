@@ -10,7 +10,11 @@ from typing import Any, Optional
 
 import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import FsmNotCalledAfterPacketInsertion, SourceFileDoesNotExist
+from cfdppy.exceptions import (
+    FsmNotCalledAfterPacketInsertion,
+    NoRemoteEntityCfgFound,
+    SourceFileDoesNotExist,
+)
 from cfdppy.filestore import HostFilestore
 from cfdppy.handler.crc import CrcHelper
 from cfdppy.handler.dest import DestHandler
@@ -576,7 +580,12 @@ class EdlFileReciever(CfdpUserBase):
             else:
                 try:
                     self.source.put_request(request)
-                except SourceFileDoesNotExist:
+                except (SourceFileDoesNotExist, NoRemoteEntityCfgFound):
+                    # Note that NoRemoteEntityCfgFound indicates that the MIB is missing info on
+                    # the requested proxy transfer destination. CFDP doesn't seem to have a
+                    # standard set of errors that cover this condition, and the least worst option
+                    # resulted in an identical message to missing_file. Not super great, so if
+                    # there's a better idea of how to handle this, please change.
                     self.scheduled_requests.put(self.missing_file_response(request))
 
         self.dest.state_machine()

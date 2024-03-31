@@ -1,202 +1,262 @@
 #!/usr/bin/env python3
 """
 File upload to OreSat.
-
-Order of PDUs:
-  - [send] metadata
-  - loop:
-      - [send] data transfer
-      - [recv] possible nak
-  - [send] EOF
-  - [recv] EOF ack
-  - [recv] Finished
-  - [send] Finished ack
 """
 
 import os
 import random
+import signal
 import socket
 import sys
-import zlib
+import time
 from argparse import ArgumentParser
-from enum import IntEnum, auto
-from threading import Thread
-from time import sleep
+from datetime import timedelta
+from pathlib import Path
+from queue import Empty, SimpleQueue
+from threading import Lock, Thread
+from typing import Any
 
-from olaf import OreSatFile
-from spacepackets.cfdp import CrcFlag
-from spacepackets.cfdp.conf import LargeFileFlag, PduConfig
-from spacepackets.cfdp.defs import ChecksumType, ConditionCode, Direction, TransmissionMode
-from spacepackets.cfdp.pdu import (
-    AckPdu,
-    DirectiveType,
-    EofPdu,
-    FinishedPdu,
-    MetadataParams,
-    MetadataPdu,
-    NakPdu,
-    TransactionStatus,
+from cfdppy import CfdpState, PacketDestination, get_packet_destination
+from cfdppy.handler.dest import DestHandler
+from cfdppy.handler.source import SourceHandler
+from cfdppy.mib import (
+    CheckTimerProvider,
+    DefaultFaultHandlerBase,
+    IndicationCfg,
+    LocalEntityCfg,
+    RemoteEntityCfg,
+    RemoteEntityCfgTable,
 )
-from spacepackets.cfdp.pdu.file_data import FileDataParams, FileDataPdu
+from cfdppy.request import PutRequest
+from cfdppy.user import (
+    CfdpUserBase,
+    FileSegmentRecvdParams,
+    MetadataRecvParams,
+    TransactionFinishedParams,
+    TransactionId,
+    TransactionParams,
+)
+from olaf import OreSatFile
+from spacepackets.cfdp import CfdpLv
+from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp.tlv import ProxyPutRequest, ProxyPutRequestParams
+from spacepackets.countdown import Countdown
+from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
-
-sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
-recv_queue = []
+sys.path.insert(0, os.path.abspath(".."))
 
 
-def recv_thread(address: tuple, hmac_key: bytes, bad_connection: bool):
-    """Thread to receive packets from the satellite and put them into the queue."""
+class PrintFaults(DefaultFaultHandlerBase):
+    """Prints all faults to stdout"""
 
-    edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    edl_downlink_socket.bind(address)
-    edl_downlink_socket.settimeout(0.1)
+    def notice_of_suspension_cb(self, transaction_id, cond, progress):
+        print(f"Transaction {transaction_id} suspended: {cond}. Progress {progress}")
 
-    loop_num = 0
-    while True:
-        loop_num += 1
+    def notice_of_cancellation_cb(self, transaction_id, cond, progress):
+        print(f"Transaction {transaction_id} cancelled: {cond}. Progress {progress}")
 
-        try:
-            res_message, _ = edl_downlink_socket.recvfrom(0xFFFFF)
-        except socket.timeout:
-            continue
+    def abandoned_cb(self, transaction_id, cond, progress):
+        print(f"Transaction {transaction_id} abandoned: {cond}. Progress {progress}")
 
-        if bad_connection and loop_num % random.randint(1, 5):
-            continue  # simulate dropped packets
-
-        try:
-            packet = EdlPacket.unpack(res_message, hmac_key, True)
-            recv_queue.append(packet.payload)
-        except Exception as e:  # pylint: disable=W0718
-            print(e)
+    def ignore_cb(self, transaction_id, cond, progress):
+        print(f"Transaction {transaction_id} ignored: {cond}. Progress {progress}")
 
 
-class Indication(IntEnum):
-    """CFDP Indications"""
+class PrintUser(CfdpUserBase):
+    """Prints all indications to sdtout"""
 
-    NONE = 0  # not an actually Indication, just a flag
-    TRANSACTION = auto()
-    EOF_SENT = auto()
-    TRANSACTION_FINISHED = auto()
-    METADATA = auto()
-    FILE_SEGMENT_RECV = auto()
-    REPORT = auto()
-    SUSPENDED = auto()
-    RESUMED = auto()
-    FAULT = auto()
-    ABANDONED = auto()
-    EOF_RECV = auto()
+    def transaction_indication(self, transaction_indication_params: TransactionParams):
+        print(f"Indication: Transaction. {transaction_indication_params}")
+
+    def eof_sent_indication(self, transaction_id: TransactionId):
+        print(f"Indication: EOF Sent for {transaction_id}.")
+
+    def transaction_finished_indication(self, params: TransactionFinishedParams):
+        print(f"Indication: Transaction Finished. {params}")
+
+    def metadata_recv_indication(self, params: MetadataRecvParams):
+        print(f"Indication: Metadata Recv. {params}")
+
+    def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
+        print(f"Indication: File Segment Recv. {params}")
+
+    def report_indication(self, transaction_id: TransactionId, status_report: Any):
+        print("Indication: Report for {transaction_id}. {status_report}")
+
+    def suspended_indication(self, transaction_id: TransactionId, cond_code: ConditionCode):
+        print("Indication: Suspended for {transaction_id}. {cond_code}")
+
+    def resumed_indication(self, transaction_id: TransactionId, progress: int):
+        print("Indication: Resumed for {transaction_id}. {progress}")
+
+    def fault_indication(
+        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
+    ):
+        print("Indication: Fault for {transaction_id}. {cond_code}. {progress}")
+
+    def abandoned_indication(
+        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
+    ):
+        print("Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
+
+    def eof_recv_indication(self, transaction_id: TransactionId):
+        print("Indication: EOF Recv for {transaction_id}")
 
 
-class GroundEntity:
-    """Ground station entity for file uploads."""
+class Uplink(Thread):
+    """Manages the Uplink socketand queue.
 
-    PDU_CONF = PduConfig(
-        transaction_seq_num=ByteFieldU8(0),
-        trans_mode=TransmissionMode.ACKNOWLEDGED,
-        source_entity_id=ByteFieldU8(0),
-        dest_entity_id=ByteFieldU8(0),
-        file_flag=LargeFileFlag.NORMAL,
-        crc_flag=CrcFlag.NO_CRC,
-        direction=Direction.TOWARDS_RECEIVER,
-    )
+    Separate from Source/Dest so that multiple handlers can share
+    the socket.
+    """
 
-    def __init__(self, file_path: str, file_data: bytes, buffer_size: int):
-        self.f = None
-        self.offset = 0
-        self.file_path = file_path
-        self.file_name = os.path.basename(file_path)
-        self.file_data = file_data
-        self.file_data_len = len(file_data)
-        self.last_indication = Indication.NONE
-        self.got_eof_ack = False
-        self.buffer_size = buffer_size
+    def __init__(self, address, hmac_key, sequence_number, bad_connection, delay):
+        super().__init__(name=self.__class__.__name__, daemon=True)
+        self.queue = SimpleQueue()
+        self._address = address
+        self._hmac_key = hmac_key
+        self._sequence_number = sequence_number
+        self._bad_connection = bad_connection
+        self._delay = delay
 
-    def loop(self):
-        """Entity loop"""
+    def run(self):
+        uplink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        uplink.connect(self._address)
 
-        res_pdu = None
-        req_pdu = None
+        while True:
+            payload = self.queue.get()
+            if self._bad_connection and not random.randrange(5):
+                continue  # simulate dropped packets
+            print("--->", payload)
+            packet = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT)
+            message = packet.pack(self._hmac_key)
+            uplink.send(message)
+            self._sequence_number += 1
+            time.sleep(self._delay)
 
-        while len(recv_queue) > 0:
-            res_pdu = recv_queue.pop()
-            if isinstance(res_pdu, NakPdu):
-                print("recv nak")
-                self.offset = res_pdu.end_of_scope
-                self.last_indication = Indication.TRANSACTION
-            elif isinstance(res_pdu, AckPdu):
-                self.got_eof_ack = True
-                print("recv ack")
-                self.last_indication = Indication.TRANSACTION_FINISHED
 
-        if self.last_indication in [Indication.NONE, Indication.TRANSACTION]:
-            self.last_indication = Indication.TRANSACTION
-            if res_pdu is not None and isinstance(res_pdu, NakPdu):
-                print("meta")
-                metadata_params = MetadataParams(
-                    closure_requested=False,
-                    file_size=self.file_data_len,
-                    source_file_name=self.file_path,
-                    dest_file_name=self.file_name,
-                    checksum_type=ChecksumType.CRC_32,
-                )
-                req_pdu = MetadataPdu(pdu_conf=self.PDU_CONF, params=metadata_params)
+class Downlink(Thread):
+    """Manages the downlink socket and queue
+
+    Separate from Source/Dest so that multiple handlers can
+    share the socket.
+    """
+
+    def __init__(self, address, hmac_key, bad_connection):
+        super().__init__(name=self.__class__.__name__, daemon=True)
+        self.source_queue = SimpleQueue()
+        self.dest_queue = SimpleQueue()
+        self._address = address
+        self._hmac_key = hmac_key
+        self._bad_connection = bad_connection
+
+    def run(self):
+        downlink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        downlink.bind(self._address)
+
+        while True:
+            message = downlink.recv(4096)
+            if self._bad_connection and not random.randrange(5):
+                continue  # simulate dropped packets
+            packet = EdlPacket.unpack(message, self._hmac_key, True).payload
+            print("<---", packet)
+
+            if get_packet_destination(packet) == PacketDestination.DEST_HANDLER:
+                self.dest_queue.put(packet)
             else:
-                data = None
-                if self.offset < self.file_data_len - self.buffer_size:
-                    end = self.offset + self.buffer_size
-                    data = self.file_data[self.offset : end]
-                    print(f"file data {self.offset}-{end} of {self.file_data_len}")
-                elif self.offset < self.file_data_len:
-                    data = self.file_data[self.offset :]
-                    print(
-                        f"file data {self.offset}-{self.file_data_len} of {self.file_data_len} "
-                        "aka final"
-                    )
-                else:
-                    checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
-                    req_pdu = EofPdu(
-                        self.PDU_CONF, file_checksum=checksum, file_size=len(self.file_data)
-                    )
-                    self.last_indication = Indication.EOF_SENT
+                self.source_queue.put(packet)
 
-                if data is not None:
-                    fd_params = FileDataParams(
-                        file_data=data, offset=self.offset, segment_metadata=None
-                    )
-                    req_pdu = FileDataPdu(pdu_conf=self.PDU_CONF, params=fd_params)
 
-                    if self.offset + self.buffer_size <= self.file_data_len:
-                        self.offset += self.buffer_size
-                    else:
-                        self.offset = self.file_data_len
-        elif self.last_indication == Indication.EOF_SENT:
-            if isinstance(res_pdu, AckPdu):
-                self.got_eof_ack = True
-                print("recv ack")
-            elif isinstance(res_pdu, FinishedPdu):
-                if self.got_eof_ack:
-                    print("sent finish ack")
-                    req_pdu = AckPdu(
-                        directive_code_of_acked_pdu=DirectiveType.FINISHED_PDU,
-                        condition_code_of_acked_pdu=ConditionCode.NO_ERROR,
-                        transaction_status=TransactionStatus.TERMINATED,
-                        pdu_conf=self.PDU_CONF,
-                    )
-                    self.last_indication = Indication.TRANSACTION_FINISHED
-                else:
-                    print("no ack")
-                    self.last_indication = Indication.EOF_SENT
-            else:
-                # handle case with sender is done, but receiver is not
-                print("eof sent")
-                self.last_indication = Indication.TRANSACTION
+class CountdownProvider(CheckTimerProvider):
+    """Copied from the cfdppy example.
 
-        print(self.last_indication.name)
+    I think this is to allow for custom timeouts based on latency between local and remote
+    entities? It doesn't set all the timers though, ACK timer I'm looking at you.
+    """
 
-        return req_pdu
+    def provide_check_timer(self, local_entity_id, remote_entity_id, entity_type) -> Countdown:
+        return Countdown(timedelta(seconds=5.0))
+
+
+class Source(Thread):
+    """Responsible for running a SourceHandler statemachine"""
+
+    def __init__(self, uplink, downlink, localcfg, remote_entities):
+        super().__init__(name=self.__class__.__name__, daemon=True)
+        self.uplink = uplink
+        self.downlink = downlink
+
+        self.src = SourceHandler(
+            cfg=localcfg,
+            user=PrintUser(),
+            remote_cfg_table=remote_entities,
+            check_timer_provider=CountdownProvider(),
+            seq_num_provider=SeqCountProvider(16),
+        )
+
+        self.lock = Lock()
+
+    def run(self):
+        while packet := self.downlink.get():
+            with self.lock:
+                self.src.insert_packet(packet)
+                self.src.state_machine()
+                while self.src.packets_ready:
+                    pdu = self.src.get_next_packet().pdu
+                    self.uplink.put(pdu)
+
+    def send_packets(self, put):
+        """Sends a PutRequest to the uplink and handles respones.
+
+        blocks.
+        """
+        assert self.src.put_request(put)
+        self.src.state_machine()
+
+        while True:
+            with self.lock:
+                while self.src.packets_ready:
+                    pdu = self.src.get_next_packet().pdu
+                    self.uplink.put(pdu)
+                self.src.state_machine()
+
+            print(self.src.step)
+            if self.src.state == CfdpState.IDLE:
+                break
+
+            if not self.src.packets_ready:
+                time.sleep(0.5)
+
+
+class Dest(Thread):
+    """Responsible for running a DestHandler statemachine"""
+
+    def __init__(self, uplink, downlink, localcfg, remote_entities):
+        super().__init__(name=self.__class__.__name__, daemon=True)
+        self.uplink = uplink
+        self.downlink = downlink
+
+        self.dest = DestHandler(
+            cfg=localcfg,
+            user=PrintUser(),
+            remote_cfg_table=remote_entities,
+            check_timer_provider=CountdownProvider(),
+        )
+
+    def run(self):
+        while True:
+            try:
+                packet = self.downlink.get_nowait()
+                self.dest.insert_packet(packet)
+            except Empty:
+                time.sleep(0.1)
+            self.dest.state_machine()
+            while self.dest.packets_ready:
+                pdu = self.dest.get_next_packet().pdu
+                self.uplink.put(pdu)
 
 
 def main():
@@ -247,24 +307,25 @@ def main():
         default="",
         help="edl hmac, must be 32 bytes, default all zero",
     )
+    parser.add_argument(
+        "-p",
+        "--proxy",
+        action="store_true",
+        help="Initiate a proxy put request instead of a normal one",
+    )
     args = parser.parse_args()
 
     file_path = args.file_path.split("/")[-1]
     try:
-        OreSatFile(file_path)  # pylint: disable=E0602
+        OreSatFile(file_path)
     except ValueError:
         print("file name must be in card-name_key_unix-time.extension format")
         print("example: c3_test_123.txt")
         sys.exit(1)
 
-    if args.random_data <= 0:
-        if not os.path.isfile(args.file_path):
-            print(f"file {args.file_path} not found")
-            sys.exit(1)
-        with open(args.file_path, "rb") as f:
-            file_data = f.read()
-    else:
-        file_data = bytes([random.randint(0, 255) for _ in range(args.random_data)])
+    if args.random_data:
+        with open(args.file_path, mode="xb") as f:
+            f.write(random.randbytes(args.random_data))
 
     if args.hmac:
         if len(args.hmac) != 64:
@@ -273,49 +334,77 @@ def main():
         else:
             hmac_key = bytes.fromhex(args.hmac)
     else:
-        hmac_key = b"\x00" * 32
+        hmac_key = bytes(32)
 
     uplink_address = (args.host, args.uplink_port)
 
     downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
     downlink_address = (downlink_host, args.downlink_port)
 
-    t = Thread(
-        target=recv_thread, args=(downlink_address, hmac_key, args.bad_connection), daemon=True
-    )
-    t.start()
-
-    entity = GroundEntity(args.file_path, file_data, args.buffer_size)
-
-    edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    loop_num = 0
-    seq_num = args.sequence_number
     delay = args.loop_delay / 1000
-    while True:
-        try:
-            loop_num += 1
+    up = Uplink(uplink_address, hmac_key, args.sequence_number, args.bad_connection, delay)
+    up.start()
+    down = Downlink(downlink_address, hmac_key, args.bad_connection)
+    down.start()
 
-            if entity.last_indication == Indication.TRANSACTION_FINISHED:
-                break
+    SOURCE_ID = ByteFieldU8(0)
+    DEST_ID = ByteFieldU8(1)
 
-            req_pdu = entity.loop()
+    localcfg = LocalEntityCfg(
+        local_entity_id=SOURCE_ID,
+        indication_cfg=IndicationCfg(),
+        default_fault_handlers=PrintFaults(),
+    )
 
-            if req_pdu is not None:
-                seq_num += 1
+    remote_entities = RemoteEntityCfgTable(
+        [
+            RemoteEntityCfg(
+                entity_id=DEST_ID,
+                max_file_segment_len=None,
+                max_packet_len=args.buffer_size,
+                closure_requested=False,
+                crc_on_transmission=False,
+                default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                crc_type=ChecksumType.CRC_32,
+            ),
+        ]
+    )
 
-            if args.bad_connection and loop_num % random.randint(1, 5):
-                continue  # simulate dropped packets
+    source = Source(up.queue, down.source_queue, localcfg, remote_entities)
+    source.start()
+    dest = Dest(up.queue, down.dest_queue, localcfg, remote_entities)
+    dest.start()
 
-            if req_pdu is not None:
-                packet = EdlPacket(req_pdu, seq_num, SRC_DEST_ORESAT)
-                req_message = packet.pack(hmac_key)
-                edl_uplink_socket.sendto(req_message, uplink_address)
-            sleep(delay)
-        except KeyboardInterrupt:
-            break
+    if args.proxy:
+        put = PutRequest(
+            destination_id=DEST_ID,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
+            msgs_to_user=[
+                ProxyPutRequest(
+                    ProxyPutRequestParams(
+                        SOURCE_ID,
+                        source_file_name=CfdpLv(args.file_path.encode()),
+                        dest_file_name=CfdpLv(args.file_path.encode()),
+                    )
+                ).to_generic_msg_to_user_tlv()
+            ],
+        )
+    else:
+        put = PutRequest(
+            destination_id=DEST_ID,
+            source_file=Path(args.file_path),
+            dest_file=Path(args.file_path),
+            trans_mode=None,
+            closure_requested=None,
+        )
 
-    print(f"last sequence number: {seq_num}")
+    source.send_packets(put)
+    signal.pause()
 
 
 if __name__ == "__main__":

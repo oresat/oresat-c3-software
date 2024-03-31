@@ -1,28 +1,53 @@
 """'EDL Service"""
 
-import zlib
-from enum import IntEnum, auto
+import struct
+from collections.abc import Iterable
+from datetime import timedelta
 from pathlib import Path
-from time import monotonic, time
-from typing import Any, Union
+from queue import Empty, SimpleQueue
+from time import time
+from typing import Any, Optional
 
 import canopen
-from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
-from spacepackets.cfdp import ConditionCode, CrcFlag, LargeFileFlag, TransmissionMode
-from spacepackets.cfdp.conf import PduConfig
-from spacepackets.cfdp.defs import Direction
-from spacepackets.cfdp.pdu import (
-    AbstractFileDirectiveBase,
-    AckPdu,
-    DirectiveType,
-    EofPdu,
-    FinishedParams,
-    FinishedPdu,
-    MetadataPdu,
-    NakPdu,
-    TransactionStatus,
+from cfdppy import CfdpState, PacketDestination, get_packet_destination
+from cfdppy.exceptions import (
+    FsmNotCalledAfterPacketInsertion,
+    NoRemoteEntityCfgFound,
+    SourceFileDoesNotExist,
 )
-from spacepackets.cfdp.pdu.file_data import FileDataPdu
+from cfdppy.filestore import HostFilestore
+from cfdppy.handler.crc import CrcHelper
+from cfdppy.handler.dest import DestHandler
+from cfdppy.handler.source import SourceHandler
+from cfdppy.mib import (
+    CheckTimerProvider,
+    DefaultFaultHandlerBase,
+    IndicationCfg,
+    LocalEntityCfg,
+    RemoteEntityCfg,
+    RemoteEntityCfgTable,
+)
+from cfdppy.request import PutRequest
+from cfdppy.user import (
+    CfdpUserBase,
+    FileSegmentRecvdParams,
+    MetadataRecvParams,
+    TransactionFinishedParams,
+    TransactionId,
+    TransactionParams,
+)
+from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
+from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp.defs import DeliveryCode, FileStatus
+from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
+from spacepackets.cfdp.tlv import (
+    FilestoreResponseStatusCode,
+    OriginatingTransactionId,
+    ProxyPutResponse,
+    ProxyPutResponseParams,
+)
+from spacepackets.countdown import Countdown
+from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.edl_command import (
@@ -36,23 +61,6 @@ from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
-
-
-class Indication(IntEnum):
-    """CFDP Indications."""
-
-    NONE = 0  # not an actually Indication, just a flag
-    TRANSACTION = auto()
-    EOF_SENT = auto()
-    TRANSACTION_FINISHED = auto()
-    METADATA_RECV = auto()
-    FILE_SEGMENT_RECV = auto()
-    REPORT = auto()
-    SUSPENDED = auto()
-    RESUMED = auto()
-    FAULT = auto()
-    ABANDONED = auto()
-    EOF_RECV = auto()
 
 
 class EdlService(Service):
@@ -85,54 +93,71 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
 
-    def _get_hmac_key(self) -> bytes:
-        """GEt the active HMAC key."""
-
+    @property
+    def _hmac_key(self) -> bytes:
         edl_rec = self.node.od["edl"]
         active_key = edl_rec["active_crypto_key"].value
         return edl_rec[f"crypto_key_{active_key}"].value
 
-    def _upack_last_recv(self) -> Union[EdlPacket, None]:
-        req_packet = None
+    @property
+    def _flight_mode(self) -> bool:
+        return bool(self._flight_mode_obj.value)
 
-        if len(self._radios_service.recv_queue) == 0:
-            return req_packet
+    @property
+    def _sequence_count(self) -> int:
+        return self._edl_sequence_count_obj.value
 
-        req_message = self._radios_service.recv_queue.pop()
+    @_sequence_count.setter
+    def _sequence_count(self, value):
+        self._edl_sequence_count_obj.value = value
+
+    @property
+    def _rejected_count(self) -> int:
+        return self._edl_rejected_count_obj.value
+
+    @_rejected_count.setter
+    def _rejected_count(self, value):
+        self._edl_rejected_count_obj.value = value
+
+    def _upack_last_recv(self) -> Optional[EdlPacket]:
+        try:
+            message = self._radios_service.recv_queue.get_nowait()
+        except Empty:
+            return None
 
         try:
-            req_packet = EdlPacket.unpack(
-                req_message, self._get_hmac_key(), not self._flight_mode_obj.value
-            )
-        except Exception as e:  # pylint: disable=W0718
-            self._edl_rejected_count_obj.value += 1
-            self._edl_rejected_count_obj.value &= 0xFF_FF_FF_FF
+            packet = EdlPacket.unpack(message, self._hmac_key, not self._flight_mode)
+        except EdlPacketError as e:
+            self._rejected_count += 1
+            self._rejected_count &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
             return None  # no responses to invalid packets
 
-        if self._flight_mode_obj.value and req_packet.seq_num < self._edl_sequence_count_obj.value:
+        if self._flight_mode and packet.seq_num < self._sequence_count:
             logger.error(
-                f"invalid EDL request packet sequence number of {req_packet.seq_num}, shoudl be > "
-                f"{self._edl_sequence_count_obj.value}"
+                f"invalid EDL request packet sequence number of {packet.seq_num}, should be > "
+                f"{self._sequence_count}"
             )
             return None  # no responses to invalid packets
 
         self._last_edl_obj.value = int(time())
 
-        if self._flight_mode_obj.value:
-            self._edl_sequence_count_obj.value = req_packet.seq_num
-            self._edl_sequence_count_obj.value &= 0xFF_FF_FF_FF
+        if self._flight_mode:
+            self._sequence_count = packet.seq_num
+            self._sequence_count &= 0xFF_FF_FF_FF
 
-        return req_packet
+        return packet
 
     def on_loop(self):
         req_packet = self._upack_last_recv()
 
-        if req_packet is None and self._file_receiver.last_indication == Indication.NONE:
-            self.sleep_ms(50)
-            return
-
-        if req_packet is not None and req_packet.vcid == EdlVcid.C3_COMMAND:
+        if req_packet is None:
+            if self._file_receiver.state == CfdpState.BUSY:
+                res_payload = self._file_receiver.loop(None)
+            else:
+                self.sleep_ms(50)
+                return
+        elif req_packet.vcid == EdlVcid.C3_COMMAND:
             try:
                 res_payload = self._run_cmd(req_packet.payload)
                 if not res_payload.values:
@@ -140,29 +165,27 @@ class EdlService(Service):
             except Exception as e:  # pylint: disable=W0718
                 logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
                 return
-        elif req_packet is None:
-            # hardcode to only asume upload for now!!!
-            res_payload = self._file_receiver.loop(None)
         elif req_packet.vcid == EdlVcid.FILE_TRANSFER:
-            # hardcode to only asume upload for now!!!
             res_payload = self._file_receiver.loop(req_packet.payload)
         else:
             logger.error(f"got an EDL packet with unknown VCID: {req_packet.vcid}")
             return
 
         if res_payload is None:
+            self.sleep_ms(50)
             return
 
-        try:
-            res_packet = EdlPacket(
-                res_payload, self._edl_sequence_count_obj.value, SRC_DEST_UNICLOGS
-            )
-            res_message = res_packet.pack(self._get_hmac_key())
-        except (EdlCommandError, EdlPacketError, ValueError) as e:
-            logger.error(f"EDL response generation raised: {e}")
-            return
+        if not isinstance(res_payload, Iterable):
+            res_payload = (res_payload,)
+        for payload in res_payload:
+            try:
+                res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
+                res_message = res_packet.pack(self._hmac_key)
+            except (EdlCommandError, EdlPacketError, ValueError) as e:
+                logger.exception(f"EDL response generation raised: {e}")
+                continue
 
-        self._radios_service.send_edl_response(res_message)
+            self._radios_service.send_edl_response(res_message)
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None
@@ -320,170 +343,365 @@ class EdlService(Service):
         return response
 
 
-class EdlFileReciever:
+class PrefixedFilestore(HostFilestore):
+    """A HostFilestore modified to only run in a specified directory"""
+
+    def __init__(self, prefix: Path):
+        if not prefix.is_dir():
+            raise NotADirectoryError("prefix must be a directory")
+        self._prefix = prefix
+
+    def read_data(self, file: Path, offset: Optional[int], read_len: Optional[int] = None) -> bytes:
+        return super().read_data(self._prefix.joinpath(file), offset, read_len)
+
+    def file_exists(self, path: Path) -> bool:
+        return super().file_exists(self._prefix.joinpath(path))
+
+    def is_directory(self, path: Path) -> bool:
+        return super().is_directory(self._prefix.joinpath(path))
+
+    def truncate_file(self, file: Path):
+        super().truncate_file(self._prefix.joinpath(file))
+
+    def write_data(self, file: Path, data: bytes, offset: Optional[int]):
+        super().write_data(self._prefix.joinpath(file), data, offset)
+
+    def create_file(self, file: Path) -> FilestoreResponseStatusCode:
+        return super().create_file(self._prefix.joinpath(file))
+
+    def delete_file(self, file: Path) -> FilestoreResponseStatusCode:
+        return super().delete_file(self._prefix.joinpath(file))
+
+    def rename_file(self, old_file: Path, new_file: Path) -> FilestoreResponseStatusCode:
+        return super().rename_file(self._prefix.joinpath(old_file), self._prefix.joinpath(new_file))
+
+    def replace_file(self, replaced_file: Path, source_file: Path) -> FilestoreResponseStatusCode:
+        return super().replace_file(
+            self._prefix.joinpath(replaced_file),
+            self._prefix.joinpath(source_file),
+        )
+
+    def remove_directory(
+        self, dir_name: Path, recursive: bool = False
+    ) -> FilestoreResponseStatusCode:
+        return super().remove_directory(self._prefix.joinpath(dir_name), recursive)
+
+    def create_directory(self, dir_name: Path) -> FilestoreResponseStatusCode:
+        return super().create_directory(self._prefix.joinpath(dir_name))
+
+    def list_directory(
+        self, dir_name: Path, target_file: Path, recursive: bool = False
+    ) -> FilestoreResponseStatusCode:
+        return super().list_directory(self._prefix.joinpath(dir_name), target_file, recursive)
+
+
+class VfsCrcHelper(CrcHelper):
+    """CrcHelper but modified to only use Filestore operations.
+
+    It previously would attempt to open the paths passed to it directly instead of asking the
+    filestore, which failed when using the above PrefixFilestore.
+    """
+
+    def calc_modular_checksum(self, file_path: Path) -> bytes:
+        """Calculates the modular checksum of the file in file_path.
+
+        This was a module level function in cfdppy but it accessed the filesystem directly
+        instead of going through a filestore. It needs to become a CrcHelper method to use the
+        provided filestore.
+        """
+        checksum = 0
+        offset = 0
+        while True:
+            data = self.vfs.read_data(file_path, offset, 4)
+            offset += 4
+            if not data:
+                break
+            checksum += int.from_bytes(data.ljust(4, b"\0"), byteorder="big", signed=False)
+
+        checksum %= 2**32
+        return struct.pack("!I", checksum)
+
+    def calc_for_file(self, file_path: Path, file_sz: int, segment_len: int = 4096) -> bytes:
+        if self.checksum_type == ChecksumType.NULL_CHECKSUM:
+            return NULL_CHECKSUM_U32
+        if self.checksum_type == ChecksumType.MODULAR:
+            return self.calc_modular_checksum(file_path)
+        crc_obj = self.generate_crc_calculator()
+        if segment_len == 0:
+            raise ValueError("Segment length can not be 0")
+        if not self.vfs.file_exists(file_path):
+            raise SourceFileDoesNotExist(file_path)
+        current_offset = 0
+
+        # Calculate the file CRC
+        while current_offset < file_sz:
+            if current_offset + segment_len > file_sz:
+                read_len = file_sz - current_offset
+            else:
+                read_len = segment_len
+            if read_len > 0:
+                crc_obj.update(self.vfs.read_data(file_path, current_offset, read_len))
+            current_offset += read_len
+        return crc_obj.digest()
+
+
+class LogFaults(DefaultFaultHandlerBase):
+    """A HaultHandler that only logs the faults and nothing more.
+
+    At some point this should be replaced with something more robust.
+    """
+
+    def notice_of_suspension_cb(self, transaction_id, cond, progress):
+        logger.info(f"Transaction {transaction_id} suspended: {cond}. Progress {progress}")
+
+    def notice_of_cancellation_cb(self, transaction_id, cond, progress):
+        logger.info(f"Transaction {transaction_id} cancelled: {cond}. Progress {progress}")
+
+    def abandoned_cb(self, transaction_id, cond, progress):
+        logger.info(f"Transaction {transaction_id} abandoned: {cond}. Progress {progress}")
+
+    def ignore_cb(self, transaction_id, cond, progress):
+        logger.info(f"Transaction {transaction_id} ignored: {cond}. Progress {progress}")
+
+
+class DefaultCheckTimer(CheckTimerProvider):
+    """A straight copy of the example CheckTimerProvider
+
+    I think this exists to possibly account for the latency between local and remote entities?
+    Unfortunately it doesn't get used for all the timers in source/dest, like the ACK timer.
+    """
+
+    def provide_check_timer(self, local_entity_id, remote_entity_id, entity_type) -> Countdown:
+        return Countdown(timedelta(seconds=5.0))
+
+
+class EdlFileReciever(CfdpUserBase):
     """CFDP receiver for file uploads."""
 
-    PDU_CONF = PduConfig(
-        transaction_seq_num=ByteFieldU8(0),
-        trans_mode=TransmissionMode.ACKNOWLEDGED,
-        source_entity_id=ByteFieldU8(0),
-        dest_entity_id=ByteFieldU8(0),
-        file_flag=LargeFileFlag.NORMAL,
-        crc_flag=CrcFlag.NO_CRC,
-        direction=Direction.TOWARDS_RECEIVER,
-    )
-
-    FIN_DELAY_S = 0.5
-
     def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
-        self.upload_dir = upload_dir
-        Path(upload_dir).mkdir(parents=True, exist_ok=True)
+        path = Path(upload_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        super().__init__(vfs=PrefixedFilestore(path))
+
+        SOURCE_ID = ByteFieldU8(0)
+        DEST_ID = ByteFieldU8(1)
+
+        localcfg = LocalEntityCfg(
+            local_entity_id=DEST_ID,
+            indication_cfg=IndicationCfg(),
+            default_fault_handlers=LogFaults(),
+        )
+
+        remote_entities = RemoteEntityCfgTable(
+            [
+                RemoteEntityCfg(
+                    entity_id=SOURCE_ID,
+                    max_file_segment_len=None,
+                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
+                    # How does the exact value get determined? Currently it's just a mirror of the
+                    # value in edl_file_upload.py
+                    max_packet_len=950,
+                    closure_requested=False,
+                    crc_on_transmission=False,
+                    default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                    crc_type=ChecksumType.CRC_32,
+                ),
+            ]
+        )
+
         self.fwrite_cache = fwrite_cache
-        self.file_name = ""
-        self.file_data = b""
-        self.file_data_len = 0
-        self.f = None
-        self.offset = 0
-        self.last_nak = 0
-        self.last_indication = Indication.NONE
-        self.last_pdu_ts = 0.0
-        self.send_fin_ts = 0.0
-        self.checksum_matched = False
+        self.dest = DestHandler(
+            cfg=localcfg,
+            user=self,
+            remote_cfg_table=remote_entities,
+            check_timer_provider=DefaultCheckTimer(),
+        )
+        self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
-    def reset(self):
-        """Reset the EDL file receiver."""
+        self.source = SourceHandler(
+            cfg=localcfg,
+            user=self,
+            remote_cfg_table=remote_entities,
+            check_timer_provider=DefaultCheckTimer(),
+            seq_num_provider=SeqCountProvider(16),
+        )
 
-        logger.info("reset")
-        if self.f is not None:
-            self.f.close()
-            self.f = None
-        self.offset = 0
-        self.last_nak = 0
-        self.file_name = ""
-        self.file_data = b""
-        self.file_data_len = 0
-        self.last_indication = Indication.NONE
-        self.checksum_matched = False
+        self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
+        self.active_requests: dict[TransactionId, TransactionId] = {}
 
-    def _init_recv(self, pdu: MetadataPdu):
-        if self.f is None:
-            self.reset()
-            self.file_name = pdu.dest_file_name
-            self.file_data_len = pdu.file_size
-            logger.info(f"{self.file_name} {self.file_data_len} started")
-            self.f = open(f"{self.upload_dir}/{self.file_name}", "wb")  # type: ignore
+    @property
+    def state(self) -> CfdpState:
+        """Either BUSY or IDLE
 
-    def _recv_data(self, pdu: FileDataPdu) -> Union[NakPdu, None]:
-        if pdu.offset != self.offset:
-            return self._make_nak(pdu)
+        The FileReceiver is BUSY if either source or dest are busy, or if there's a request yet
+        to be initiated.
+        """
 
-        self.f.write(pdu.file_data)  # type: ignore
-        self.offset += len(pdu.file_data)
-        self.file_data += pdu.file_data
-        if self.offset >= self.file_data_len:
-            logger.info("file transfer done")
+        if (
+            self.dest.state == CfdpState.BUSY
+            or self.source.state == CfdpState.BUSY
+            or not self.scheduled_requests.empty()
+        ):
+            return CfdpState.BUSY
+        return CfdpState.IDLE
 
-        logger.info(f"{self.last_indication.name} {self.offset} write")
-        return None
+    def loop(self, pdu: AbstractFileDirectiveBase):
+        """The state machine driver for a CFDP dest, expected to be run by the service loop"""
 
-    def _eof(self, pdu: EofPdu) -> AckPdu:
-        condition_code = ConditionCode.NO_ERROR
-        checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
-        if checksum == pdu.file_checksum:
-            condition_code = ConditionCode.FILE_CHECKSUM_FAILURE
-            logger.info("file checksum matched")
-            self.checksum_matched = True
-        else:
-            logger.info("file checksum does not match")
+        # DestHandler is driven by either a new pdu to process or timers expiring and
+        # SourceHandler is additionally driven by Put requests.
+        # Timers only expire when .state_machine() is called, and .state_machine() must
+        # be called after all the packets have been drained, or after inserting a new
+        # pdu.
+        if pdu:
+            logger.info(f"<--- {pdu}")
 
-        if self.f is not None and self.checksum_matched:
-            self.f.close()
-            self.f = None
+            if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
+                try:
+                    self.dest.insert_packet(pdu)
+                except FsmNotCalledAfterPacketInsertion:
+                    # Usually this exception means the library is being used wrong, so we have
+                    # to be careful here. However there is a bug in the presence of dropped packets
+                    # where dest._params.last_inserted_packet does not get cleared.
+                    logger.exception("dest.state_machine() didn't properly clear inserted packet")
+                    self.dest.reset()
+            else:
+                try:
+                    self.source.insert_packet(pdu)
+                except FsmNotCalledAfterPacketInsertion:
+                    logger.exception("source.state_machine() didn't properly clear inserted packet")
+                    self.source.reset()
+
+        if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
             try:
-                self.fwrite_cache.add(f"{self.upload_dir}/{self.file_name}", consume=True)
-                logger.info(f"file {self.file_name} moved to fwrite cache")
-            except (ValueError, FileNotFoundError) as e:
-                logger.error(e)
-            logger.info(f"{self.file_name} {self.file_data_len} ended")
+                request = self.scheduled_requests.get_nowait()
+            except Empty:
+                pass
+            else:
+                try:
+                    self.source.put_request(request)
+                except (SourceFileDoesNotExist, NoRemoteEntityCfgFound):
+                    # Note that NoRemoteEntityCfgFound indicates that the MIB is missing info on
+                    # the requested proxy transfer destination. CFDP doesn't seem to have a
+                    # standard set of errors that cover this condition, and the least worst option
+                    # resulted in an identical message to missing_file. Not super great, so if
+                    # there's a better idea of how to handle this, please change.
+                    self.scheduled_requests.put(self.missing_file_response(request))
 
-        ack_pdu = AckPdu(
-            directive_code_of_acked_pdu=DirectiveType.EOF_PDU,
-            condition_code_of_acked_pdu=condition_code,
-            transaction_status=TransactionStatus.TERMINATED,
-            pdu_conf=self.PDU_CONF,
+        self.dest.state_machine()
+        self.source.state_machine()
+
+        pdus = []
+        while self.dest.packets_ready:
+            pdus.append(self.dest.get_next_packet().pdu)
+        while self.source.packets_ready:
+            pdus.append(self.source.get_next_packet().pdu)
+
+        for out in pdus:
+            logger.info(f"---> {out}")
+        return pdus or None
+
+    def missing_file_response(self, invalid: PutRequest) -> PutRequest:
+        """Generates a resonse put for when a proxy request tries to access a missing file"""
+
+        originating_id = (
+            invalid.msgs_to_user[0].to_reserved_msg_tlv().get_originating_transaction_id()
         )
-        logger.info("eof ack")
-        return ack_pdu
-
-    def _make_nak(self, recv_pdu):
-        pdu = NakPdu(start_of_scope=self.last_nak, end_of_scope=self.offset, pdu_conf=self.PDU_CONF)
-        self.last_nak = self.offset
-        logger.info(
-            f"{self.last_indication.name} {self.offset} nak to {recv_pdu.__class__.__name__}"
+        return PutRequest(
+            destination_id=originating_id.source_id,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
+            msgs_to_user=[
+                ProxyPutResponse(
+                    ProxyPutResponseParams(
+                        condition_code=ConditionCode.FILESTORE_REJECTION,
+                        delivery_code=DeliveryCode.DATA_COMPLETE,
+                        file_status=FileStatus.DISCARDED_FILESTORE_REJECTION,
+                    )
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+            ],
         )
-        return pdu
 
-    def loop(self, req_pdu: AbstractFileDirectiveBase) -> AbstractFileDirectiveBase:
-        """
-        The receiver entity loop.
+    def transaction_indication(self, transaction_indication_params: TransactionParams):
+        logger.info(f"Indication: Transaction. {transaction_indication_params}")
+        t_id = transaction_indication_params.transaction_id
+        orig = transaction_indication_params.originating_transaction_id
+        if orig is not None:
+            self.active_requests[t_id] = orig
 
-        Parameters
-        ----------
-        req_message: AbstractFileDirectiveBase, None
-            The last received PDU or None
+    def eof_sent_indication(self, transaction_id: TransactionId):
+        logger.info(f"Indication: EOF Sent for {transaction_id}.")
 
-        Returns
-        -------
-        list[AbstractFileDireciveBase]
-            List of PDUs to send to sender entity or an empty list.
-        """
+    def transaction_finished_indication(self, params: TransactionFinishedParams):
+        logger.info(f"Indication: Transaction Finished. {params}")
+        if params.transaction_id in self.active_requests:
+            originating_id = self.active_requests.get(params.transaction_id)
+            assert originating_id is not None
+            put = PutRequest(
+                destination_id=originating_id.source_id,
+                source_file=None,
+                dest_file=None,
+                trans_mode=None,
+                # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+                # trans_mode defaults to ACKNOWLEGED
+                closure_requested=True,
+                msgs_to_user=[
+                    ProxyPutResponse(
+                        ProxyPutResponseParams.from_finished_params(params.finished_params)
+                    ).to_generic_msg_to_user_tlv(),
+                    OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+                ],
+            )
+            self.scheduled_requests.put(put)
+            del self.active_requests[params.transaction_id]
 
-        res_pdu = None
+    def metadata_recv_indication(self, params: MetadataRecvParams):
+        logger.info(f"Indication: Metadata Recv. {params}")
+        for msg in params.msgs_to_user or []:
+            if msg.is_reserved_cfdp_message():
+                reserved = msg.to_reserved_msg_tlv()
+                if reserved.is_cfdp_proxy_operation():
+                    proxyparams = reserved.get_proxy_put_request_params()
+                    put = PutRequest(
+                        destination_id=proxyparams.dest_entity_id,
+                        source_file=Path(proxyparams.source_file_as_path),
+                        dest_file=Path(proxyparams.dest_file_as_path),
+                        trans_mode=None,
+                        closure_requested=None,
+                        msgs_to_user=[
+                            OriginatingTransactionId(
+                                params.transaction_id
+                            ).to_generic_msg_to_user_tlv()
+                        ],
+                    )
+                    self.scheduled_requests.put(put)
 
-        if req_pdu is None and self.last_indication == Indication.NONE:
-            return None  # nothing to do
+    def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
+        logger.info(f"Indication: File Segment Recv. {params}")
 
-        if monotonic() > self.last_pdu_ts + 10 and self.last_indication != Indication.NONE:
-            self.reset()
-            return None
+    def report_indication(self, transaction_id: TransactionId, status_report: Any):
+        logger.info(f"Indication: Report for {transaction_id}. {status_report}")
 
-        if req_pdu:
-            self.last_pdu_ts = monotonic()
+    def suspended_indication(self, transaction_id: TransactionId, cond_code: ConditionCode):
+        logger.info(f"Indication: Suspended for {transaction_id}. {cond_code}")
 
-        if self.last_indication == Indication.NONE:
-            if isinstance(req_pdu, MetadataPdu):
-                self._init_recv(req_pdu)
-                self.last_indication = Indication.METADATA_RECV
-            elif req_pdu is not None and not isinstance(req_pdu, AckPdu):
-                res_pdu = self._make_nak(req_pdu)
-        elif self.last_indication in [Indication.METADATA_RECV, Indication.FILE_SEGMENT_RECV]:
-            if isinstance(req_pdu, FileDataPdu):
-                res_pdu = self._recv_data(req_pdu)
-                self.last_indication = Indication.FILE_SEGMENT_RECV
-            elif isinstance(req_pdu, EofPdu) and self.offset >= self.file_data_len:
-                res_pdu = self._eof(req_pdu)
-                self.last_indication = Indication.EOF_RECV
-            elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
-                res_pdu = self._make_nak(req_pdu)
-        elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
-            if self.last_pdu_ts > monotonic() + 10:
-                self.reset()
-            elif isinstance(req_pdu, EofPdu):
-                res_pdu = self._eof(req_pdu)
-                self.last_indication = Indication.EOF_RECV
-                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
-            elif isinstance(req_pdu, AckPdu):
-                logger.info("fin ack!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-                self.last_indication = Indication.TRANSACTION_FINISHED
-                if req_pdu.directive_code_of_acked_pdu == DirectiveType.FINISHED_PDU:
-                    self.reset()
-                self.send_fin_ts = monotonic() + self.FIN_DELAY_S
-            elif self.send_fin_ts != 0.0 and self.send_fin_ts > monotonic():
-                res_pdu = FinishedPdu(
-                    pdu_conf=self.PDU_CONF, params=FinishedParams.success_params()
-                )
-                self.last_indication = Indication.TRANSACTION_FINISHED
+    def resumed_indication(self, transaction_id: TransactionId, progress: int):
+        logger.info(f"Indication: Resumed for {transaction_id}. {progress}")
 
-        if res_pdu is not None:
-            logger.debug(self.last_indication.name)
-        return res_pdu
+    def fault_indication(
+        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
+    ):
+        logger.info(f"Indication: Fault for {transaction_id}. {cond_code}. {progress}")
+
+    def abandoned_indication(
+        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
+    ):
+        logger.info(f"Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
+
+    def eof_recv_indication(self, transaction_id: TransactionId):
+        logger.info(f"Indication: EOF Recv for {transaction_id}")

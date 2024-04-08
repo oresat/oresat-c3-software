@@ -12,4 +12,5 @@ class C3FactoryResetCmd(AbcCmd):
         self.node = node                                                        
                                                                                 
     def run(self, request:bytes) -> bytes:                                      
-        logger.info("")
+        logger.info("EDL factory reset")
+        self.node.stop(NodeStop.FACTORY_RESET)

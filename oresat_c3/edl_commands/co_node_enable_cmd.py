@@ -12,4 +12,4 @@ class CoNodeEnableCmd(AbcCmd):
         self.node = node                                                        
                                                                                 
     def run(self, request:bytes) -> bytes:                                      
-        logger.info("")
+        logger.info(f"EDL enabling CANopen node {name} (0x{node_id:02X})")

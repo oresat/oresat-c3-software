@@ -13,8 +13,9 @@ class TxCtrlCmd(AbcCmd):
     res_format = "?"
 
     def __init__(self, node, node_mngr):
-            self._tx_enable_obj = node.od["tx_control"]["enable"]
-            self._last_tx_enable_obj = node.od["tx_control"]["last_enable_timestamp"]
+        super().__init__(node, node_mngr)
+        self._tx_enable_obj = node.od["tx_control"]["enable"]
+        self._last_tx_enable_obj = node.od["tx_control"]["last_enable_timestamp"]
 
     def run(self, request:bytes) -> bytes:
         enable, = struct.unpack(req_format, request)

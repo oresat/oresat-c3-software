@@ -11,5 +11,6 @@ class CoSyncCmd(AbcCmd):
     def __init__(self, node, node_mngr):                     
         self.node = node                                                        
                                                                                 
-    def run(self, request:bytes) -> bytes:                                      
-        logger.info("")
+    def run(self, request:bytes) -> bytes:
+        logger.info("EDL sending CANopen SYNC message")            
+        self.node.send_sync()

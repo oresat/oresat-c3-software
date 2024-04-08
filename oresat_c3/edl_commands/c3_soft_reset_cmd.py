@@ -12,4 +12,10 @@ class C3SoftResetCmd(AbcCmd):
         self.node = node                                                        
                                                                                 
     def run(self, request:bytes) -> bytes:                                      
-        logger.info("")
+        enable, = struct.unpack(req_format, request)
+        
+        logger.info("EDL soft reset")
+        self.node.stop(NodeStop.SOFT_RESET)
+        
+        return struct.pack(res_format, ret)
+

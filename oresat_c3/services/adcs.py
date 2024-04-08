@@ -17,7 +17,6 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
-
     def __init__(self, config: dict):
         super().__init__()
         self.xyz_sensor_names = ['accelerometer',
@@ -92,13 +91,16 @@ class AdcsService(Service):
         self.rw_control()        
 
         # End of ADCS control loop
-        sleep(0.1)
+        sleep(0.5)
 
-    
+    # SDO CALLBACK FUNCTIONS
     def mngr_calibrate(self, *args):
         """calibrate actuators, namely reaction wheels"""
         self.calibrating=True
+        sleep(3)
+        # at some point, just change the mode and do actions outside of callback
         self.rw_calibrate()
+        sleep(3)
         self.calibrating=False
         pass
 
@@ -113,43 +115,13 @@ class AdcsService(Service):
         return json.dumps(self.actuator_feedback)
         #return json.dumps(self.control_signals)
 
-
-    # gyro Functions
-    def gyro_calibrate(self):
-        #logger.info("Calibrating gyroscopes")
-        pass
-
-    def gyro_monitor(self):
-        """Monitors the gyroscope"""
-        logger.debug("Monitoring gyroscope")
-        # pitch roll and yaw should be relative to velocity, convert back to xyz
-        directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
-        for name,axis in directions.items():
-            self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
-
-    def gps_monitor(self, log_it=False):
-        """Monitors the GPS readings"""
-        #logger.debug("Monitoring GPS")
-        if log_it:
-            for name, item in self.node.od["gps"].items():
-                logger.info(f"Key: {name} Value: {item.value}")
-
-    def gps_time(self):
-        """Gets the gps time since midnight"""
-        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
-
-    def gps_ecef_monitor(self):
-        axis_list = ["x", "y", "z"]
-        ecef_data = dict()
-        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
-        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
-        
-        return ecef_data
+    
 
 
-
-
-    # MAG Functions
+    """
+    PRIMARY SENSOR FUNCTIONS
+    """
+    # MAGNETOMETER FUNCTIONS
     def mag_calibrate(self):
         """Calibrates the magnetometers"""
         #logger.info("Calibrating Magnetometers")
@@ -171,8 +143,45 @@ class AdcsService(Service):
                 self.sensor_data[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
 
 
+    # GYROSCOPE FUNCTIONS
+    def gyro_calibrate(self):
+        #logger.info("Calibrating gyroscopes")
+        pass
 
-    # Magnetorquer Functions
+    def gyro_monitor(self):
+        """Monitors the gyroscope"""
+        logger.debug("Monitoring gyroscope")
+        # pitch roll and yaw should be relative to velocity, convert back to xyz
+        directions = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
+        for name,axis in directions.items():
+            self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
+
+    # GPS FUNCTIONS
+    def gps_monitor(self, log_it=False):
+        """Monitors the GPS readings"""
+        #logger.debug("Monitoring GPS")
+        if log_it:
+            for name, item in self.node.od["gps"].items():
+                logger.info(f"Key: {name} Value: {item.value}")
+
+    def gps_time(self):
+        """Gets the gps time since midnight"""
+        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
+
+    def gps_ecef_monitor(self):
+        axis_list = ["x", "y", "z"]
+        ecef_data = dict()
+        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+        
+        return ecef_data
+
+
+
+    """
+    ACTUATOR FUNCTIONS
+    """
+    # MAGNETORQUER FUNCTIONS
     def mt_calibrate(self):
         """Calibrate magnetorquers"""
         #logger.info("Calibrating magnetorquers")
@@ -196,17 +205,18 @@ class AdcsService(Service):
             self.write_sdo('adcs', 'magnetorquer', f'current_{val}_setpoint', self.control_signals[key])
 
     
-    # Reaction wheel functions
+    # REACTION WHEEL FUNCTIONS
     def rw_apply_state(self, rw_name, state):
-        self.write_sdo(rw_name, 'requested', 'state', 1)
-        sleep(0.5)
         self.write_sdo(rw_name, 'requested', 'state', state)
+        sleep(0.5)
 
     def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
 
         def calibrate(rw_name, calibration_state):
             self.rw_apply_state(rw_name, calibration_state)
+            count = 0
+            sleep(2) # rw needs time to transition to requested state
             while (rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value) != 1:
                 logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state))
                 
@@ -329,6 +339,8 @@ class AdcsService(Service):
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
 
+
+
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
         """Mock function 
@@ -345,6 +357,12 @@ class AdcsService(Service):
         except Exception as e:
             logger.warning(f"An error occured with sending SDO: {e}")
             logger.warning(f"node: {node}, index: {index}, subindex: {subindex}, value: {value}")
+
+
+
+    """
+    EVERYTHING BELOW SHOULD BE HANDLED BY ADCS SOFTWARE PACKAGE
+    """
 
     def vect_normalize(self, vect: dict):
         """Returns the normalized vector"""

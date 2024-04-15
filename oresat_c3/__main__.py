@@ -128,7 +128,8 @@ def main():
     thread.start()
 
     app.od["versions"]["sw_version"].value = __version__
-    app.od["hw_id"].value = get_hw_id(mock_hw)
+    if app.od["versions"]["hw_version"].value == "6.0":
+        app.od["hw_id"].value = get_hw_id(mock_hw)
 
     state_service = StateService(config.fram_def, mock_hw)
     radios_service = RadiosService(mock_hw)

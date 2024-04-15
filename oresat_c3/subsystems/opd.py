@@ -411,8 +411,7 @@ class Opd:
         self._nodes[name] = node
 
     def __iter__(self) -> OpdNode:
-        for node in self._nodes.values():
-            yield node
+        yield from self._nodes.values()
 
     def enable(self):
         """Enable the OPD subsystem, will also do a scan."""

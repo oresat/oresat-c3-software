@@ -5,7 +5,7 @@ Handles interfacing with the AX5043 radio driver app.
 """
 
 import socket
-from typing import List
+from queue import SimpleQueue
 
 from olaf import Gpio, Service, logger
 
@@ -66,7 +66,7 @@ class RadiosService(Service):
         logger.info(f"EDL downlink socket: {self.EDL_DOWNLINK_ADDR}")
         self._edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.recv_queue: List[bytes] = []
+        self.recv_queue: SimpleQueue[bytes] = SimpleQueue()
 
     def on_start(self):
         if not self._mock_hw:
@@ -87,7 +87,7 @@ class RadiosService(Service):
             self._si41xx.start()
         recv = self._recv_edl_request()
         if recv:
-            self.recv_queue.append(recv)
+            self.recv_queue.put(recv)
 
     def on_stop(self):
         self.disable()

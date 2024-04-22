@@ -307,34 +307,14 @@ class OpdStm32Node(OpdNode):
 class OpdOctavoNode(OpdNode):
     """A Octavo A8-based OPD Node"""
 
-    _BOOT_PIN = 5  # boot select; eMMC or SD card
+    _SYS_BOOT2 = 0
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self, boot_select: bool = True) -> OpdNodeState:
-        """
-        Enable the OPD node.
+    def enable(self):
+        """Enable the node"""
 
-        Parameters
-        ----------
-        boot_select: bool
-            Boot of of eMMC or SD card. Not implemented yet.
-
-        Returns
-        -------
-        OpdNodeState
-            The node state after disabling the node.
-        """
-
-        try:
-            if boot_select:
-                self._max7310.output_set(self._BOOT_PIN)
-            else:
-                self._max7310.output_clear(self._BOOT_PIN)
-        except Max7310Error:
-            self._status = OpdNodeState.FAULT
-            return self._status
-
-        return super().enable()
+        self._max7310.output_set(self._SYS_BOOT2)
+        super().enable()
 
     def enable_uart(self):
         """Connect the node the C3's UART"""

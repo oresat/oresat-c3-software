@@ -246,11 +246,15 @@ class AdcsService(Service):
         # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
         for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
             logger.info("REBOOTING: {rw_name}")
+                
             self.write_sdo(rw_name, 'reboot', 'request', 1)
+            logger.info("Waiting for {rw_name} to reboot")
+            sleep(5)
             
             while (self.node.od[rw_name]["ctrl_stat_current_state"].value != 1):
+                self.write_sdo(rw_name, 'reboot', 'request', 1)
                 logger.info("Waiting for {rw_name} to reboot")
-                sleep(1)
+                sleep(5)
 
             logger.info("CALIBRATING: {rw_name} resistance")
             calibrate(rw_name, 7)
@@ -295,7 +299,7 @@ class AdcsService(Service):
                 sleep(2)
 
             if rw_state == 2 or rw_state == 3:
-                logger.error("RW {} ERROR BITMAP: {}".format(num, self.node.od[rw_name]['ctrl_stat_errors'].value))
+                logger.error("RW {} ERROR BITMAP: {}".format(rw_name, self.node.od[rw_name]['ctrl_stat_errors'].value))
 
             self.sensor_data[rw_name] = {endpoint: self.node.od[rw_name][endpoint].value for endpoint in endpoints}
             self.actuator_feedback[rw_name] = self.node.od[rw_name]['motor_velocity'].value

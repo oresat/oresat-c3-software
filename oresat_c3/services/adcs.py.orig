@@ -17,8 +17,15 @@ For node, index, and subindex references, see oresat configs base
 class AdcsService(Service):
     """ADCS Service"""
 
+<<<<<<< HEAD
+
+    def on_start(self):
+        logger.info("Starting ADCS")
+
+=======
     def __init__(self, config: dict):
         super().__init__()
+>>>>>>> adcs-dev
         self.xyz_sensor_names = ['accelerometer',
                                    'gyroscope',
                                    'pos_z_magnetometer_1',
@@ -38,6 +45,11 @@ class AdcsService(Service):
             self.control_signals[actuator] = 0.0
             self.actuator_feedback[actuator] = 0.0
 
+<<<<<<< HEAD
+
+
+        # Calibrate sensors and actuators, if needed
+=======
         logger.info("ADCS service object initiated")
         self.calibrating = False
 
@@ -50,12 +62,15 @@ class AdcsService(Service):
         self.gyro_calibrate()
         self.mag_calibrate()
         #self.rw_calibrate()
+>>>>>>> adcs-dev
 
         # for ADCS testing
-        #self.node.add_sdo_callbacks("adcs_manager", "reserved_rw", self.test_sdo_read, self.test_sdo_write)
         self.node.add_sdo_callbacks("adcs_manager", "feedback", self.mngr_feedback, None)
         self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals)
+<<<<<<< HEAD
+=======
         self.node.add_sdo_callbacks("adcs_manager", "calibrate", None, self.mngr_calibrate)
+>>>>>>> adcs-dev
 
         # ADCS startup complete
         logger.info("Completed ADCS startup")
@@ -68,8 +83,7 @@ class AdcsService(Service):
 
         # print(self.node._remote_nodes.keys())
         # Read sensors, data is stored in self.sensor_data
-        self.gyro_monitor()
-        self.mag_monitor()
+        self.xyz_monitor()
         self.gps_monitor()
         self.gps_time()
         ecef_data = self.gps_ecef_monitor()
@@ -84,13 +98,6 @@ class AdcsService(Service):
         temperatures = self.temperature_monitor()
         batteries = self.battery_monitor()
 
-        # Enter a calibration state if needed
-        if self.calibrating:
-            sleep(2)
-            self.rw_calibrate()
-            sleep(2)
-            self.calibrating = False
-
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
@@ -98,25 +105,58 @@ class AdcsService(Service):
         self.rw_control()        
 
         # End of ADCS control loop
-        sleep(1)
+        sleep(0.5)
 
+<<<<<<< HEAD
+
+
+    # FUNTIONS FOR ADCS MANAGER WEB PAGE
+
+    def mngr_signals(self, signals):
+=======
     # SDO CALLBACK FUNCTIONS
     def mngr_calibrate(self, *args):
         """calibrate actuators, namely reaction wheels"""
         self.calibrating=True
+        sleep(3)
+        # at some point, just change the mode and do actions outside of callback
+        self.rw_calibrate()
+        sleep(3)
+        self.calibrating=False
         pass
 
     def mngr_signals(self, controls):
+>>>>>>> adcs-dev
         """Apply control signals from ADCS manager SDO callback"""
-        self.control_signals = json.loads(controls)
+        self.control_signals = json.loads(signals)
         logger.debug(self.control_signals)
 
     def mngr_feedback(self):
         """Return string of feedback signals for ADCS manager SDO callback"""
         logger.debug(self.actuator_feedback)
         return json.dumps(self.actuator_feedback)
-        #return json.dumps(self.control_signals)
 
+<<<<<<< HEAD
+
+
+    def xyz_monitor(self):
+        """Monitors xyz sensors"""
+
+        # get data from accelerometer and magnetometers
+        for name in ['accelerometer', 'pos_z_magnetometer_1', 'pos_z_magnetometer_2', 'min_z_magnetometer_1', 'min_z_magnetometer_2']:
+            for axis in ['x', 'y', 'z']:
+                self.sensor_data[name][axis] = self.node.od['adcs'][name + "_" + axis].value
+
+        # get data from gyroscope, its different
+        gyro_map = {"pitch_rate": "x","roll_rate": "y","yaw_rate":"z"}
+        for name,axis in gyro_map.items():
+            self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
+
+
+
+
+
+=======
     
 
 
@@ -189,6 +229,7 @@ class AdcsService(Service):
         #logger.info("Calibrating magnetorquers")
         pass
 
+>>>>>>> adcs-dev
     def mt_monitor(self):
         """Monitor magnetorquers"""
         logger.info("Monitoring magnetorquers")
@@ -210,23 +251,15 @@ class AdcsService(Service):
     # REACTION WHEEL FUNCTIONS
     def rw_apply_state(self, rw_name, state):
         self.write_sdo(rw_name, 'requested', 'state', state)
-        # calibration currently relies on delay
-        # do not wait for rw to enter state, handle externally
-        sleep(1)
+        sleep(0.5)
 
     def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
 
         def calibrate(rw_name, calibration_state):
-            # wait to exit idle state and start calibration state
-
-            while (self.node.od[rw_name]["ctrl_stat_current_state"].value != calibration_state):
-                logger.info("Waiting to enter calibration state")
-                logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
-                self.rw_apply_state(rw_name, calibration_state) # delay built into function
-                
-            sleep(1) # wait one more second to start checking if calibration is completed
-
+            self.rw_apply_state(rw_name, calibration_state)
+            count = 0
+            sleep(2) # rw needs time to transition to requested state
             while (rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value) != 1:
                 logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state))
                 
@@ -241,34 +274,30 @@ class AdcsService(Service):
                     self.rw_apply_state(rw_name, calibration_state)
 
                 sleep(1)
+            sleep(1)
 
         # Calibrate
         # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            logger.info("REBOOTING: {rw_name}")
-            self.write_sdo(rw_name, 'reboot', 'request', 1)
-            
-            while (self.node.od[rw_name]["ctrl_stat_current_state"].value != 1):
-                logger.info("Waiting for {rw_name} to reboot")
-                sleep(1)
-
-            logger.info("CALIBRATING: {rw_name} resistance")
-            calibrate(rw_name, 7)
-            logger.info("CALIBRATING: {rw_name} inductance")
-            calibrate(rw_name, 8)
-            logger.info("CALIBRATING: {rw_name} encoder direction")
-            calibrate(rw_name, 9)
-            logger.info("CALIBRATING: {rw_name} encoder offset")
-            calibrate(rw_name, 10)
-        
+        rw_name = "rw_4"
+        logger.info("REBOOTING: {rw_name}")
+        self.write_sdo(rw_name, 'reboot', 'request', 1)
+        sleep(20) 
+        logger.info("CALIBRATING: {rw_name} resistance")
+        calibrate(rw_name, 7)
+        logger.info("CALIBRATING: {rw_name} inductance")
+        calibrate(rw_name, 8)
+        logger.info("CALIBRATING: {rw_name} encoder direction")
+        calibrate(rw_name, 9)
+        logger.info("CALIBRATING: {rw_name} encoder offset")
+        calibrate(rw_name, 10)
         # set velocity control
         logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
         self.rw_apply_state(rw_name, 5)
 
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            self.write_sdo(rw_name, 'requested', 'state', 5)
+        # Put all reaction wheels in velocity control for now
+        for num in range(1, num_rws+1):
+            self.write_sdo('rw_'+str(num), 'requested', 'state', 5)
 
-        sleep(2)
 
         pass
 
@@ -277,45 +306,33 @@ class AdcsService(Service):
         logger.info("Monitoring reaction wheels")
 
         endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            # rw_name is defined, rw_state is defined via walrus
-
-            logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value))
-            
+        for num in range(1, num_rws+1):
+            logger.info("RW NAME: {}  RW STATE: {}".format('rw_'+str(num),rw_state:=self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value))
             # state 2 is a system error
             if rw_state == 2:
                 logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
-            
             # state 3 is a controller error
             if rw_state == 3:
-                logger.error(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
-                self.rw_apply_state(rw_name, 13)
-                sleep(2)
-                self.rw_apply_state(rw_name, 5)
-                sleep(2)
+                logger.error(f"CONTROLLER ERROR FOR {rw_name}, PLEASE CLEAR ERRORS")
 
             if rw_state == 2 or rw_state == 3:
-                logger.error("RW {} ERROR BITMAP: {}".format(num, self.node.od[rw_name]['ctrl_stat_errors'].value))
+                logger.error("RW {} ERROR BITMAP: {}".format(num, self.node.od['rw_'+str(num)]['ctrl_stat_errors'].value))
 
-            self.sensor_data[rw_name] = {endpoint: self.node.od[rw_name][endpoint].value for endpoint in endpoints}
-            self.actuator_feedback[rw_name] = self.node.od[rw_name]['motor_velocity'].value
+            self.sensor_data['rw_'+str(num)] = {endpoint: self.node.od['rw_'+str(num)][endpoint].value for endpoint in endpoints}
+            self.actuator_feedback['rw_'+str(num)] = self.node.od['rw_'+str(num)]['motor_velocity'].value
 
 
     def rw_control(self, num_rws=4):
         """Sends the control signal to the reaction wheels"""
         
+        # request velocity control (6???)
         if self.calibrating:
             return
 
         # also check for state
         logger.info("Sending control signal to reaction wheels")
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
-            # if the wheel is not in the correct state, skip
-            if (self.node.od[rw_name]["ctrl_stat_current_state"].value != 5):
-                continue
-
-            self.write_sdo(rw_name, 'signals', 'setpoint', self.control_signals[rw_name])
+        for num in range(1, num_rws+1):
+            self.write_sdo('rw_'+str(num), 'signals', 'setpoint', self.control_signals['rw_'+str(num)])
         pass
 
 
@@ -346,6 +363,25 @@ class AdcsService(Service):
                 for subindex in ["right_ascension", "declination", "roll", "time_since_midnight"]}
                 for tracker_num in range(1, num_modules+1)}
 
+    def gps_monitor(self, log_it=False):
+        """Monitors the GPS readings"""
+        #logger.debug("Monitoring GPS")
+        if log_it:
+            for name, item in self.node.od["gps"].items():
+                logger.info(f"Key: {name} Value: {item.value}")
+
+    def gps_time(self):
+        """Gets the gps time since midnight"""
+        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
+
+    def gps_ecef_monitor(self):
+        axis_list = ["x", "y", "z"]
+        ecef_data = dict()
+        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+        
+        return ecef_data
+
 
     # Additional data retrieval to consider control type
     def temperature_monitor(self, num_solar_modules=6):
@@ -367,6 +403,14 @@ class AdcsService(Service):
 
 
 
+<<<<<<< HEAD
+
+
+
+
+
+=======
+>>>>>>> adcs-dev
     # HELPER FUNCTIONS
     def write_sdo(self, node, index, subindex, value):
         """Mock function 

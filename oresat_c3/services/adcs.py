@@ -69,7 +69,7 @@ class AdcsService(Service):
         # print(self.node._remote_nodes.keys())
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
-        self.mag_monitor()
+        self.mag_monitor(log=True)
         self.gps_monitor()
         self.gps_time()
         ecef_data = self.gps_ecef_monitor()
@@ -94,7 +94,7 @@ class AdcsService(Service):
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
-        self.mt_control()
+        self.mt_control(log=True)
         self.rw_control()        
 
         # End of ADCS control loop
@@ -129,9 +129,10 @@ class AdcsService(Service):
         #logger.info("Calibrating Magnetometers")
         pass
 
-    def mag_monitor(self):
+    def mag_monitor(self, log=False):
         """Monitors the magnetometer readings"""
-        logger.debug("Monitoring magnetometers")
+        if log:
+            logger.info("Monitoring magnetometers")
         # full names are a little long, shorten them for now
         mag_map = {'pos_z_magnetometer_1': 'mag_pz1',
                    'pos_z_magnetometer_2': 'mag_pz2',
@@ -143,7 +144,8 @@ class AdcsService(Service):
             self.sensor_data[nick] = dict()
             for axis in directions:
                 self.sensor_data[nick][axis] = self.node.od["adcs"][name + "_" + axis].value
-
+            if log:
+                logger.info(f"{name}: {self.sensor_data[nick]}")
 
     # GYROSCOPE FUNCTIONS
     def gyro_calibrate(self):
@@ -159,10 +161,10 @@ class AdcsService(Service):
             self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
     # GPS FUNCTIONS
-    def gps_monitor(self, log_it=False):
+    def gps_monitor(self, log=False):
         """Monitors the GPS readings"""
         #logger.debug("Monitoring GPS")
-        if log_it:
+        if log:
             for name, item in self.node.od["gps"].items():
                 logger.info(f"Key: {name} Value: {item.value}")
 
@@ -189,21 +191,26 @@ class AdcsService(Service):
         #logger.info("Calibrating magnetorquers")
         pass
 
-    def mt_monitor(self):
+    def mt_monitor(self, log=False):
         """Monitor magnetorquers"""
-        logger.info("Monitoring magnetorquers")
+        if log:
+            logger.info("Monitoring magnetorquers")
+        
         directions = {"current_x": "x", "current_y": "y", "current_z": "z"}
         self.sensor_data["magnetorquer"] = dict()
         for name,axis in directions.items():
             self.sensor_data["magnetorquer"][axis] = self.node.od["adcs"]["magnetorquer_" +name].value
             self.actuator_feedback["mt_"+axis] = self.node.od["adcs"]["magnetorquer_"+name].value
 
-    def mt_control(self):
+
+    def mt_control(self, log=False):
         """Send control signal to magnetorquers"""
         logger.info("Sending control signal to magnetorquers")
         controller_map = {"mt_x": "x", "mt_y": "y", "mt_z":"z"}
 
         for key, val in controller_map.items():
+            if log:
+                logger.info(f"Sending {val} to {key}")
             self.write_sdo('adcs', 'magnetorquer', f'current_{val}_setpoint', self.control_signals[key])
 
     
@@ -276,7 +283,7 @@ class AdcsService(Service):
 
         pass
 
-    def rw_monitor(self, num_rws=4, log_it=False):
+    def rw_monitor(self, num_rws=4, log=False):
         """Retreives reaction wheel states"""
         logger.info("Monitoring reaction wheels")
 
@@ -305,7 +312,7 @@ class AdcsService(Service):
             self.actuator_feedback[rw_name] = self.node.od[rw_name]['motor_velocity'].value
 
 
-    def rw_control(self, num_rws=4):
+    def rw_control(self, num_rws=4, log=False):
         """Sends the control signal to the reaction wheels"""
         
         if self.calibrating:
@@ -314,7 +321,7 @@ class AdcsService(Service):
         # also check for state
         logger.info("Sending control signal to reaction wheels")
         for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
+            #logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
             # if the wheel is not in the correct state, skip
             if (self.node.od[rw_name]["ctrl_stat_current_state"].value != 5):
                 continue

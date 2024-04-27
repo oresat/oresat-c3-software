@@ -220,6 +220,11 @@ class AdcsService(Service):
         # calibration currently relies on delay
         # do not wait for rw to enter state, handle externally
         sleep(1)
+    
+    def rw_batch_apply_states(self, num_rws, state):
+        for rw_name in ["rw_"+str(num) for num in range(1, num_rws+1)]:
+            self.write_sdo(rw_name, 'requested', 'state', state)
+        sleep(1)
 
     def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
@@ -249,32 +254,75 @@ class AdcsService(Service):
 
                 sleep(1)
 
+        # assumes reaction wheels are named "rw_x" where x is a number greater than or equal to 1
+        rw_state = lambda rw_num: self.node.od['rw_'+str(rw_num)]["ctrl_stat_current_state"].value
+        all_rw_states = lambda: [self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value for num in range(1, num_rws+1)]
+        
+        def new_calibrate(calibration_state):
+            # send an sdo to all reaction wheels to enter calibration state
+            self.rw_batch_apply_states(num_rws, calibration_state)
+
+            # Make sure all reaction wheels enter calibration state
+            while (all_rw_states().count(calibration_state) != num_rws):
+                logger.info(f"Waiting for all reaction wheels to enter calibration state {calibration_state}")
+
+                # Check which reaction wheels need to be sent another sdo
+                for rw_num in range(1, num_rws+1):
+                    if rw_state(rw_num) != calibration_state:
+                        logger.info(f"State of rw_{rw_num} is currently {rw_state(rw_num)}")
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
+                    
+                    # put the delay here instead of in function
+                    sleep(1)
+
+            # wait for calibration state to end, all reaction wheel should return to idle (1)
+            while (all_rw_states().count(1) != num_rws):
+                logger.info(f"Waiting for all reaction wheels to complete calibration state {calibration_state}")
+
+                # For each reaction wheel, see if there are errors
+                for rw_num in range(1, num_rws+1):
+                    logger.info("RW NUMBER: {}  RW STATE: {}".format(rw_num, rw_state(rw_num)))
+                    
+                    if rw_state == 2:
+                        logger.error(f"SYSTEMD ERROR FOR RW_{rw_num}, REBOOT!")
+                
+                    # state 3 is a controller error
+                    if rw_state == 3:
+                        logger.error(f"CONTROLLER ERROR FOR RW_{rw_num}, ATTEMPTING TO CLEAR ERRORS")
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', 13)
+                        sleep(1)
+                        # double check if state needs to be applied again
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
+
+                sleep(1)
+
+            logger.info(f"All reaction wheels completed calibration state {calibration_state}")
+
         # Calibrate
         # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
         for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
             logger.info("REBOOTING: {rw_name}")
                 
             self.write_sdo(rw_name, 'reboot', 'request', 1)
-            logger.info("Waiting for {rw_name} to reboot")
+            logger.info(f"Waiting for {rw_name} to reboot")
             sleep(5)
             
-            while (self.node.od[rw_name]["ctrl_stat_current_state"].value != 1):
+            while (rw_status:=self.node.od[rw_name]["ctrl_stat_current_state"].value != 1):
+                logger.info(f"Waiting for {rw_name} to reboot, currently in state {rw_status}")
                 self.write_sdo(rw_name, 'reboot', 'request', 1)
-                logger.info("Waiting for {rw_name} to reboot")
                 sleep(5)
 
-            logger.info("CALIBRATING: {rw_name} resistance")
-            calibrate(rw_name, 7)
-            logger.info("CALIBRATING: {rw_name} inductance")
-            calibrate(rw_name, 8)
-            logger.info("CALIBRATING: {rw_name} encoder direction")
-            calibrate(rw_name, 9)
-            logger.info("CALIBRATING: {rw_name} encoder offset")
-            calibrate(rw_name, 10)
+        logger.info("CALIBRATING: {rw_name} resistance")
+        new_calibrate(7)
+        logger.info("CALIBRATING: {rw_name} inductance")
+        new_calibrate(8)
+        logger.info("CALIBRATING: {rw_name} encoder direction")
+        new_calibrate(9)
+        logger.info("CALIBRATING: {rw_name} encoder offset")
+        new_calibrate(10)
         
         # set velocity control
         logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
-        self.rw_apply_state(rw_name, 5)
 
         for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
             self.write_sdo(rw_name, 'requested', 'state', 5)

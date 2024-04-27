@@ -310,11 +310,11 @@ class OpdOctavoNode(OpdNode):
     _SYS_BOOT2 = 0
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self):
+    def enable(self) -> OpdNodeState:
         """Enable the node"""
 
         self._max7310.output_set(self._SYS_BOOT2)
-        super().enable()
+        return super().enable()
 
     def enable_uart(self):
         """Connect the node the C3's UART"""

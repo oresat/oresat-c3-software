@@ -4,30 +4,38 @@ import math
 import json
 import threading
 from time import time, sleep, monotonic_ns
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, unique
 
 import canopen
 from olaf import NodeStop, Service, logger
 from oresat_configs import NodeId
 
+
+@unique
 class ADCS_Mode(IntEnum):
     NONE = 0
-    IDLE = 1
-    CALIBRATE = 2       # Temporary mission
-    SPINDOWN = 3        # Temporary mission
-    DETUMBLE = 4        # Temporary mission
-    BBQ = 5             # Continuous Mission
-    POINT = 6           # Continuous Mission
+    STANDBY = 1         # STANDBY (everything is off)
+    HOLD = 2            # Do not send SDOs, actuators may still be acting
+    CALIBRATE = 3       # Temporary mission, remove
+    SPINDOWN = 4        # Temporary mission
+    DETUMBLE = 5        # Temporary mission
+    BBQ = 6             # Continuous Mission
+    POINT = 7           # Continuous Mission
+    MANUAL = 8
 
+@unique
 class ADCS_Status(IntEnum):
     NONE = 0            # Nothing
     IDLE = 1            # Nothing, (probably) not sending SDOs
     STARTING = 2        # on_start() function
     MISSION = 3         # on_loop() function, All systems fine, running mission
     DEGRADED = 4        # Assuming some sensors or actators are not working but following mission
-    ERROR = 5           # something went horribly wrong
-    UNSAFE = 6          # Not safe to stop service, probably transistioning
+    UNSAFE = 5           # something went horribly wrong
+    ERROR = 6          # Not safe to stop service, probably transistioning
+    DONE = 7            # completed temporary 
 
+
+@unique
 class RW_State(IntEnum):
     NONE = 0
     IDLE = 1

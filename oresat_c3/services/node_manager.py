@@ -253,6 +253,9 @@ class NodeManagerService(Service):
             self._loops = -1
             return  # nothing to monitor
 
+        if nodes_not_found == len(self._data):
+            self._loops = 0
+
         # reset data with errors and probe for data not found
         for name, info in self._data.items():
             if info.opd_address == 0:

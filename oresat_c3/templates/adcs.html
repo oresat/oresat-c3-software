@@ -54,7 +54,8 @@
     async function calibrateActuators() {
       // calibrate actuators, namely reaction wheels
       console.log('Calibrating actuators');
-      writeValue("adcs_manager", "calibrate", "yes");
+      // calibration is number 1
+      writeValue("adcs_manager", "mode", 2);
       return 0;
     }
     

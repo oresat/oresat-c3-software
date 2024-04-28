@@ -4,10 +4,45 @@ import math
 import json
 import threading
 from time import time, sleep, monotonic_ns
+from enum import Enum, IntEnum
 
 import canopen
 from olaf import NodeStop, Service, logger
 from oresat_configs import NodeId
+
+class ADCS_Mode(IntEnum):
+    NONE = 0
+    IDLE = 1
+    CALIBRATE = 2       # Temporary mission
+    SPINDOWN = 3        # Temporary mission
+    DETUMBLE = 4        # Temporary mission
+    BBQ = 5             # Continuous Mission
+    POINT = 6           # Continuous Mission
+
+class ADCS_Status(IntEnum):
+    NONE = 0            # Nothing
+    IDLE = 1            # Nothing, (probably) not sending SDOs
+    STARTING = 2        # on_start() function
+    MISSION = 3         # on_loop() function, All systems fine, running mission
+    DEGRADED = 4        # Assuming some sensors or actators are not working but following mission
+    ERROR = 5           # something went horribly wrong
+    UNSAFE = 6          # Not safe to stop service, probably transistioning
+
+class RW_State(IntEnum):
+    NONE = 0
+    IDLE = 1
+    SYSTEM_ERROR = 2
+    CONTROLLER_ERROR = 3
+    TORQUE_CONTROL = 4
+    VEL_CONTROL = 5
+    POS_CONTROL = 6
+    MOTOR_RESISTANCE_CAL = 7
+    MOTOR_INDUCTANCE_CAL = 8
+    ENCODER_DIR_CAL = 9
+    ENCODER_OFFSET_CAL = 10
+    ENCODER_TEST = 11
+    OPEN_LOOP_CONTROL = 12
+    CLEAR_ERRORS = 13
 
 
 """
@@ -40,33 +75,44 @@ class AdcsService(Service):
 
         logger.info("ADCS service object initiated")
         self.calibrating = False
+        self.status_code = ADCS_Status.NONE
+        self.mode = ADCS_Mode.NONE
 
     def on_start(self):
         logger.info("Starting ADCS")
-        
+
+        self.set_status_code(ADCS_Status.STARTING)
         self.calibrating = False
 
         # Calibrate sensors and actuators
-        self.gyro_calibrate()
-        self.mag_calibrate()
+        #self.gyro_calibrate()
+        #self.mag_calibrate()
         #self.rw_calibrate()
 
         # for ADCS testing
         #self.node.add_sdo_callbacks("adcs_manager", "reserved_rw", self.test_sdo_read, self.test_sdo_write)
-        self.node.add_sdo_callbacks("adcs_manager", "feedback", self.mngr_feedback, None)
+        self.node.add_sdo_callbacks("adcs_manager", "mode", None, self.mngr_mode)
         self.node.add_sdo_callbacks("adcs_manager", "signals", None, self.mngr_signals)
-        self.node.add_sdo_callbacks("adcs_manager", "calibrate", None, self.mngr_calibrate)
+        self.node.add_sdo_callbacks("adcs_manager", "feedback", self.mngr_feedback, None)
 
         # ADCS startup complete
         logger.info("Completed ADCS startup")
-
+        self.set_status_code(ADCS_Status.MISSION)
     
     def on_loop(self):
 
         #logger.info("Starting iteration of ADCS loop")
         logger.info("START OF ADCS LOOP")
 
-        # print(self.node._remote_nodes.keys())
+        if self.mode == ADCS_Mode.CALIBRATE:
+            logger.info("Entering calibration state")
+            sleep(2)
+            # Check MT feedback
+            # Calibrate RWs
+            self.rw_calibrate()
+            sleep(2)
+            self.set_mode(ADCS_Mode.MANUAL)
+
         # Read sensors, data is stored in self.sensor_data
         self.gyro_monitor()
         self.mag_monitor(log=True)
@@ -84,13 +130,6 @@ class AdcsService(Service):
         temperatures = self.temperature_monitor()
         batteries = self.battery_monitor()
 
-        # Enter a calibration state if needed
-        if self.calibrating:
-            sleep(2)
-            self.rw_calibrate()
-            sleep(2)
-            self.calibrating = False
-
 
         # Send control signal
         # Control signals turned off for sensor testing, for now
@@ -99,26 +138,55 @@ class AdcsService(Service):
 
         # End of ADCS control loop
         sleep(1)
+    
 
-    # SDO CALLBACK FUNCTIONS
-    def mngr_calibrate(self, *args):
-        """calibrate actuators, namely reaction wheels"""
-        self.calibrating=True
+
+    """
+    HELPER FUNCTIONS
+    """
+    def write_sdo(self, node, index, subindex, value):
+        """Wrapper function to handle sdo call functions while there are still many errors"""
+        try:
+            self.node.sdo_write(node, index, subindex, value)
+        except Exception as e:
+            logger.warning(f"An error occured with sending SDO: {e}")
+            logger.warning(f"node: {node}, index: {index}, subindex: {subindex}, value: {value}")
+
+    
+    def set_status_code(self, status_code):
+        """Set the status of the ADCS service"""
+        logger.warning(f"Setting ADCS status to {status_code}")
+        self.status_code = status_code
+        # write the tpdo for it
+    
+    def set_mode(self, mode):
+        """Set the mode of the ADCS service"""
+        logger.warning(f"Setting ADCS mode to {mode}")
+        self.mode = mode
+        # write the tpdo for it
+
+
+    """
+    SDO CALLBACK FUNCTIONS
+    """
+    def mngr_mode(self, mode):
+        """Retreive the requested ADCS mode"""
+        self.set_mode(mode)
         pass
 
     def mngr_signals(self, controls):
         """Apply control signals from ADCS manager SDO callback"""
-        self.control_signals = json.loads(controls)
-        logger.debug(self.control_signals)
+        # Only accept signals if the mission mode is manual
+        if self.mode== ADCS_Mode.MANUAL:
+            self.control_signals = json.loads(controls)
+            logger.debug(self.control_signals)
 
     def mngr_feedback(self):
         """Return string of feedback signals for ADCS manager SDO callback"""
+        # Always send feedback just in case
         logger.debug(self.actuator_feedback)
         return json.dumps(self.actuator_feedback)
-        #return json.dumps(self.control_signals)
-
     
-
 
     """
     PRIMARY SENSOR FUNCTIONS
@@ -210,7 +278,7 @@ class AdcsService(Service):
 
         for key, val in controller_map.items():
             if log:
-                logger.info(f"Sending {val} to {key}")
+                logger.info(f"Sending {self.control_signals[key]} to {key}")
             self.write_sdo('adcs', 'magnetorquer', f'current_{val}_setpoint', self.control_signals[key])
 
     
@@ -382,6 +450,27 @@ class AdcsService(Service):
 
 
     # Other attitude determination functions
+    
+    # GPS FUNCTIONS
+    def gps_monitor(self, log=False):
+        """Monitors the GPS readings"""
+        #logger.debug("Monitoring GPS")
+        if log:
+            for name, item in self.node.od["gps"].items():
+                logger.info(f"Key: {name} Value: {item.value}")
+
+    def gps_time(self):
+        """Gets the gps time since midnight"""
+        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
+
+    def gps_ecef_monitor(self):
+        axis_list = ["x", "y", "z"]
+        ecef_data = dict()
+        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+        
+        return ecef_data
+
     def solar_monitor(self, num_modules=6):
         """Returns a dictionary of solar power generation data
 
@@ -445,84 +534,3 @@ class AdcsService(Service):
 
 
 
-    """
-    EVERYTHING BELOW SHOULD BE HANDLED BY ADCS SOFTWARE PACKAGE
-    """
-
-    def vect_normalize(self, vect: dict):
-        """Returns the normalized vector"""
-        magnitude = math.hypot(*vect.values())
-        if magnitude == 0:
-            # why z? because it is the easiest axis to rotate on
-            return {"x": 0, "y": 0, "z": 1}
-        norm_vect = dict()
-        for key,val in vect.items():
-            norm_vect[key] = val / magnitude
-        return norm_vect
-
-    def vect_dot_product(self, vect1: dict, vect2: dict):
-        """Retuns the value of the dot product between two vectors"""
-        return vect1["x"]*vect2["x"] + vect1["y"]*vect2["y"] + vect1["z"]*vect2["z"]
-
-    def vect_cross_product(self, vect1: dict, vect2: dict):
-        """Returns a dictionary of the cross product"""
-        return {"x": vect1["y"]*vect2["z"] - vect1["z"]*vect2["y"],
-                "y": vect1["z"]*vect2["x"] - vect1["x"]*vect2["z"],
-                "z": vect1["x"]*vect2["y"] - vect1["y"]*vect2["x"]}
-
-    def get_rot_vect(self, vect1: dict, vect2: dict):
-        """Calculates the rotation vector based on two vectors
-
-        Paramters:
-        vect1 = dictionary of first vector
-        vect2 = dictionary of second vector
-
-        Returns: angle = rotation in radians, vector = normalized vector of rotation"""
-
-        # First, the direction of rotation is the normalized cross product
-        vect = self.vect_normalize(self.vect_cross_product(vect1, vect2))
-        # Next, find the angle of rotation, use the dot product instead
-        angle = math.acos(self.vect_dot_product(vect1,vect2) 
-                                  / (math.hypot(*vect1.values())*math.hypot(*vect2.values())))
-
-        return angle, vect
-
-    def rot_vect_to_quat(self, angle: float, vect: dict):
-        """Converts rotation vector to quaternion
-
-        Parameters:
-        angle = angle in radians
-        vect = dictionary of normalized vector {x, y, z}
-        
-        Return: quaternion = dictionary of normalized quaternion {h, i, j, k}"""
-
-        #logger.debug(f"Converting angle {angle} and vector {vect} into a rotation quaternion")
-
-        #if (vdiff:=abs(math.hypot(*vect.values()) - 1)) > 0.00000001:
-        #    logger.warning("WARNING: vector for vector to quaternion conversion is not a unit vector")
-        #    logger.warning(f"unit vector diff: {vdiff}")
-
-        quat = {"h": math.cos(angle/2) , 
-                "i": math.sin(angle/2)*vect["x"], 
-                "j": math.sin(angle/2)*vect["y"], 
-                "k": math.sin(angle/2)*vect["z"]}
-
-        #if (qdiff:=abs(math.hypot(*quat.values()) - 1)) > 0.00000001:
-        #    logger.warning("WARNING: quaternion conversion did not result in unit quaternion")
-        #    logger.warning(f"unit quaternion diff: {qdiff}")
-        return quat
-
-    def quat_product(self, quat1, quat2):
-        """Calculates the product of two quaternions"""
-        # define vectors as quat{i, j, k} -> vect{x, y, z}}
-        # Warning! qvect_cross is in the form {x, y, z}
-        qvect_cross = self.vect_cross_product(qvect1:={"x": quat1["i"], "y": quat1["j"], "z": quat1["k"]},
-                                              qvect2:={"x": quat2["i"], "y": quat2["j"], "z": quat2["k"]})
-
-        # qp = (q.h)(p.h) - dot(q.v,p.v) + (q.h)(p.v) + (p.h)(q.v) + cross(q.v,p.v)
-        result_quat = {"h": quat1["h"]*quat2["h"] - self.vect_dot_product(qvect1, qvect2),
-                       "i": quat1["h"]*quat2["i"] + quat2["h"]*quat1["i"] + qvect_cross["x"],
-                       "j": quat1["h"]*quat2["j"] + quat2["h"]*quat1["j"] + qvect_cross["y"],
-                       "k": quat1["h"]*quat2["k"] + quat2["h"]*quat1["k"] + qvect_cross["z"]}
-
-        return result_quat

@@ -15,10 +15,10 @@ jobs:
 
     steps:
     - name: Clone oresat-c3 repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Clone oresat-configs repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         repository: oresat/oresat-configs
         path: resources/oresat-configs
@@ -31,6 +31,7 @@ jobs:
     - name: Build and install oresat-configs
       working-directory: resources/oresat-configs
       run: |
+        git pull
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         python -m build

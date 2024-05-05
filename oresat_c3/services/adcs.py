@@ -388,6 +388,7 @@ class AdcsService(Service):
                 self.write_sdo(rw_name, 'reboot', 'request', 1)
                 sleep(5)
 
+        sleep(5)
         logger.info("CALIBRATING: {rw_name} resistance")
         new_calibrate(7)
         logger.info("CALIBRATING: {rw_name} inductance")
@@ -398,10 +399,15 @@ class AdcsService(Service):
         new_calibrate(10)
         
         # set velocity control
-        logger.info("CALIBRATION DONE, SETTING VELOCITY CONTROL")
+        logger.info("CALIBRATION DONE, SETTING TO A CONTROL MODE")
 
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
-            self.write_sdo(rw_name, 'requested', 'state', 5)
+        sleep(5)
+        control_type = 5
+        for rw_name in ["rw_" + str(num) for num in [1, 2, 3, 4]]:
+            logger.info(f"Setting {rw_name} to {control_type} control")
+            sleep(1)
+            self.write_sdo(rw_name, 'requested', 'state', control_type)
+            sleep(4)
 
         sleep(2)
 
@@ -410,6 +416,8 @@ class AdcsService(Service):
     def rw_monitor(self, num_rws=4, log=False):
         """Retreives reaction wheel states"""
         logger.info("Monitoring reaction wheels")
+        
+        temp_data = dict()
 
         endpoints = ['motor_velocity', 'motor_current', 'bus_current', 'bus_voltage']
         for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
@@ -435,6 +443,8 @@ class AdcsService(Service):
             self.sensor_data[rw_name] = {endpoint: self.node.od[rw_name][endpoint].value for endpoint in endpoints}
             self.actuator_feedback[rw_name] = self.node.od[rw_name]['motor_velocity'].value
 
+            temp_data[rw_name] = {num: self.node.od[rw_name]['temperature_sensor_'+str(num)].value for num in range(1, 4)}
+            logger.info(f"{rw_name} has temps {temp_data[rw_name]}")
 
     def rw_control(self, num_rws=4, log=False):
         """Sends the control signal to the reaction wheels"""

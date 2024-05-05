@@ -142,3 +142,6 @@ dmypy.json
 
 # setuptools-scm
 _version.py
+
+# Git conflicts
+*.orig

@@ -241,27 +241,6 @@ class AdcsService(Service):
         for name,axis in directions.items():
             self.sensor_data["gyroscope"][axis] = self.node.od["adcs"]["gyroscope_" + name].value
 
-    # GPS FUNCTIONS
-    def gps_monitor(self, log=False):
-        """Monitors the GPS readings"""
-        #logger.debug("Monitoring GPS")
-        if log:
-            for name, item in self.node.od["gps"].items():
-                logger.info(f"Key: {name} Value: {item.value}")
-
-    def gps_time(self):
-        """Gets the gps time since midnight"""
-        logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
-
-    def gps_ecef_monitor(self):
-        axis_list = ["x", "y", "z"]
-        ecef_data = dict()
-        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
-        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
-        
-        return ecef_data
-
-
 
     """
     ACTUATOR FUNCTIONS

@@ -174,6 +174,11 @@ class AdcsService(Service):
         # write the tpdo for it
 
 
+    def api(self, target_mode):
+        logger.warning(f"Recieved request to got to mode {target_mode}")
+        self.set_mode(target_mode)
+        return 0
+
     """
     SDO CALLBACK FUNCTIONS
     """

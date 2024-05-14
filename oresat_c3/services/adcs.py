@@ -288,6 +288,18 @@ class AdcsService(Service):
 
     def rw_calibrate(self, num_rws=4):
         #logger.info("Calibrating reaction wheels")
+        
+        # assumes reaction wheels are named "rw_x" where x is a number greater than or equal to 1
+        get_rw_state = lambda rw_num: self.node.od['rw_'+str(rw_num)]["ctrl_stat_current_state"].value
+        all_rw_states = lambda: [self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value for num in range(1, num_rws+1)]
+        
+        # this is what we want
+        list_of_rw_numbers = range(1, num_rws+1)
+        # This is for testing, use active RWs only
+        list_of_rw_numbers = [1]
+        list_of_rw_names = ["rw_"+str(num) for num in list_of_rw_numbers]
+        
+        # REBOOT ALL REACTION WHEELS
 
         def calibrate(rw_name, calibration_state):
             # wait to exit idle state and start calibration state
@@ -299,95 +311,140 @@ class AdcsService(Service):
                 
             sleep(1) # wait one more second to start checking if calibration is completed
 
-            while (rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value) != 1:
+            while (rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value) != RW_State.IDLE:
                 logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state))
                 
                 # state 2 is a system error
-                if rw_state == 2:
+                if rw_state == RW_State.SYSTEM_ERROR:
                     logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
                 
                 # state 3 is a controller error
-                if rw_state == 3:
+                if rw_state == RW_State.CONTROLLER_ERROR:
                     logger.error(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
-                    self.rw_apply_state(rw_name, 13)
+                    self.rw_apply_state(rw_name, RW_State.CLEAR_ERRORS)
+                    sleep(15)
                     self.rw_apply_state(rw_name, calibration_state)
+                
+                if rw_state == RW_State.SYSTEM_ERROR or rw_state == RW_State.CONTROLLER_ERROR:
+                    logger.error("RW {} ERROR BITMAP: {}".format(rw_name, self.node.od[rw_name]['ctrl_stat_errors'].value))
 
                 sleep(1)
-
-        # assumes reaction wheels are named "rw_x" where x is a number greater than or equal to 1
-        rw_state = lambda rw_num: self.node.od['rw_'+str(rw_num)]["ctrl_stat_current_state"].value
-        all_rw_states = lambda: [self.node.od['rw_'+str(num)]["ctrl_stat_current_state"].value for num in range(1, num_rws+1)]
         
-        def new_calibrate(calibration_state):
+        def batch_calibrate(calibration_state):
             # send an sdo to all reaction wheels to enter calibration state
-            self.rw_batch_apply_states(num_rws, calibration_state)
+            self.rw_batch_apply_states(1, calibration_state)
 
+            count = 0
             # Make sure all reaction wheels enter calibration state
-            while (all_rw_states().count(calibration_state) != num_rws):
+            while (all_rw_states().count(calibration_state) != len(list_of_rw_names)):
                 logger.info(f"Waiting for all reaction wheels to enter calibration state {calibration_state}")
 
                 # Check which reaction wheels need to be sent another sdo
-                for rw_num in range(1, num_rws+1):
-                    if rw_state(rw_num) != calibration_state:
-                        logger.info(f"State of rw_{rw_num} is currently {rw_state(rw_num)}")
-                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
+                for rw_num in list_of_rw_numbers:
+                    if (current_rw_state:=get_rw_state(rw_num)) != calibration_state:
+                        logger.info(f"State of rw_{rw_num} is currently {get_rw_state(rw_num)}")
                     
-                    # put the delay here instead of in function
-                    sleep(1)
-
-            # wait for calibration state to end, all reaction wheel should return to idle (1)
-            while (all_rw_states().count(1) != num_rws):
-                logger.info(f"Waiting for all reaction wheels to complete calibration state {calibration_state}")
-
-                # For each reaction wheel, see if there are errors
-                for rw_num in range(1, num_rws+1):
-                    logger.info("RW NUMBER: {}  RW STATE: {}".format(rw_num, rw_state(rw_num)))
-                    
-                    if rw_state == 2:
+                    if current_rw_state == RW_State.SYSTEM_ERROR:
                         logger.error(f"SYSTEMD ERROR FOR RW_{rw_num}, REBOOT!")
                 
                     # state 3 is a controller error
-                    if rw_state == 3:
+                    elif current_rw_state == RW_State.CONTROLLER_ERROR:
                         logger.error(f"CONTROLLER ERROR FOR RW_{rw_num}, ATTEMPTING TO CLEAR ERRORS")
-                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', 13)
                         sleep(1)
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', RW_State.CLEAR_ERRORS)
+                        #self.write_sdo('rw_name'+str(rw_num), 'reboot', 'request', 1)
+                        sleep(15)
                         # double check if state needs to be applied again
                         self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
 
+                    else:
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
+
+                    if current_rw_state == RW_State.SYSTEM_ERROR or current_rw_state == RW_State.CONTROLLER_ERROR:
+                        logger.error("RW {} ERROR BITMAP: {}".format(rw_name, self.node.od[rw_name]['ctrl_stat_errors'].value))
+                    # put the delay here instead of in function
+                    sleep(6)
+
+                count += 1
+
+                if count > 10:
+                    logger.error(f"Batch RW calibration timeout: One or more reaction wheels would not return to idle state. Please reboot the reaction wheels and ensure they are in an idle state.")
+                    break
+
+
+            count = 0
+            # wait for calibration state to end, all reaction wheel should return to idle (1)
+            while (all_rw_states().count(RW_State.IDLE) != len(list_of_rw_names)):
+                logger.info(f"Waiting for all reaction wheels to complete calibration state {calibration_state}")
+
+                # For each reaction wheel, see if there are errors
+                for rw_num in list_of_rw_numbers:
+                    logger.info("RW NUMBER: {}  RW STATE: {}".format(rw_num, get_rw_state(rw_num)))
+                    
+                    if rw_state == RW_State.SYSTEM_ERROR:
+                        logger.error(f"SYSTEMD ERROR FOR RW_{rw_num}, REBOOT!")
+                
+                    # state 3 is a controller error
+                    if rw_state == RW_State.CONTROLLER_ERROR:
+                        logger.error(f"CONTROLLER ERROR FOR RW_{rw_num}, ATTEMPTING TO CLEAR ERRORS")
+                        self(1)
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', RW_State.CLEAR_ERRORS)
+                        #self.write_sdo('rw_name'+str(rw_num), 'reboot', 'request', 1)
+                        sleep(15)
+                        # double check if state needs to be applied again
+                        self.write_sdo('rw_'+str(rw_num), 'requested', 'state', calibration_state)
+
+                    if rw_state == RW_State.SYSTEM_ERROR or rw_state == RW_State.CONTROLLER_ERROR:
+                        logger.error("RW {} ERROR BITMAP: {}".format(rw_name, self.node.od[rw_name]['ctrl_stat_errors'].value))
+                
+                count += 1
+
+                if count > 60:
+                    logger.error(f"Batch RW calibration timeout: One or more reaction wheels would not complete calibration {calibration_state}, please reboot the reation wheels.")
+                    break
+                
                 sleep(1)
 
-            logger.info(f"All reaction wheels completed calibration state {calibration_state}")
+            sleep(1)
+            logger.info(f"All reaction wheels completed calibration state {calibration_state}!!!")
 
-        # Calibrate
-        # 7 = resistance cal, 8 = inductance cal, 9 = encoder dir cal, 10 = encoder offset cal
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
+        
+        # REBOOT ALL REACTION WHEELS
+        for rw_name in list_of_rw_names:
             logger.info("REBOOTING: {rw_name}")
                 
             self.write_sdo(rw_name, 'reboot', 'request', 1)
             logger.info(f"Waiting for {rw_name} to reboot")
             sleep(5)
             
-            while (rw_status:=self.node.od[rw_name]["ctrl_stat_current_state"].value != 1):
+            count = 0
+            while (rw_status:=int(self.node.od[rw_name]["ctrl_stat_current_state"].value) != RW_State.IDLE):
                 logger.info(f"Waiting for {rw_name} to reboot, currently in state {rw_status}")
                 self.write_sdo(rw_name, 'reboot', 'request', 1)
                 sleep(5)
+                if count > 10:
+                    logger.error(f"RW Calibration timeout: {rw_name} did not reach an idle state")
+                    break
+                count += 1
+
 
         sleep(5)
-        logger.info("CALIBRATING: {rw_name} resistance")
-        new_calibrate(7)
-        logger.info("CALIBRATING: {rw_name} inductance")
-        new_calibrate(8)
-        logger.info("CALIBRATING: {rw_name} encoder direction")
-        new_calibrate(9)
-        logger.info("CALIBRATING: {rw_name} encoder offset")
-        new_calibrate(10)
+
+        #CALIBRATE ALL REACTION WHEELS
+        for rw_state in [RW_State.ENCODER_DIR_CAL, 
+                RW_State.ENCODER_OFFSET_CAL]:
+            logger.info(f"BATCH CALIBRATING RWs: Putting rws in state {rw_state}")
+            batch_calibrate(rw_state)
+            sleep(1)
+            self.rw_monitor()
+            sleep(1)
         
         # set velocity control
         logger.info("CALIBRATION DONE, SETTING TO A CONTROL MODE")
 
         sleep(5)
-        control_type = 5
-        for rw_name in ["rw_" + str(num) for num in [1, 2, 3, 4]]:
+        control_type = RW_State.VEL_CONTROL
+        for rw_name in ["rw_" + str(num) for num in [1]]:
             logger.info(f"Setting {rw_name} to {control_type} control")
             sleep(1)
             self.write_sdo(rw_name, 'requested', 'state', control_type)
@@ -410,18 +467,18 @@ class AdcsService(Service):
             logger.info("RW NAME: {}  RW STATE: {}".format(rw_name,rw_state:=self.node.od[rw_name]["ctrl_stat_current_state"].value))
             
             # state 2 is a system error
-            if rw_state == 2:
+            if rw_state == RW_State.SYSTEM_ERROR:
                 logger.error(f"SYSTEMD ERROR FOR {rw_name}, REBOOT!")
             
             # state 3 is a controller error
-            if rw_state == 3:
+            if rw_state == RW_State.CONTROLLER_ERROR:
                 logger.error(f"CONTROLLER ERROR FOR {rw_name}, ATTEMPTING TO CLEAR ERRORS")
-                self.rw_apply_state(rw_name, 13)
+                self.rw_apply_state(rw_name, RW_State.CLEAR_ERRORS)
                 sleep(2)
-                self.rw_apply_state(rw_name, 5)
+                self.rw_apply_state(rw_name, RW_State.VEL_CONTROL)
                 sleep(2)
 
-            if rw_state == 2 or rw_state == 3:
+            if rw_state == RW_State.SYSTEM_ERROR or rw_state == RW_State.CONTROLLER_ERROR:
                 logger.error("RW {} ERROR BITMAP: {}".format(rw_name, self.node.od[rw_name]['ctrl_stat_errors'].value))
 
             self.sensor_data[rw_name] = {endpoint: self.node.od[rw_name][endpoint].value for endpoint in endpoints}
@@ -438,10 +495,20 @@ class AdcsService(Service):
 
         # also check for state
         logger.info("Sending control signal to reaction wheels")
-        for rw_name in ["rw_" + str(num) for num in range(1, num_rws+1)]:
+        
+
+        # this is what we want
+        list_of_rw_numbers = range(1, num_rws+1)
+        # This is for testing, use active RWs only
+        list_of_rw_numbers = [1]
+
+        list_of_rw_names = ["rw_"+str(num) for num in list_of_rw_numbers]
+
+        for rw_name in list_of_rw_names:
             #logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
             # if the wheel is not in the correct state, skip
-            if (self.node.od[rw_name]["ctrl_stat_current_state"].value != 5):
+            if (self.node.od[rw_name]["ctrl_stat_current_state"].value != RW_State.VEL_CONTROL):
+                logger.warning(f"Reaction Wheel {rw_name} does not appear to be in velocity control")
                 continue
 
             self.write_sdo(rw_name, 'signals', 'setpoint', self.control_signals[rw_name])
@@ -514,25 +581,5 @@ class AdcsService(Service):
                 self.node.od["battery_%s"%battery]["pack_%s_reported_capacity"%pack].value
                 for battery in range(1, num_cards+1)
                 for pack in range(1, num_packs+1)}
-
-
-
-    # HELPER FUNCTIONS
-    def write_sdo(self, node, index, subindex, value):
-        """Mock function 
-        
-        Paramters:
-        node = the card to write to
-        index = the index to write to
-        subindex = the subindex to write to
-        value = the value to send
-        """
-
-        try:
-            self.node.sdo_write(node, index, subindex, value)
-        except Exception as e:
-            logger.warning(f"An error occured with sending SDO: {e}")
-            logger.warning(f"node: {node}, index: {index}, subindex: {subindex}, value: {value}")
-
 
 

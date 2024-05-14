@@ -6,6 +6,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 
 from enum import IntEnum
 from time import sleep
+from typing import Union
 
 from olaf import Adc, Gpio, logger
 
@@ -291,11 +292,13 @@ class OpdStm32Node(OpdNode):
         """Connect the node the C3's UART"""
 
         self._max7310.output_set(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
 
     def disable_uart(self):
         """Disconnect the node from the C3's UART"""
 
         self._max7310.output_clear(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
 
     @property
     def is_uart_enabled(self) -> bool:
@@ -320,11 +323,13 @@ class OpdOctavoNode(OpdNode):
         """Connect the node the C3's UART"""
 
         self._max7310.output_set(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
 
     def disable_uart(self):
         """Disconnect the node the C3's UART"""
 
         self._max7310.output_clear(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
 
     @property
     def is_uart_enabled(self) -> bool:
@@ -381,7 +386,7 @@ class Opd:
 
         self._nodes = {}  # type: ignore
         self._status = OpdState.DISABLED
-        self.stop_loop = True
+        self._uart_node: Union[str, None] = None
         self._resets = 0
 
     def __getitem__(self, name: str) -> OpdNode:
@@ -416,6 +421,7 @@ class Opd:
             if node.status != OpdNodeState.NOT_FOUND:
                 node.disable()
 
+        self._uart_disconnect()
         self._not_enable_pin.high()
         self._status = OpdState.DISABLED
         self._resets = 0
@@ -489,3 +495,27 @@ class Opd:
         """OpdState: OPD subsystem status."""
 
         return self._status
+
+    def _uart_disconnect(self):
+        if self._uart_node is not None:
+            self._nodes[self._uart_node].disable_uart()
+            self._uart_node = None
+
+    @property
+    def uart_node(self) -> Union[str, None]:
+        """str: The selected UART node name or an empty string for no node."""
+        if (
+            self._uart_node is not None
+            and self._nodes[self._uart_node].status == OpdNodeState.NOT_FOUND
+        ):
+            self._uart_disconnect()
+        return self._uart_node
+
+    @uart_node.setter
+    def uart_node(self, name: Union[str, None]):
+
+        self._uart_disconnect()
+        if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:
+            return
+        self._nodes[name].enable_uart()
+        self._uart_node = name

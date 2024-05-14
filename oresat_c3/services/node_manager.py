@@ -132,6 +132,12 @@ class NodeManagerService(Service):
 
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
+        self.node.add_sdo_callbacks(
+            "opd",
+            "uart_node_select",
+            self._get_uart_node_select,
+            self._set_uart_node_select,
+        )
         for name in self._data:
             if self._data[name].node_id == 0:
                 continue  # not a CANopen node
@@ -347,3 +353,23 @@ class NodeManagerService(Service):
                 for node in self._data.values():
                     node.last_enable = monotonic()
             self.opd.enable()
+
+    def _get_uart_node_select(self) -> int:
+        """SDO write callback to select a node to connect to via UART."""
+
+        return 0 if self.opd.uart_node is None else self._data[self.opd.uart_node].opd_address
+
+    def _set_uart_node_select(self, value: int):
+        """
+        SDO write callback to select a node to connect to via UART.
+
+        Parameters
+        ----------
+        value: int
+            The opd address of the node to connect to UART or 0 for no node.
+        """
+
+        if value == 0:
+            self.opd.uart_node = None
+        elif value in self.opd_addr_to_name:
+            self.opd.uart_node = self.opd_addr_to_name[value]

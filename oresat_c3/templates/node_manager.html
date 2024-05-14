@@ -23,6 +23,12 @@
   <br />
   <br />
   <div id="nodeMgrTableDiv">
+    <b>UART Node:</b>
+    <select id="uartNodeSelect" onchange="uartSelect()">
+      <option value=0>None</option>
+    </select>
+    <br />
+    <br />
     <table id="nodeMgrTable">
       <thead>
         <tr>
@@ -68,6 +74,7 @@
     async function buildTable() {
       const data = await readValue("node_manager", "status_json");
       let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
+      let select = document.getElementById('uartNodeSelect');
       for (const status of JSON.parse(data.value)) {
         let newRow = tbodyRef.insertRow();
 
@@ -108,6 +115,12 @@
           button.id = `node${status.node_id}Button`;
           button.innerText = "Enable";
           newCell3.appendChild(button);
+
+          // add to UART nodes list
+          let opt = document.createElement('option');
+          opt.value = status.opd_addr;
+          opt.innerHTML = status.nice_name;
+          select.appendChild(opt);
         }
       }
     }
@@ -180,10 +193,25 @@
       updateStatus();
     }
 
+    /** Enable / disable the OPD subsystem button callback */
+    async function uartSelect() {
+      const select = document.getElementById("uartNodeSelect");
+      await writeValue("opd", "uart_node_select", select.value);
+    }
+
+    /** Update data in the table */
+    async function updateSelect() {
+      const select = document.getElementById("uartNodeSelect");
+      const data = await readValue("opd", "uart_node_select");
+      select.value = data.value;
+    }
+
     buildTable();
     updateStatus();
+    updateSelect();
     const interval = setInterval(function() {
       updateStatus();
+      updateSelect();
     }, 1000);
   </script>
 {% endblock %}

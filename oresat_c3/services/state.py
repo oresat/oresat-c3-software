@@ -292,6 +292,8 @@ class StateService(Service):
             else:
                 size = len(obj.encode_raw(obj.default))
                 raw = self._fram.read(offset, size)
+                if obj.name == "status":  # case of empty FRAM
+                    raw = raw or C3State.PRE_DEPLOY.value.to_bytes(1, "little")
                 obj.value = obj.decode_raw(raw)
             offset += size
 

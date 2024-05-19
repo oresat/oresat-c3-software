@@ -334,44 +334,37 @@ class AdcsService(Service):
                     logger.error(f"CONTROLLER ERROR FOR {rw_name}, REBOOT!")
                     logger.error("RW {} ERROR BITMAP: {}".format(rw_name, get_rw_error(rw_name)))
                     return 1
-
                 sleep(delay)
 
             return 0
 
 
-
-            # If states are completed, ignore
-            # if system error or controller error
-                # reboot the system
-                # send reboot request
-                # reset states completed
-                # reset state history
-                # increase number of attempts
-            # if current_attempt but still idle, send control signal again 
-            # if current_attempt = current state: wait
-
-            # if idle and last state was the current attempt, it completed
-
-        
-
-        # REBOOT ALL REACTION WHEELS
-        # For each reaction wheel:
-            # Reboot the reaction wheel
-
-            # For each calibration state:
-                # Do the calibration
-                # If it fails,
-                # Reboot and start from zero
+        def calibrate(rw_name):
+            # If any fail, automatically return an error
+            
+            #for calibration_state in [RW_State.MOTOR_RESISTANCE_CAL, RW_State.MOTOR_INDUCTANCE_CAL, RW_State.ENCODER_DIR_CAL, RW_State.ENCODER_OFFSET_CAL]:
+            for calibration_state in [RW_State.MOTOR_RESISTANCE_CAL, RW_State.ENCODER_OFFSET_CAL]:
+                logger.info(f"Starting calibration for {calibration_state}")
+                self.rw_apply_state(rw_name, calibration_state)
+                sleep(1)
+                if monitor_until_next(rw_name, calibration_state) == 1:
+                    return 1
+                sleep(1)
+                # If it returns to idle ok (0), it calibrated
+                if monitor_until_next(rw_name, RW_State.IDLE) == 1:
+                    return 1
+                sleep(1)
+            pass
+            
 
         
         # REBOOT ALL REACTION WHEELS
         for rw_name in list_of_rw_names:
             yay = False
             while not yay:
-                logger.info("REBOOTING: {rw_name}")
+                #logger.info(f"REBOOTING: {rw_name}")
                 # self.write_sdo(rw_name, 'reboot', 'request', 1)
-                logger.info(f"Waiting for {rw_name} to reboot")
+                #logger.info(f"Waiting for {rw_name} to reboot")
                 
                 for ii in range(5):
                     this_state = get_rw_state(rw_name)
@@ -381,34 +374,13 @@ class AdcsService(Service):
                 if monitor_until_next(rw_name, RW_State.IDLE) == 1:
                     continue
                 sleep(1)
-                
-                # send calibration state 1
-                logger.info("Starting calibration for encoder direction")
-                self.rw_apply_state(rw_name, RW_State.ENCODER_DIR_CAL)
-                sleep(1)
-                if monitor_until_next(rw_name, RW_State.ENCODER_DIR_CAL) == 1:
+
+                if calibrate(rw_name) == 1:
                     continue
-                sleep(1)
-                # If it returns to idle ok (0), it calibrated
-                if monitor_until_next(rw_name, RW_State.IDLE) == 1:
-                    continue
+
                 sleep(1)
 
-                # send calibration state 2
-                logger.info("Starting calibration for encoder offset")
-                self.rw_apply_state(rw_name, RW_State.ENCODER_OFFSET_CAL)
-                sleep(1)
-                if monitor_until_next(rw_name, RW_State.ENCODER_OFFSET_CAL) == 1:
-                    continue
-                sleep(1)
-                # If it returns to idle ok (0), it calibrated
-                if monitor_until_next(rw_name, RW_State.IDLE) == 1:
-                    continue
-                sleep(1)
-
-                # If nothing threw an error, then go to next wheel
                 yay = True
-
 
         sleep(5)
 
@@ -417,10 +389,14 @@ class AdcsService(Service):
         logger.info("CALIBRATION DONE, SETTING TO A CONTROL MODE")
 
         sleep(5)
-        control_type = RW_State.VEL_CONTROL
+        control_type = RW_State.TORQUE_CONTROL
         for rw_name in list_of_rw_names:
             logger.info(f"Setting {rw_name} to {control_type} control")
             sleep(1)
+            self.write_sdo(rw_name, 'requested', 'state', control_type)
+            sleep(2)
+            self.write_sdo(rw_name, 'requested', 'state', control_type)
+            sleep(2)
             self.write_sdo(rw_name, 'requested', 'state', control_type)
             sleep(4)
 
@@ -481,9 +457,10 @@ class AdcsService(Service):
         for rw_name in list_of_rw_names:
             #logger.info(self.node.od[rw_name]["ctrl_stat_current_state"].value)
             # if the wheel is not in the correct state, skip
-            if (self.node.od[rw_name]["ctrl_stat_current_state"].value != RW_State.VEL_CONTROL):
-                logger.warning(f"Reaction Wheel {rw_name} does not appear to be in velocity control")
+            if (self.node.od[rw_name]["ctrl_stat_current_state"].value not in [4, 5, 6]):
+                logger.warning(f"Reaction Wheel {rw_name} does not appear to be in a control setting control")
                 continue
+
 
             self.write_sdo(rw_name, 'signals', 'setpoint', self.control_signals[rw_name])
         pass

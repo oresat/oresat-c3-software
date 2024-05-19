@@ -276,6 +276,7 @@ class NodeManagerService(Service):
             if info.status == NodeState.ERROR:
                 logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
                 self.opd[name].reset(1)
+                self._data[name].last_enable = monotonic()
                 info.opd_resets += 1
             else:
                 info.opd_resets = 0

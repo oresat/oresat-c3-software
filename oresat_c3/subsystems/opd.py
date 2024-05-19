@@ -356,7 +356,7 @@ class Opd:
 
     # values for getting opd current value from ADC pin
     _R_SET = 23_700  # ohms
-    _MAX982L_CUR_RATIO = 965  # curret ratio
+    _MAX982L_CUR_RATIO = 965  # current ratio
 
     def __init__(
         self,

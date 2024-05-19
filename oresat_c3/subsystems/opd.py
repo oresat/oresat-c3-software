@@ -306,6 +306,12 @@ class OpdStm32Node(OpdNode):
 
         return self._max7310.output_status(self._UART_PIN)
 
+    @property
+    def in_bootloader_mode(self) -> bool:
+        """bool: Check if the card is in bootloader mode."""
+
+        return self._max7310.output_status(self._BOOT_PIN)
+
 
 class OpdOctavoNode(OpdNode):
     """A Octavo A8-based OPD Node"""

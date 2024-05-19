@@ -50,7 +50,14 @@
       ON: 2,
       ERROR: 3,
       NOT_FOUND: 4,
+      BOOTLOADER: 5,
       DEAD: 0xFF,
+    }
+
+    const COMMANDS = {
+      DISABLE: 0,
+      ENABLE: 2,
+      BOOTLOADER: 5,
     }
 
     const OPD_STATES = {
@@ -74,7 +81,7 @@
     async function buildTable() {
       const data = await readValue("node_manager", "status_json");
       let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
-      let select = document.getElementById('uartNodeSelect');
+      let uartNodeSelect = document.getElementById('uartNodeSelect');
       for (const status of JSON.parse(data.value)) {
         let newRow = tbodyRef.insertRow();
 
@@ -110,32 +117,51 @@
 
         let newCell3 = newRow.insertCell();
         if (status.opd_addr !== 0 && status.node_id !== 0) {
+          /*
           let button = document.createElement("button");
           button.addEventListener("click", function() {nodeOnClick(status.node_id)});
           button.id = `node${status.node_id}Button`;
           button.innerText = "Enable";
           newCell3.appendChild(button);
+          */
+
+          let select = document.createElement("select");
+          select.id = `node${status.node_id}Select`
+          for (const [key, value] of Object.entries(COMMANDS)) {
+            let opt = document.createElement('option');
+            opt.value = value;
+            opt.innerHTML = key;
+            if (key == "BOOTLOADER" && status.processor != "stm32") {
+              opt.style.display = "none";
+            }
+            select.appendChild(opt);
+          }
+          select.style.with = "auto";
+          select.value = null;
+          select.onchange = function(){nodeOnSelect(status.node_id)};
+          newCell3.appendChild(select);
 
           // add to UART nodes list
-          let opt = document.createElement('option');
+          opt = document.createElement('option');
           opt.value = status.opd_addr;
           opt.innerHTML = status.nice_name;
-          select.appendChild(opt);
+          uartNodeSelect.appendChild(opt);
         }
       }
     }
 
     /** Enable / disable a node button callback */
-    async function nodeOnClick(nodeId) {
-      let value = "OFF";
-      if (document.getElementById(`node${nodeId}Button`).innerText === "Enable") {
-        value = "ON";
+    async function nodeOnSelect(nodeId) {
+      const select = document.getElementById(`node${nodeId}Select`);
+      const data = await writeValue("node_status", nodeId, select.value);
+      let state = "OFF";
+      if (select.value === COMMANDS["ENABLE"]) {
+        state = "BOOT";
+      } else if (select.value === COMMANDS["BOOTLOADER"]) {
+        state = "BOOTLOADER";
       }
-      const data = await writeValue("node_status", nodeId, STATES[value]);
-      if (value === "ON") {
-        value = "BOOT";
-      }
-      updateNode(nodeId, value);
+      select.value = null;
+      updateNode(nodeId, state);
     }
 
     /** Update a row in the table */

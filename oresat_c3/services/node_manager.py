@@ -23,15 +23,17 @@ class NodeState(IntEnum):
     .. mermaid
         stateDiagram-v2
             [*] --> OFF
-            OFF--> BOOT : Enable
+            OFF --> BOOT : Enable
+            OFF --> BOOTLOADER : Bootloader (STM32 only)
+            BOOTLOADER --> OFF : Disable
             BOOT --> OFF : Disable
             BOOT --> ON : Heartbeats and no OPD fault
             BOOT --> ERROR : Timeout with no heartbeats or OPD fault
+            ERROR --> DEAD : Multiple resets failed in a row
+            ERROR --> ON : Reset
+            ERROR --> OFF : Disable
             ON --> OFF : Disable
             ON --> ERROR : Timeout with no heartbeats or OPD fault
-            ERROR --> OFF : Disable
-            ERROR --> ON : Reset
-            ERROR --> DEAD : Multiple resets failed in a row
     """
 
     OFF = 0
@@ -44,6 +46,8 @@ class NodeState(IntEnum):
     """Node is not sending heartbeats or has a OPD fault."""
     NOT_FOUND = 4
     """Node is not found on the OPD."""
+    BOOTLOADER = 5
+    """For STM32s on the OPD only: Bootloader mode (used to reflash the app)."""
     DEAD = 0xFF
     """Node has failed to clear errors after multiple resets."""
 
@@ -145,7 +149,7 @@ class NodeManagerService(Service):
                 "node_status",
                 str(name),
                 lambda n=name: self.node_status(n),
-                lambda v, n=name: self.enable(n) if v == NodeState.ON else self.disable(n),
+                lambda v, n=name: self._set_node_status(n, v),
             )
 
     def _check_co_nodes_state(self, name: str) -> NodeState:
@@ -212,7 +216,9 @@ class NodeManagerService(Service):
             ):
                 next_state = NodeState.DEAD
             elif status == OpdNodeState.ENABLED:
-                if self._data[name].node_id != 0:  # aka CANopen nodes
+                if self._data[name].processor == "stm32" and self.opd[name].in_bootloader_mode:
+                    next_state = NodeState.BOOTLOADER
+                elif self._data[name].node_id != 0:  # aka CANopen nodes
                     next_state = self._check_co_nodes_state(name)
                 else:
                     next_state = NodeState.ON
@@ -281,8 +287,18 @@ class NodeManagerService(Service):
             else:
                 info.opd_resets = 0
 
-    def enable(self, name: Union[str, int]):
-        """Enable a OreSat node."""
+    def enable(self, name: Union[str, int], bootloader_mode: bool = False):
+        """
+        Enable a OreSat node.
+
+        Parameters
+        ----------
+        name: str | int
+            Name or node id of the card to enable
+        bootloader_mode: bool
+            Go into bootloader mode instead. Only for STM32 nodes on the OPD, flag will be ignored
+            otherwise.
+        """
 
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
@@ -293,17 +309,33 @@ class NodeManagerService(Service):
             logger.warning(f"cannot enable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
+        if node.status != NodeState.OFF:
+            logger.debug(f"cannot enable node {name} unless it is disabled")
+            return
+
         if node.status == NodeState.DEAD:
             logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
-        self.opd[name].enable()
-        if child_node:
-            self.opd[node.child].enable()
+        if node.processor == "stm32":
+            self.opd[name].enable(bootloader_mode)
+            if child_node:
+                self.opd[node.child].enable(bootloader_mode)
+        else:
+            self.opd[name].enable()
+            if child_node:
+                self.opd[node.child].enable()
         node.last_enable = monotonic()
 
     def disable(self, name: Union[str, int]):
-        """Disable a OreSat node."""
+        """
+        Disable a OreSat node.
+
+        Parameters
+        ----------
+        name: str | int
+            Name or node id of the card to enable
+        """
 
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
@@ -314,9 +346,12 @@ class NodeManagerService(Service):
             logger.warning(f"cannot disable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
+        if node.status in [NodeState.OFF, NodeState.DEAD]:
+            logger.debug(f"cannot disable node {name} as it is already disabled or dead")
+            return
+
         if child_node:
             self.opd[node.child].disable()
-
         self.opd[name].disable()
 
     def node_status(self, name: Union[str, int]) -> NodeState:
@@ -326,6 +361,19 @@ class NodeManagerService(Service):
             name = self.opd_addr_to_name[name]
 
         return self._data[name].status
+
+    def _set_node_status(self, name: Union[str, int], state: int):
+        """Set the status of a OreSat node."""
+
+        if isinstance(name, int):
+            name = self.opd_addr_to_name[name]
+
+        if state == NodeState.ON:
+            self.enable(name)
+        elif state == NodeState.OFF:
+            self.disable(name)
+        elif state == NodeState.BOOTLOADER:
+            self.enable(name, True)
 
     def _get_status_json(self) -> str:
         """SDO read callback to get the status of all data as a JSON."""
@@ -337,6 +385,7 @@ class NodeManagerService(Service):
                     "name": name,
                     "nice_name": info.nice_name,
                     "node_id": info.node_id,
+                    "processor": info.processor,
                     "opd_addr": info.opd_address,
                     "status": info.status.name,
                 }

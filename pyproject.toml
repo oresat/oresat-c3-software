@@ -47,7 +47,7 @@ line_length = 100
 
 [tool.pylama]
 format = "pylint"
-skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*"
+skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*,.direnv/*"
 linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
 # E402:     Module level import not at top of file
 # C901:     Function is too complex

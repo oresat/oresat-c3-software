@@ -6,6 +6,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 
 from enum import IntEnum
 from time import sleep
+from typing import Union
 
 from olaf import Adc, Gpio, logger
 
@@ -278,6 +279,21 @@ class OpdStm32Node(OpdNode):
 
         return super().enable()
 
+    def disable(self):
+        """
+        Disable the OPD node.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
+        """
+        try:
+            self._max7310.output_clear(self._BOOT_PIN)
+        except Max7310Error:
+            pass
+        return super().disable()
+
     def configure(self):
         """Configure the MAX7310 for the OPD node."""
 
@@ -291,11 +307,13 @@ class OpdStm32Node(OpdNode):
         """Connect the node the C3's UART"""
 
         self._max7310.output_set(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
 
     def disable_uart(self):
         """Disconnect the node from the C3's UART"""
 
         self._max7310.output_clear(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
 
     @property
     def is_uart_enabled(self) -> bool:
@@ -303,48 +321,36 @@ class OpdStm32Node(OpdNode):
 
         return self._max7310.output_status(self._UART_PIN)
 
+    @property
+    def in_bootloader_mode(self) -> bool:
+        """bool: Check if the card is in bootloader mode."""
+
+        return self._max7310.output_status(self._BOOT_PIN)
+
 
 class OpdOctavoNode(OpdNode):
     """A Octavo A8-based OPD Node"""
 
-    _BOOT_PIN = 5  # boot select; eMMC or SD card
+    _SYS_BOOT2 = 0
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self, boot_select: bool = True) -> OpdNodeState:
-        """
-        Enable the OPD node.
+    def enable(self) -> OpdNodeState:
+        """Enable the node"""
 
-        Parameters
-        ----------
-        boot_select: bool
-            Boot of of eMMC or SD card. Not implemented yet.
-
-        Returns
-        -------
-        OpdNodeState
-            The node state after disabling the node.
-        """
-
-        try:
-            if boot_select:
-                self._max7310.output_set(self._BOOT_PIN)
-            else:
-                self._max7310.output_clear(self._BOOT_PIN)
-        except Max7310Error:
-            self._status = OpdNodeState.FAULT
-            return self._status
-
+        self._max7310.output_set(self._SYS_BOOT2)
         return super().enable()
 
     def enable_uart(self):
         """Connect the node the C3's UART"""
 
         self._max7310.output_set(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
 
     def disable_uart(self):
         """Disconnect the node the C3's UART"""
 
         self._max7310.output_clear(self._UART_PIN)
+        logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
 
     @property
     def is_uart_enabled(self) -> bool:
@@ -371,7 +377,7 @@ class Opd:
 
     # values for getting opd current value from ADC pin
     _R_SET = 23_700  # ohms
-    _MAX982L_CUR_RATIO = 965  # curret ratio
+    _MAX982L_CUR_RATIO = 965  # current ratio
 
     def __init__(
         self,
@@ -401,7 +407,7 @@ class Opd:
 
         self._nodes = {}  # type: ignore
         self._status = OpdState.DISABLED
-        self.stop_loop = True
+        self._uart_node: Union[str, None] = None
         self._resets = 0
 
     def __getitem__(self, name: str) -> OpdNode:
@@ -436,6 +442,7 @@ class Opd:
             if node.status != OpdNodeState.NOT_FOUND:
                 node.disable()
 
+        self._uart_disconnect()
         self._not_enable_pin.high()
         self._status = OpdState.DISABLED
         self._resets = 0
@@ -509,3 +516,27 @@ class Opd:
         """OpdState: OPD subsystem status."""
 
         return self._status
+
+    def _uart_disconnect(self):
+        if self._uart_node is not None:
+            self._nodes[self._uart_node].disable_uart()
+            self._uart_node = None
+
+    @property
+    def uart_node(self) -> Union[str, None]:
+        """str: The selected UART node name or an empty string for no node."""
+        if (
+            self._uart_node is not None
+            and self._nodes[self._uart_node].status == OpdNodeState.NOT_FOUND
+        ):
+            self._uart_disconnect()
+        return self._uart_node
+
+    @uart_node.setter
+    def uart_node(self, name: Union[str, None]):
+
+        self._uart_disconnect()
+        if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:
+            return
+        self._nodes[name].enable_uart()
+        self._uart_node = name

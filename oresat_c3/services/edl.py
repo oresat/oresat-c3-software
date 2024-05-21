@@ -1,5 +1,6 @@
 """'EDL Service"""
 
+import os
 import struct
 from collections.abc import Iterable
 from datetime import timedelta
@@ -41,8 +42,11 @@ from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, Tr
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
+    DirectoryListingResponse,
+    DirectoryOperationMessageType,
     FilestoreResponseStatusCode,
     OriginatingTransactionId,
+    ProxyMessageType,
     ProxyPutResponse,
     ProxyPutResponseParams,
 )
@@ -392,7 +396,12 @@ class PrefixedFilestore(HostFilestore):
     def list_directory(
         self, dir_name: Path, target_file: Path, recursive: bool = False
     ) -> FilestoreResponseStatusCode:
-        return super().list_directory(self._prefix.joinpath(dir_name), target_file, recursive)
+        # The upstream implementation added junk to the output and maybe didn't even work?
+        dir_name = self._prefix.joinpath(dir_name)
+        with open(target_file, "w") as f:
+            for line in os.walk(dir_name) if recursive else os.listdir(dir_name):
+                f.write(f"{line}\n")
+        return FilestoreResponseStatusCode.SUCCESS
 
 
 class VfsCrcHelper(CrcHelper):
@@ -482,6 +491,23 @@ class EdlFileReciever(CfdpUserBase):
         path = Path(upload_dir)
         path.mkdir(parents=True, exist_ok=True)
         super().__init__(vfs=PrefixedFilestore(path))
+
+        self.proxy_responses = {  # FIXME: defaultdict with invalid response
+            ProxyMessageType.PUT_REQUEST: self.proxy_put_response,
+            ProxyMessageType.MSG_TO_USER: self.unimplemented,
+            ProxyMessageType.FS_REQUEST: self.unimplemented,
+            ProxyMessageType.FAULT_HANDLER_OVERRIDE: self.unimplemented,
+            ProxyMessageType.TRANSMISSION_MODE: self.unimplemented,
+            ProxyMessageType.FLOW_LABEL: self.unimplemented,
+            ProxyMessageType.SEGMENTATION_CTRL: self.unimplemented,
+            ProxyMessageType.PUT_RESPONSE: self.unimplemented,
+            ProxyMessageType.FS_RESPONSE: self.unimplemented,
+            ProxyMessageType.PUT_CANCEL: self.unimplemented,
+            ProxyMessageType.CLOSURE_REQUEST: self.unimplemented,
+            DirectoryOperationMessageType.LISTING_REQUEST: self.directory_listing_response,
+            DirectoryOperationMessageType.LISTING_RESPONSE: self.unimplemented,
+            DirectoryOperationMessageType.CUSTOM_LISTING_PARAMETERS: self.unimplemented,
+        }
 
         SOURCE_ID = ByteFieldU8(0)
         DEST_ID = ByteFieldU8(1)
@@ -601,6 +627,10 @@ class EdlFileReciever(CfdpUserBase):
             logger.info(f"---> {out}")
         return pdus or None
 
+    def unimplemented(self, _source, _tid, _reserved_message) -> PutRequest:
+        """Default method for responding to unimplemented requests"""
+        return None
+
     def missing_file_response(self, invalid: PutRequest) -> PutRequest:
         """Generates a resonse put for when a proxy request tries to access a missing file"""
 
@@ -627,6 +657,58 @@ class EdlFileReciever(CfdpUserBase):
             ],
         )
 
+    def proxy_put_response(self, _source, _tid, reserved_message) -> PutRequest:
+        """Response for a proxy put request"""
+        params = reserved_message.get_proxy_put_request_params()
+        return PutRequest(
+            destination_id=params.dest_entity_id,
+            source_file=Path(params.source_file_as_path),
+            dest_file=Path(params.dest_file_as_path),
+            trans_mode=None,
+            closure_requested=True,
+            msgs_to_user=[
+                OriginatingTransactionId(params.transaction_id).to_generic_msg_to_user_tlv()
+            ],
+        )
+
+    def directory_listing_response(self, source, tid, reserved_message) -> PutRequest:
+        """Response for a directory listing request"""
+        # See CFDP 6.3.4
+        params = reserved_message.get_dir_listing_request_params()
+        self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
+        return PutRequest(
+            destination_id=source,
+            source_file=params.dir_file_name_as_path,
+            dest_file=params.dir_file_name_as_path,
+            trans_mode=None,
+            closure_requested=True,
+            msgs_to_user=[
+                DirectoryListingResponse(
+                    listing_success=True,
+                    dir_params=params,
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(tid).to_generic_msg_to_user_tlv(),
+            ],
+        )
+
+    def proxy_request_complete(self, originating_id, params) -> PutRequest:
+        """Indicates that a proxy put request was successful"""
+        return PutRequest(
+            destination_id=originating_id.source_id,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
+            msgs_to_user=[
+                ProxyPutResponse(
+                    ProxyPutResponseParams.from_finished_params(params.finished_params)
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+            ],
+        )
+
     def transaction_indication(self, transaction_indication_params: TransactionParams):
         logger.info(f"Indication: Transaction. {transaction_indication_params}")
         t_id = transaction_indication_params.transaction_id
@@ -642,44 +724,18 @@ class EdlFileReciever(CfdpUserBase):
         if params.transaction_id in self.active_requests:
             originating_id = self.active_requests.get(params.transaction_id)
             assert originating_id is not None
-            put = PutRequest(
-                destination_id=originating_id.source_id,
-                source_file=None,
-                dest_file=None,
-                trans_mode=None,
-                # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
-                # trans_mode defaults to ACKNOWLEGED
-                closure_requested=True,
-                msgs_to_user=[
-                    ProxyPutResponse(
-                        ProxyPutResponseParams.from_finished_params(params.finished_params)
-                    ).to_generic_msg_to_user_tlv(),
-                    OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
-                ],
-            )
+            put = self.proxy_request_complete(originating_id, params)
             self.scheduled_requests.put(put)
             del self.active_requests[params.transaction_id]
 
     def metadata_recv_indication(self, params: MetadataRecvParams):
         logger.info(f"Indication: Metadata Recv. {params}")
         for msg in params.msgs_to_user or []:
-            if msg.is_reserved_cfdp_message():
-                reserved = msg.to_reserved_msg_tlv()
-                if reserved.is_cfdp_proxy_operation():
-                    proxyparams = reserved.get_proxy_put_request_params()
-                    put = PutRequest(
-                        destination_id=proxyparams.dest_entity_id,
-                        source_file=Path(proxyparams.source_file_as_path),
-                        dest_file=Path(proxyparams.dest_file_as_path),
-                        trans_mode=None,
-                        closure_requested=None,
-                        msgs_to_user=[
-                            OriginatingTransactionId(
-                                params.transaction_id
-                            ).to_generic_msg_to_user_tlv()
-                        ],
-                    )
-                    self.scheduled_requests.put(put)
+            if r := msg.to_reserved_msg_tlv():  # is None if not a reserved TLV message
+                op = r.get_cfdp_proxy_message_type() or r.get_directory_operation_type()
+                put = self.proxy_responses[op](params.source_id, params.transaction_id, r)
+                self.scheduled_requests.put(put)
+            # Ignore non-reserved messages for now
 
     def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
         logger.info(f"Indication: File Segment Recv. {params}")

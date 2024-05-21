@@ -279,6 +279,21 @@ class OpdStm32Node(OpdNode):
 
         return super().enable()
 
+    def disable(self):
+        """
+        Disable the OPD node.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
+        """
+        try:
+            self._max7310.output_clear(self._BOOT_PIN)
+        except Max7310Error:
+            pass
+        return super().disable()
+
     def configure(self):
         """Configure the MAX7310 for the OPD node."""
 

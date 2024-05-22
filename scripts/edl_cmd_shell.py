@@ -69,7 +69,7 @@ class EdlCommandShell(Cmd):
             print(e)
             return tuple()
 
-		ret = None
+        ret = None
         if res_packet and res_packet.payload.values:
             ret = res_packet.payload.values
             print(f"Response {code.name}: {ret}")

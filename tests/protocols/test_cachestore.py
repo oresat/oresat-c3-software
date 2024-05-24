@@ -77,6 +77,20 @@ class TestCacheStore(unittest.TestCase):
         self.assertFalse(self.cache.file_exists(self.invalid))
         self.assertFalse(self.cache.file_exists(self.directory))
 
+    def test_stat(self):
+        """Test stat()"""
+        with self.assertRaises(FileNotFoundError):
+            self.cache.stat(self.doesnt)
+        with self.assertRaises(FileNotFoundError):
+            self.cache.stat(self.invalid)
+        with self.assertRaises(FileNotFoundError):
+            self.cache.stat(self.directory)
+
+        self.assertEqual(self.cache.stat(self.exists).st_size, 0)
+        data = b"This is a test string of bytes \x01\x02\x03"
+        self.cache.write_data(self.exists, data)
+        self.assertEqual(self.cache.stat(self.exists).st_size, len(data))
+
     def test_truncate_file(self):
         """Test truncate_file()"""
         with self.assertRaises(FileNotFoundError):

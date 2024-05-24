@@ -42,6 +42,20 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
         with self._lock:
             return any(path.name == f.name for f in self._data)
 
+    def stat(self, file: Path) -> os.stat_result:
+        """Implements os.stat() but for a filestore
+
+        I needed to find the size of a file but there's nothing that I can see in the spec that
+        would do it. That said it only gives a minimum recommended set of operations, so maybe
+        they just expect you to do it yourself?
+        """
+
+        with self._lock:
+            for f in self._data:
+                if file.name == f.name:
+                    return Path(self._dir, f.name).stat()
+            raise FileNotFoundError(file)
+
     def truncate_file(self, file: Path) -> None:
         with self._lock:
             for f in self._data:

@@ -1,7 +1,5 @@
 """'EDL Service"""
 
-import os
-import struct
 from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
@@ -16,10 +14,7 @@ from cfdppy.exceptions import (
     NoRemoteEntityCfgFound,
     SourceFileDoesNotExist,
 )
-from cfdppy.filestore import HostFilestore
-from cfdppy.handler.crc import CrcHelper
 from cfdppy.handler.dest import DestHandler
-from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -37,14 +32,13 @@ from cfdppy.user import (
     TransactionId,
     TransactionParams,
 )
-from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
-from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, TransmissionMode
+from olaf import MasterNode, NodeStop, Service, logger
+from spacepackets.cfdp import ChecksumType, ConditionCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
     DirectoryListingResponse,
     DirectoryOperationMessageType,
-    FilestoreResponseStatusCode,
     OriginatingTransactionId,
     ProxyMessageType,
     ProxyPutResponse,
@@ -54,6 +48,8 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
+from ..protocols.cachestore import CacheStore
+from ..protocols.cfdp import VfsCrcHelper, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -83,8 +79,7 @@ class EdlService(Service):
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
 
-        upload_dir = f"{node.work_base_dir}/upload"
-        self._file_receiver = EdlFileReciever(upload_dir, node.fwrite_cache)
+        self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
         # objs
         edl_rec = node.od["edl"]
@@ -347,113 +342,6 @@ class EdlService(Service):
         return response
 
 
-class PrefixedFilestore(HostFilestore):
-    """A HostFilestore modified to only run in a specified directory"""
-
-    def __init__(self, prefix: Path):
-        if not prefix.is_dir():
-            raise NotADirectoryError("prefix must be a directory")
-        self._prefix = prefix
-
-    def read_data(self, file: Path, offset: Optional[int], read_len: Optional[int] = None) -> bytes:
-        return super().read_data(self._prefix.joinpath(file), offset, read_len)
-
-    def file_exists(self, path: Path) -> bool:
-        return super().file_exists(self._prefix.joinpath(path))
-
-    def is_directory(self, path: Path) -> bool:
-        return super().is_directory(self._prefix.joinpath(path))
-
-    def truncate_file(self, file: Path):
-        super().truncate_file(self._prefix.joinpath(file))
-
-    def write_data(self, file: Path, data: bytes, offset: Optional[int]):
-        super().write_data(self._prefix.joinpath(file), data, offset)
-
-    def create_file(self, file: Path) -> FilestoreResponseStatusCode:
-        return super().create_file(self._prefix.joinpath(file))
-
-    def delete_file(self, file: Path) -> FilestoreResponseStatusCode:
-        return super().delete_file(self._prefix.joinpath(file))
-
-    def rename_file(self, old_file: Path, new_file: Path) -> FilestoreResponseStatusCode:
-        return super().rename_file(self._prefix.joinpath(old_file), self._prefix.joinpath(new_file))
-
-    def replace_file(self, replaced_file: Path, source_file: Path) -> FilestoreResponseStatusCode:
-        return super().replace_file(
-            self._prefix.joinpath(replaced_file),
-            self._prefix.joinpath(source_file),
-        )
-
-    def remove_directory(
-        self, dir_name: Path, recursive: bool = False
-    ) -> FilestoreResponseStatusCode:
-        return super().remove_directory(self._prefix.joinpath(dir_name), recursive)
-
-    def create_directory(self, dir_name: Path) -> FilestoreResponseStatusCode:
-        return super().create_directory(self._prefix.joinpath(dir_name))
-
-    def list_directory(
-        self, dir_name: Path, target_file: Path, recursive: bool = False
-    ) -> FilestoreResponseStatusCode:
-        # The upstream implementation added junk to the output and maybe didn't even work?
-        dir_name = self._prefix.joinpath(dir_name)
-        with open(target_file, "w") as f:
-            for line in os.walk(dir_name) if recursive else os.listdir(dir_name):
-                f.write(f"{line}\n")
-        return FilestoreResponseStatusCode.SUCCESS
-
-
-class VfsCrcHelper(CrcHelper):
-    """CrcHelper but modified to only use Filestore operations.
-
-    It previously would attempt to open the paths passed to it directly instead of asking the
-    filestore, which failed when using the above PrefixFilestore.
-    """
-
-    def calc_modular_checksum(self, file_path: Path) -> bytes:
-        """Calculates the modular checksum of the file in file_path.
-
-        This was a module level function in cfdppy but it accessed the filesystem directly
-        instead of going through a filestore. It needs to become a CrcHelper method to use the
-        provided filestore.
-        """
-        checksum = 0
-        offset = 0
-        while True:
-            data = self.vfs.read_data(file_path, offset, 4)
-            offset += 4
-            if not data:
-                break
-            checksum += int.from_bytes(data.ljust(4, b"\0"), byteorder="big", signed=False)
-
-        checksum %= 2**32
-        return struct.pack("!I", checksum)
-
-    def calc_for_file(self, file_path: Path, file_sz: int, segment_len: int = 4096) -> bytes:
-        if self.checksum_type == ChecksumType.NULL_CHECKSUM:
-            return NULL_CHECKSUM_U32
-        if self.checksum_type == ChecksumType.MODULAR:
-            return self.calc_modular_checksum(file_path)
-        crc_obj = self.generate_crc_calculator()
-        if segment_len == 0:
-            raise ValueError("Segment length can not be 0")
-        if not self.vfs.file_exists(file_path):
-            raise SourceFileDoesNotExist(file_path)
-        current_offset = 0
-
-        # Calculate the file CRC
-        while current_offset < file_sz:
-            if current_offset + segment_len > file_sz:
-                read_len = file_sz - current_offset
-            else:
-                read_len = segment_len
-            if read_len > 0:
-                crc_obj.update(self.vfs.read_data(file_path, current_offset, read_len))
-            current_offset += read_len
-        return crc_obj.digest()
-
-
 class LogFaults(DefaultFaultHandlerBase):
     """A HaultHandler that only logs the faults and nothing more.
 
@@ -487,10 +375,8 @@ class DefaultCheckTimer(CheckTimerProvider):
 class EdlFileReciever(CfdpUserBase):
     """CFDP receiver for file uploads."""
 
-    def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
-        path = Path(upload_dir)
-        path.mkdir(parents=True, exist_ok=True)
-        super().__init__(vfs=PrefixedFilestore(path))
+    def __init__(self, fwrite_cache: CacheStore):
+        super().__init__(vfs=fwrite_cache)
 
         self.proxy_responses = {  # FIXME: defaultdict with invalid response
             ProxyMessageType.PUT_REQUEST: self.proxy_put_response,
@@ -535,7 +421,6 @@ class EdlFileReciever(CfdpUserBase):
             ]
         )
 
-        self.fwrite_cache = fwrite_cache
         self.dest = DestHandler(
             cfg=localcfg,
             user=self,
@@ -544,13 +429,14 @@ class EdlFileReciever(CfdpUserBase):
         )
         self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
-        self.source = SourceHandler(
+        self.source = VfsSourceHandler(
             cfg=localcfg,
             user=self,
             remote_cfg_table=remote_entities,
             check_timer_provider=DefaultCheckTimer(),
             seq_num_provider=SeqCountProvider(16),
         )
+        self.source._crc_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
         self.active_requests: dict[TransactionId, TransactionId] = {}

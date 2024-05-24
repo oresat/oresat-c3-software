@@ -39,7 +39,12 @@ from cfdppy.user import (
 from olaf import OreSatFile
 from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
-from spacepackets.cfdp.tlv import ProxyPutRequest, ProxyPutRequestParams
+from spacepackets.cfdp.tlv import (
+    DirectoryListingRequest,
+    DirectoryParams,
+    ProxyPutRequest,
+    ProxyPutRequestParams,
+)
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
@@ -259,6 +264,56 @@ class Dest(Thread):
                 self.uplink.put(pdu)
 
 
+def put_request(dest: ByteFieldU8, file_path: str) -> PutRequest:
+    """Creates a simple PutRequest for the file in file_path"""
+    return PutRequest(
+        destination_id=dest,
+        source_file=Path(file_path),
+        dest_file=Path(file_path),
+        trans_mode=None,
+        closure_requested=None,
+    )
+
+
+def proxy_put_request(dest: ByteFieldU8, source: ByteFieldU8, file_path: str) -> PutRequest:
+    """Creates a put request for file_path to be transfered to the cfdp entity in dest"""
+    return PutRequest(
+        destination_id=dest,
+        source_file=None,
+        dest_file=None,
+        trans_mode=None,
+        # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+        # trans_mode defaults to ACKNOWLEGED
+        closure_requested=True,
+        msgs_to_user=[
+            ProxyPutRequest(
+                ProxyPutRequestParams(
+                    source,
+                    source_file_name=CfdpLv(file_path.encode()),
+                    dest_file_name=CfdpLv(file_path.encode()),
+                )
+            ).to_generic_msg_to_user_tlv()
+        ],
+    )
+
+
+def directory_listing(dest: ByteFieldU8, path: str, result: str) -> PutRequest:
+    """Creates a directory listing put request"""
+    # CFDP 6.3.3
+    return PutRequest(
+        destination_id=dest,
+        source_file=None,
+        dest_file=None,
+        trans_mode=None,
+        closure_requested=True,
+        msgs_to_user=[
+            DirectoryListingRequest(
+                DirectoryParams.from_strs(path, result)
+            ).to_generic_msg_to_user_tlv()
+        ],
+    )
+
+
 def main():
     """Upload a file to the satellite."""
     parser = ArgumentParser()
@@ -307,12 +362,15 @@ def main():
         default="",
         help="edl hmac, must be 32 bytes, default all zero",
     )
-    parser.add_argument(
+    command = parser.add_mutually_exclusive_group()
+    command.add_argument(
         "-p",
         "--proxy",
         action="store_true",
         help="Initiate a proxy put request instead of a normal one",
     )
+    command.add_argument("-dr", "--directory", help="Request a directory listing, for example '.'")
+
     args = parser.parse_args()
 
     file_path = args.file_path.split("/")[-1]
@@ -376,33 +434,11 @@ def main():
     dest.start()
 
     if args.proxy:
-        put = PutRequest(
-            destination_id=DEST_ID,
-            source_file=None,
-            dest_file=None,
-            trans_mode=None,
-            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
-            # trans_mode defaults to ACKNOWLEGED
-            closure_requested=True,
-            msgs_to_user=[
-                ProxyPutRequest(
-                    ProxyPutRequestParams(
-                        SOURCE_ID,
-                        source_file_name=CfdpLv(args.file_path.encode()),
-                        dest_file_name=CfdpLv(args.file_path.encode()),
-                    )
-                ).to_generic_msg_to_user_tlv()
-            ],
-        )
+        put = proxy_put_request(DEST_ID, SOURCE_ID, args.file_path)
+    elif args.directory:
+        put = directory_listing(DEST_ID, args.directory, args.file_path)
     else:
-        put = PutRequest(
-            destination_id=DEST_ID,
-            source_file=Path(args.file_path),
-            dest_file=Path(args.file_path),
-            trans_mode=None,
-            closure_requested=None,
-        )
-
+        put = put_request(DEST_ID, args.file_path)
     source.send_packets(put)
     signal.pause()
 

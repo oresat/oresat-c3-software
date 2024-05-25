@@ -120,8 +120,6 @@ class NodeManagerService(Service):
         self._nodes_not_found_obj: canopen.objectdictionary.Variable = None
         self._nodes_dead_obj: canopen.objectdictionary.Variable = None
 
-        self.opd.enable()
-
     def on_start(self):
         # local objects
         self._flight_mode_obj = self.node.od["flight_mode"]
@@ -133,6 +131,8 @@ class NodeManagerService(Service):
         self._nodes_with_errors_obj = nodes_mgr_rec["nodes_with_errors"]
         self._nodes_dead_obj = nodes_mgr_rec["nodes_dead"]
         nodes_mgr_rec["total_nodes"].value = len(list(self._data))
+
+        self.opd.enable()
 
         self.node.add_sdo_callbacks("node_manager", "status_json", self._get_status_json, None)
         self.node.add_sdo_callbacks("opd", "status", self._get_opd_status, self._set_opd_status)
@@ -213,7 +213,7 @@ class NodeManagerService(Service):
             status = self.opd[name].status
             if self._data[name].opd_resets >= self._MAX_CO_RESETS:
                 next_state = NodeState.DEAD
-            if status == OpdNodeState.FAULT:
+            elif status == OpdNodeState.FAULT:
                 next_state = NodeState.ERROR
             elif status == OpdNodeState.NOT_FOUND:
                 next_state = NodeState.NOT_FOUND
@@ -241,24 +241,23 @@ class NodeManagerService(Service):
         nodes_with_errors = 0
         nodes_not_found = 0
         nodes_dead = 0
-        if self._loops > 0:
-            for name in self._data:
-                if name == "c3":
-                    continue
+        for name, node in self._data.items():
+            if name == "c3":
+                continue
 
-                last_state = self._data[name].status
-                state = self._get_nodes_state(name)
-                if self._loops == 1:
-                    logger.info(f"node {name} init state {state.name}")
-                elif state != last_state:
-                    logger.info(f"node {name} state change {last_state.name} -> {state.name}")
-                nodes_off += int(state == NodeState.OFF)
-                nodes_booting += int(state == NodeState.BOOT)
-                nodes_on += int(state == NodeState.ON)
-                nodes_with_errors += int(state == NodeState.ERROR)
-                nodes_not_found += int(state == NodeState.NOT_FOUND)
-                nodes_dead += int(state == NodeState.DEAD)
-                self._data[name].status = state
+            last_state = node.status
+            state = self._get_nodes_state(name)
+            if self._loops == 0:
+                logger.info(f"node {name} init state {state.name}")
+            elif state != last_state:
+                logger.info(f"node {name} state change {last_state.name} -> {state.name}")
+            nodes_off += int(state == NodeState.OFF)
+            nodes_booting += int(state == NodeState.BOOT)
+            nodes_on += int(state == NodeState.ON)
+            nodes_with_errors += int(state == NodeState.ERROR)
+            nodes_not_found += int(state == NodeState.NOT_FOUND)
+            nodes_dead += int(state == NodeState.DEAD)
+            node.status = state
         self._nodes_off_obj.value = nodes_off
         self._nodes_booting_obj.value = nodes_booting
         self._nodes_on_obj.value = nodes_on
@@ -289,7 +288,7 @@ class NodeManagerService(Service):
                 self.opd[name].reset(1)
                 self._data[name].last_enable = monotonic()
                 info.opd_resets += 1
-            elif info.status != NodeState.BOOT:
+            elif info.status in [NodeState.ON, NodeState.OFF]:
                 info.opd_resets = 0
 
     def enable(self, name: Union[str, int], bootloader_mode: bool = False):

@@ -222,16 +222,16 @@ class OpdNode:
         """OpdNodeState: Status of the OPD node."""
 
         valid = False
-        no_fault = False
         try:
             valid = self._max7310.is_valid
-            no_fault = self._max7310.input_status(self._NOT_FAULT_PIN)
         except Max7310Error:
             pass
 
         if not valid:
+            logger.error(f"{self._name}: invalid")
             self._status = OpdNodeState.NOT_FOUND
-        elif not no_fault:
+        elif self.is_enabled and self.fault:
+            logger.error(f"{self._name}: fault")
             self._status = OpdNodeState.FAULT
         return self._status
 

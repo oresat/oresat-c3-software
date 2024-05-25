@@ -39,7 +39,7 @@ class OpdNode:
     NOTE: CFC sensor node does not have UART enable pin.
     """
 
-    _RESET_DELAY_S = 0.25
+    _RESET_DELAY_S = 0.5
 
     _TIMEOUT_CONFIG = 1
 

@@ -13,8 +13,8 @@ from cfdppy.exceptions import (
     FsmNotCalledAfterPacketInsertion,
     NoRemoteEntityCfgFound,
     SourceFileDoesNotExist,
+    UnretrievedPdusToBeSent,
 )
-from cfdppy.handler.dest import DestHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -33,7 +33,7 @@ from cfdppy.user import (
     TransactionParams,
 )
 from olaf import MasterNode, NodeStop, Service, logger
-from spacepackets.cfdp import ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
@@ -49,7 +49,7 @@ from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
-from ..protocols.cfdp import VfsCrcHelper, VfsSourceHandler
+from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -397,11 +397,21 @@ class EdlFileReciever(CfdpUserBase):
 
         SOURCE_ID = ByteFieldU8(0)
         DEST_ID = ByteFieldU8(1)
+        fault_handler = LogFaults()
+        # The default setting is NOTICE_OF_CANCELLATION but during that process the positive ack
+        # counter gets reset, meaning we keep retrying the handler forever. This manifests for
+        # example if the final source -> dest ack for FinishedPDU gets dropped. Source considers
+        # the transaction finished, and will refuse to respond, dest will be stuck re-sending the
+        # FinishedPDU every ack_timer interval forever. Setting it to ABANDON_TRANSACTION means it
+        # just resets after the ack counter reaches its count.
+        fault_handler.set_handler(
+            ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
+        )
 
         localcfg = LocalEntityCfg(
             local_entity_id=DEST_ID,
             indication_cfg=IndicationCfg(),
-            default_fault_handlers=LogFaults(),
+            default_fault_handlers=fault_handler,
         )
 
         remote_entities = RemoteEntityCfgTable(
@@ -421,7 +431,7 @@ class EdlFileReciever(CfdpUserBase):
             ]
         )
 
-        self.dest = DestHandler(
+        self.dest = FixedDestHandler(
             cfg=localcfg,
             user=self,
             remote_cfg_table=remote_entities,
@@ -500,8 +510,13 @@ class EdlFileReciever(CfdpUserBase):
                     # there's a better idea of how to handle this, please change.
                     self.scheduled_requests.put(self.missing_file_response(request))
 
-        self.dest.state_machine()
-        self.source.state_machine()
+        try:
+            self.dest.state_machine()
+            self.source.state_machine()
+        except (UnretrievedPdusToBeSent, SourceFileDoesNotExist):
+            logger.exception("state_machine failed to update")
+            self.dest.reset()
+            self.source.reset()
 
         pdus = []
         while self.dest.packets_ready:

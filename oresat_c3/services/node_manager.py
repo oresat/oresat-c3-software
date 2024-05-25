@@ -61,7 +61,7 @@ class Node(Card):
     """OPD reset count."""
     last_enable: float = 0.0
     """last enable timeout."""
-    status: NodeState = NodeState.OFF
+    status: NodeState = NodeState.NOT_FOUND
     """Node status."""
 
 
@@ -172,9 +172,13 @@ class NodeManagerService(Service):
                 next_state = NodeState.ON
         elif self._data[name].status == NodeState.ERROR:
             next_state = NodeState.ERROR
-        elif self._flight_mode_obj.value and monotonic() > (last_hb + self._RESET_TIMEOUT_S):
+        elif (
+            self._flight_mode_obj.value
+            and self.node.bus_state == "NETWORK_UP"
+            and monotonic() > (last_hb + self._RESET_TIMEOUT_S)
+        ):
             logger.error(
-                f"CANopen node {name} has had no heartbeats in " f"{self._RESET_TIMEOUT_S} seconds"
+                f"CANopen node {name} has had no heartbeats in {self._RESET_TIMEOUT_S} seconds"
             )
             next_state = NodeState.ERROR
         else:
@@ -243,7 +247,9 @@ class NodeManagerService(Service):
 
             last_state = self._data[name].status
             state = self._get_nodes_state(name)
-            if state != last_state:
+            if self._loops == 0:
+                logger.info(f"node {name} init state {state.name}")
+            elif state != last_state:
                 logger.info(f"node {name} state change {last_state.name} -> {state.name}")
             nodes_off += int(state == NodeState.OFF)
             nodes_booting += int(state == NodeState.BOOT)

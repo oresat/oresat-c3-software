@@ -9,6 +9,7 @@ import signal
 import socket
 import sys
 import time
+import traceback
 from argparse import ArgumentParser
 from datetime import timedelta
 from pathlib import Path
@@ -17,6 +18,7 @@ from threading import Lock, Thread
 from typing import Any
 
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
+from cfdppy.exceptions import NoRemoteEntityCfgFound
 from cfdppy.handler.dest import DestHandler
 from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
@@ -134,6 +136,7 @@ class Uplink(Thread):
         while True:
             payload = self.queue.get()
             if self._bad_connection and not random.randrange(5):
+                print("---X DROPPED", payload)
                 continue  # simulate dropped packets
             print("--->", payload)
             packet = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT)
@@ -164,9 +167,10 @@ class Downlink(Thread):
 
         while True:
             message = downlink.recv(4096)
-            if self._bad_connection and not random.randrange(5):
-                continue  # simulate dropped packets
             packet = EdlPacket.unpack(message, self._hmac_key, True).payload
+            if self._bad_connection and not random.randrange(5):
+                print("X--- DROPPED", packet)
+                continue  # simulate dropped packets
             print("<---", packet)
 
             if get_packet_destination(packet) == PacketDestination.DEST_HANDLER:
@@ -207,7 +211,11 @@ class Source(Thread):
     def run(self):
         while packet := self.downlink.get():
             with self.lock:
-                self.src.insert_packet(packet)
+                try:
+                    self.src.insert_packet(packet)
+                except NoRemoteEntityCfgFound as e:
+                    print(e)
+                    traceback.print_exc()
                 self.src.state_machine()
                 while self.src.packets_ready:
                     pdu = self.src.get_next_packet().pdu

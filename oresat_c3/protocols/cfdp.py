@@ -8,9 +8,10 @@ from pathlib import Path
 
 from cfdppy.exceptions import SourceFileDoesNotExist
 from cfdppy.handler.crc import CrcHelper
+from cfdppy.handler.dest import CompletionDisposition, DestHandler
 from cfdppy.handler.source import SourceHandler
-from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType
-from spacepackets.cfdp.pdu import FileDataPdu
+from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode
+from spacepackets.cfdp.pdu import EofPdu, FileDataPdu
 from spacepackets.cfdp.pdu.file_data import FileDataParams
 
 
@@ -98,3 +99,54 @@ class VfsCrcHelper(CrcHelper):
                 crc_obj.update(self.vfs.read_data(file_path, current_offset, read_len))
             current_offset += read_len
         return crc_obj.digest()
+
+
+class FixedDestHandler(DestHandler):
+    """Fixes to varius methods to prevent it from stalling the satellite"""
+
+    def _handle_positive_ack_procedures(self):
+        """Positive ACK procedures according to chapter 4.7.1 of the CFDP standard.
+        Returns False if the FSM should be called again."""
+        assert self._params.positive_ack_params.ack_timer is not None
+        assert self._params.remote_cfg is not None
+        if self._params.positive_ack_params.ack_timer.timed_out():
+            if (
+                self._params.positive_ack_params.ack_counter + 1
+                >= self._params.remote_cfg.positive_ack_timer_expiration_limit
+            ):
+                self._declare_fault(ConditionCode.POSITIVE_ACK_LIMIT_REACHED)
+                # This is a bit of a hack: We want the transfer completion and the corresponding
+                # re-send of the Finished PDU to happen in the same FSM cycle. However, the call
+                # order in the FSM prevents this from happening, so we just call the state machine
+                # again manually.
+                if self._params.completion_disposition == CompletionDisposition.CANCELED:
+                    return self.state_machine()
+            # The parent version of this method didn't have the else. Because otherwise it'd get
+            # stuck in an infinite loop we set POSITIVE_ACK_LIMIT_REACHED to ABANDON_... instead of
+            # ..._CANCELLATION. ABANDON_... will reset self._params, meaning we cant rely on
+            # completion_disposition so it was then spuriously generating the below finished_pdu().
+            # Also because ._params was empty it was generating a malformed PDU that would throw
+            # an exception on pack().
+            else:
+                self._params.positive_ack_params.ack_timer.reset()
+                self._params.positive_ack_params.ack_counter += 1
+                self._prepare_finished_pdu()
+        return None
+
+    def _handle_eof_pdu(self, eof_pdu: EofPdu):
+        """There's a bug in spacepackets EofPdu.unpack() where condition_code doesn't get >> 4
+
+        It should because condition_code is < 16 and it eventually gets passed to AckPdu, where
+        it gets packed, and then pack() fails because it's trying to pack a value 256.
+
+        It would be very difficult to override EofPdu directly because it gets used everywhere and
+        we don't have control over where. This is the next best thing, _handle_eof_pdu is where
+        the pdu gets used, so we can fix up the value before it spreads.
+        """
+        eof_pdu.condition_code >>= 4
+        return super()._handle_eof_pdu(eof_pdu)
+
+    def _handle_eof_without_previous_metadata(self, eof_pdu: EofPdu):
+        """Same issue as _handle_eof_pdu"""
+        eof_pdu.condition_code >>= 4
+        return super()._handle_eof_without_previous_metadata(eof_pdu)

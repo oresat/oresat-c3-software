@@ -207,14 +207,12 @@ class NodeManagerService(Service):
             next_state = NodeState.DEAD
         else:
             status = self.opd[name].status
+            if self._data[name].opd_resets >= self._MAX_CO_RESETS:
+                next_state = NodeState.DEAD
             if status == OpdNodeState.FAULT:
                 next_state = NodeState.ERROR
             elif status == OpdNodeState.NOT_FOUND:
                 next_state = NodeState.NOT_FOUND
-            elif (
-                prev_state == NodeState.ERROR and self._data[name].opd_resets >= self._MAX_CO_RESETS
-            ):
-                next_state = NodeState.DEAD
             elif status == OpdNodeState.ENABLED:
                 if self._data[name].processor == "stm32" and self.opd[name].in_bootloader_mode:
                     next_state = NodeState.BOOTLOADER

@@ -356,7 +356,7 @@ class EdlCommandShell(Cmd):
 
         args = arg.split(" ")
         if len(args) != 2:
-            self.help_opd_sysenable()
+            self.help_opd_enable()
             return
 
         if args[0].startswith("0x"):

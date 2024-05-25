@@ -221,32 +221,42 @@ class OpdNode:
     def status(self) -> OpdNodeState:
         """OpdNodeState: Status of the OPD node."""
 
+        valid = False
+        no_fault = False
+        try:
+            valid = self._max7310.is_valid
+            no_fault = self._max7310.input_status(self._NOT_FAULT_PIN)
+        except Max7310Error:
+            pass
+
+        if not valid:
+            self._status = OpdNodeState.NOT_FOUND
+        elif not no_fault:
+            self._status = OpdNodeState.FAULT
         return self._status
 
     @property
     def is_enabled(self) -> bool:
         """bool: The node is enabled."""
 
+        enabled = False
         try:
             enabled = self._max7310.output_status(self._ENABLE_PIN)
-        except Max7310Error as e:
+        except Max7310Error:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.FAULT
-            raise OpdError(e) from e
-
         return enabled
 
     @property
     def fault(self) -> bool:
         """bool: The OPD fault pin has tripped."""
 
+        fault = True
         try:
             fault = not self._max7310.input_status(self._NOT_FAULT_PIN)
-        except Max7310Error as e:
+        except Max7310Error:
             if self._status != OpdNodeState.NOT_FOUND:
                 self._status = OpdNodeState.FAULT
-            raise OpdError(e) from e
-
         return fault
 
 

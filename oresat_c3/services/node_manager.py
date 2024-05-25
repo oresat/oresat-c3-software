@@ -284,7 +284,7 @@ class NodeManagerService(Service):
                 self.opd[name].reset(1)
                 self._data[name].last_enable = monotonic()
                 info.opd_resets += 1
-            else:
+            elif info.status != NodeState.BOOT:
                 info.opd_resets = 0
 
     def enable(self, name: Union[str, int], bootloader_mode: bool = False):

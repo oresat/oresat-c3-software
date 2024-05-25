@@ -241,23 +241,24 @@ class NodeManagerService(Service):
         nodes_with_errors = 0
         nodes_not_found = 0
         nodes_dead = 0
-        for name in self._data:
-            if name == "c3":
-                continue
+        if self._loops > 0:
+            for name in self._data:
+                if name == "c3":
+                    continue
 
-            last_state = self._data[name].status
-            state = self._get_nodes_state(name)
-            if self._loops == 0:
-                logger.info(f"node {name} init state {state.name}")
-            elif state != last_state:
-                logger.info(f"node {name} state change {last_state.name} -> {state.name}")
-            nodes_off += int(state == NodeState.OFF)
-            nodes_booting += int(state == NodeState.BOOT)
-            nodes_on += int(state == NodeState.ON)
-            nodes_with_errors += int(state == NodeState.ERROR)
-            nodes_not_found += int(state == NodeState.NOT_FOUND)
-            nodes_dead += int(state == NodeState.DEAD)
-            self._data[name].status = state
+                last_state = self._data[name].status
+                state = self._get_nodes_state(name)
+                if self._loops == 1:
+                    logger.info(f"node {name} init state {state.name}")
+                elif state != last_state:
+                    logger.info(f"node {name} state change {last_state.name} -> {state.name}")
+                nodes_off += int(state == NodeState.OFF)
+                nodes_booting += int(state == NodeState.BOOT)
+                nodes_on += int(state == NodeState.ON)
+                nodes_with_errors += int(state == NodeState.ERROR)
+                nodes_not_found += int(state == NodeState.NOT_FOUND)
+                nodes_dead += int(state == NodeState.DEAD)
+                self._data[name].status = state
         self._nodes_off_obj.value = nodes_off
         self._nodes_booting_obj.value = nodes_booting
         self._nodes_on_obj.value = nodes_on
@@ -272,12 +273,12 @@ class NodeManagerService(Service):
         if nodes_not_found == len(self._data):
             self._loops = 0
 
-        # reset data with errors and probe for data not found
+        # reset nodes with errors and probe for nodes not found
         for name, info in self._data.items():
             if info.opd_address == 0:
                 continue
 
-            if self._loops % 60 == 0 and self._data[name].status == NodeState.NOT_FOUND:
+            if self._loops % 10 == 0 and self._data[name].status == NodeState.NOT_FOUND:
                 self.opd[name].probe(True)
 
             if info.opd_always_on and info.status == NodeState.OFF:

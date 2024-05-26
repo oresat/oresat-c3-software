@@ -112,7 +112,7 @@ class OpdNode:
         try:
             if self._max7310.is_valid:
                 if self._status == OpdNodeState.NOT_FOUND:
-                    logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was found")
+                    logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was found")
                     self.configure()
 
                 if reset:
@@ -122,7 +122,7 @@ class OpdNode:
                 self._status = OpdNodeState.DISABLED
             else:
                 if self._status != OpdNodeState.NOT_FOUND:
-                    logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was lost")
+                    logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was lost")
                     self._status = OpdNodeState.NOT_FOUND
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
@@ -141,7 +141,7 @@ class OpdNode:
             The node state after disabling the node.
         """
 
-        logger.info(f"enabling OPD node {self.name} (0x{self.addr:02X})")
+        logger.debug(f"enabling OPD node {self.name} (0x{self.addr:02X})")
 
         if self._status == OpdNodeState.NOT_FOUND:
             return self._status  # cannot enable node that is NOT_FOUND
@@ -164,11 +164,11 @@ class OpdNode:
             The node state after disabling the node.
         """
 
-        logger.info(f"disabling OPD node {self.name} (0x{self.addr:02X})")
+        logger.debug(f"disabling OPD node {self.name} (0x{self.addr:02X})")
 
         try:
-            self._status = OpdNodeState.DISABLED
             self._max7310.output_clear(self._ENABLE_PIN)
+            self._status = OpdNodeState.DISABLED
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -228,10 +228,8 @@ class OpdNode:
             pass
 
         if not valid:
-            logger.error(f"{self._name}: invalid")
             self._status = OpdNodeState.NOT_FOUND
         elif self.is_enabled and self.fault:
-            logger.error(f"{self._name}: fault")
             self._status = OpdNodeState.FAULT
         return self._status
 
@@ -319,7 +317,6 @@ class OpdStm32Node(OpdNode):
                 self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
             self._status = OpdNodeState.DISABLED
         except Max7310Error:
-            logger.error(f"MAX7310 error: {e}")
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not found")
             self._status = OpdNodeState.FAULT
 
@@ -328,7 +325,7 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -337,7 +334,7 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -386,7 +383,7 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
         return self._status
@@ -396,7 +393,7 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.info(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
         return self._status

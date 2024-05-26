@@ -155,22 +155,27 @@ class NodeManagerService(Service):
     def _check_co_nodes_state(self, name: str) -> NodeState:
         """Get a CANopen node's state."""
 
-        next_state = self._data[name].status
+        node = self._data[name]
+        next_state = node.status
+        last_hb = self.node.node_status[name][2]
+
         if next_state == NodeState.DEAD:
+            if monotonic() > last_hb + self._RESET_TIMEOUT_S:
+                # if the node start sending heartbeats again (really only for flatsat)
+                next_state = NodeState.ON
             return next_state
 
-        if self._data[name].processor == "stm32":
+        if node.processor == "stm32":
             timeout = self._STM32_BOOT_TIMEOUT
         else:
             timeout = self._OCTAVO_BOOT_TIMEOUT
 
-        last_hb = self.node.node_status[name][2]
-        if self._data[name].last_enable + timeout > monotonic():
+        if node.last_enable + timeout > monotonic():
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
                 next_state = NodeState.BOOT
             else:
                 next_state = NodeState.ON
-        elif self._data[name].status == NodeState.ERROR:
+        elif node.status == NodeState.ERROR:
             next_state = NodeState.ERROR
         elif (
             self._flight_mode_obj.value
@@ -247,9 +252,7 @@ class NodeManagerService(Service):
 
             last_state = node.status
             state = self._get_nodes_state(name)
-            if self._loops == 0:
-                logger.info(f"node {name} init state {state.name}")
-            elif state != last_state:
+            if self._loops != 0 and state != last_state:
                 logger.info(f"node {name} state change {last_state.name} -> {state.name}")
             nodes_off += int(state == NodeState.OFF)
             nodes_booting += int(state == NodeState.BOOT)
@@ -402,6 +405,10 @@ class NodeManagerService(Service):
     def _set_opd_status(self, value: int):
         if value == 0:
             self.opd.disable()
+            for name, node in self._data.items():
+                if node.opd_address != 0 and node.status != NodeState.NOT_FOUND:
+                    logger.info(f"node {name} state change {node.status.name} -> NOT_FOUND")
+                    node.status = NodeState.NOT_FOUND
         elif value == 1:
             if self.opd.status == OpdState.DISABLED:
                 for node in self._data.values():

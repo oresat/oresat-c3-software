@@ -286,7 +286,9 @@ class NodeManagerService(Service):
             if info.opd_always_on and info.status == NodeState.OFF:
                 self.enable(name)
 
-            if info.status == NodeState.ERROR:
+            if info.status == NodeState.DEAD and self.opd[name].is_enabled:
+                self.opd[name].disable()  # make sure this is disabled
+            elif info.status == NodeState.ERROR:
                 logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
                 self.opd[name].reset(1)
                 self._data[name].last_enable = monotonic()

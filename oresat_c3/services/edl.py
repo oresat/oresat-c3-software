@@ -481,7 +481,7 @@ class EdlFileReciever(CfdpUserBase):
             if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
                 try:
                     self.dest.insert_packet(pdu)
-                except FsmNotCalledAfterPacketInsertion:
+                except Exception:
                     # Usually this exception means the library is being used wrong, so we have
                     # to be careful here. However there is a bug in the presence of dropped packets
                     # where dest._params.last_inserted_packet does not get cleared.
@@ -490,7 +490,7 @@ class EdlFileReciever(CfdpUserBase):
             else:
                 try:
                     self.source.insert_packet(pdu)
-                except FsmNotCalledAfterPacketInsertion:
+                except Exception:
                     logger.exception("source.state_machine() didn't properly clear inserted packet")
                     self.source.reset()
 
@@ -513,7 +513,7 @@ class EdlFileReciever(CfdpUserBase):
         try:
             self.dest.state_machine()
             self.source.state_machine()
-        except (UnretrievedPdusToBeSent, SourceFileDoesNotExist):
+        except Exception:
             logger.exception("state_machine failed to update")
             self.dest.reset()
             self.source.reset()

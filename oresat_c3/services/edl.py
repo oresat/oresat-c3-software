@@ -416,7 +416,11 @@ class EdlFileReciever:
         return ack_pdu
 
     def _make_nak(self, recv_pdu):
-        pdu = NakPdu(start_of_scope=self.last_nak, end_of_scope=self.offset, pdu_conf=self.PDU_CONF)
+        pdu = NakPdu(
+            start_of_scope=self.last_nak,
+            end_of_scope=self.offset,
+            pdu_conf=self.PDU_CONF,
+        )
         self.last_nak = self.offset
         logger.info(
             f"{self.last_indication.name} {self.offset} nak to {recv_pdu.__class__.__name__}"
@@ -456,7 +460,10 @@ class EdlFileReciever:
                 self.last_indication = Indication.METADATA_RECV
             elif req_pdu is not None and not isinstance(req_pdu, AckPdu):
                 res_pdu = self._make_nak(req_pdu)
-        elif self.last_indication in [Indication.METADATA_RECV, Indication.FILE_SEGMENT_RECV]:
+        elif self.last_indication in [
+            Indication.METADATA_RECV,
+            Indication.FILE_SEGMENT_RECV,
+        ]:
             if isinstance(req_pdu, FileDataPdu):
                 res_pdu = self._recv_data(req_pdu)
                 self.last_indication = Indication.FILE_SEGMENT_RECV
@@ -465,7 +472,10 @@ class EdlFileReciever:
                 self.last_indication = Indication.EOF_RECV
             elif req_pdu is not None and not isinstance(req_pdu, MetadataPdu):
                 res_pdu = self._make_nak(req_pdu)
-        elif self.last_indication in [Indication.EOF_RECV, Indication.TRANSACTION_FINISHED]:
+        elif self.last_indication in [
+            Indication.EOF_RECV,
+            Indication.TRANSACTION_FINISHED,
+        ]:
             if self.last_pdu_ts > monotonic() + 10:
                 self.reset()
             elif isinstance(req_pdu, EofPdu):

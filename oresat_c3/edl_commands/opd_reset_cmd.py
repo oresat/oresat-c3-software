@@ -1,7 +1,5 @@
-import struct
+from .abc_cmd import AbcCmd, logger, struct
 
-from olaf import logger
-from .abc_cmd import AbcCmd
 
 class OpdResetCmd(AbcCmd):
     id = 12
@@ -12,12 +10,12 @@ class OpdResetCmd(AbcCmd):
         self.node = node
         self.node_mngr = node_mngr
 
-    def run(self, request:bytes) -> bytes:
-        opd_addr, = struct.unpack(req_format, request)
+    def run(self, request: bytes) -> bytes:
+        (opd_addr,) = struct.unpack(self.req_format, request)
         name = self._node_mngr.opd_addr_to_name[opd_addr]
         logger.info(f"EDL resetting OPD node {name} (0x{opd_addr:02X})")
         node = self._node_mngr.opd[name]
         node.reset()
         ret = node.status.value
-        response = struct.pack(res_format, ret)
+        response = struct.pack(self.res_format, ret)
         return response

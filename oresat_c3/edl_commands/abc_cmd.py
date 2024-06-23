@@ -1,8 +1,11 @@
 # Abstract Base Class for EDL commands
 
-from olaf import MasterNode
-from .node_manager import NodeManagerService
+import struct
 from abc import ABC, abstractmethod
+
+from olaf import MasterNode, logger
+from services.node_manager import NodeManagerService
+
 
 class AbcCmd(ABC):
     id = None
@@ -14,5 +17,5 @@ class AbcCmd(ABC):
         self.node_mngr = node_mngr
 
     @abstractmethod
-    def run(self, request: bytes) ->bytes:
+    def run(self, request: bytes) -> bytes:
         pass

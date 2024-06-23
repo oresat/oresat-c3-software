@@ -25,7 +25,12 @@ class EdlCommandShell(Cmd):
     prompt = "> "
 
     def __init__(
-        self, host: str, uplink_port: int, downlink_port: int, hmac_key: bytes, seq_num: int
+        self,
+        host: str,
+        uplink_port: int,
+        downlink_port: int,
+        hmac_key: bytes,
+        seq_num: int,
     ):
         super().__init__()
 

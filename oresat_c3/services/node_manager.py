@@ -139,7 +139,7 @@ class NodeManagerService(Service):
                 "node_status",
                 str(name),
                 lambda n=name: self.node_status(n),
-                lambda v, n=name: self.enable(n) if v == NodeState.ON else self.disable(n),
+                lambda v, n=name: (self.enable(n) if v == NodeState.ON else self.disable(n)),
             )
 
     def _check_co_nodes_state(self, name: str) -> NodeState:

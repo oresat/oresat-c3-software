@@ -158,7 +158,9 @@ class GroundEntity:
                 else:
                     checksum = zlib.crc32(self.file_data).to_bytes(4, "little")
                     req_pdu = EofPdu(
-                        self.PDU_CONF, file_checksum=checksum, file_size=len(self.file_data)
+                        self.PDU_CONF,
+                        file_checksum=checksum,
+                        file_size=len(self.file_data),
                     )
                     self.last_indication = Indication.EOF_SENT
 
@@ -231,7 +233,11 @@ def main():
         "-b", "--bad-connection", action="store_true", help="simulate a bad connection"
     )
     parser.add_argument(
-        "-l", "--loop-delay", type=int, default=50, help="upload loop delay in milliseconds"
+        "-l",
+        "--loop-delay",
+        type=int,
+        default=50,
+        help="upload loop delay in milliseconds",
     )
     parser.add_argument(
         "-n",
@@ -281,7 +287,9 @@ def main():
     downlink_address = (downlink_host, args.downlink_port)
 
     t = Thread(
-        target=recv_thread, args=(downlink_address, hmac_key, args.bad_connection), daemon=True
+        target=recv_thread,
+        args=(downlink_address, hmac_key, args.bad_connection),
+        daemon=True,
     )
     t.start()
 

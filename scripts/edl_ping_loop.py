@@ -80,7 +80,11 @@ def main():
         help="port to use for the downlink, default is 10016",
     )
     parser.add_argument(
-        "-l", "--loop-delay", type=int, default=1000, help="delay between loops in milliseconds"
+        "-l",
+        "--loop-delay",
+        type=int,
+        default=1000,
+        help="delay between loops in milliseconds",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="print out packet hex")
     parser.add_argument(
@@ -117,7 +121,13 @@ def main():
 
     t = Thread(
         target=send_thread,
-        args=(uplink_address, hmac_key, args.sequence_number, args.loop_delay / 1000, args.verbose),
+        args=(
+            uplink_address,
+            hmac_key,
+            args.sequence_number,
+            args.loop_delay / 1000,
+            args.verbose,
+        ),
         daemon=True,
     )
     t.start()

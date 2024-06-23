@@ -317,8 +317,7 @@ def _edl_res_sdo_read_pack_cb(values: tuple) -> bytes:
 
 
 def _edl_res_sdo_read_unpack_cb(raw: bytes) -> tuple:
-PD_SYSENABLE: EdlCommand("?", "?"),                         
-339     EdlCommandCode.OPD_SCAN: EdlComm    fmt = "<2I"
+    fmt = "<2I"
     size = struct.calcsize(fmt)
     res = struct.unpack(fmt, raw[:size])
     res += (raw[size:],)

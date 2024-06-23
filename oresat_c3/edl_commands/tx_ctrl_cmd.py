@@ -2,13 +2,13 @@
 
 # use struct to figure out bytes
 
-import struct
+import time
 
-from olaf import logger
-from .abc_cmd import AbcCmd
+from .abc_cmd import AbcCmd, logger, struct
+
 
 class TxCtrlCmd(AbcCmd):
-    id = 0
+    id = ""
     req_format = "?"
     res_format = "?"
 
@@ -17,8 +17,8 @@ class TxCtrlCmd(AbcCmd):
         self._tx_enable_obj = node.od["tx_control"]["enable"]
         self._last_tx_enable_obj = node.od["tx_control"]["last_enable_timestamp"]
 
-    def run(self, request:bytes) -> bytes:
-        enable, = struct.unpack(req_format, request)
+    def run(self, request: bytes) -> bytes:
+        (enable,) = struct.unpack(self.req_format, request)
         if not enable:
             logger.info("EDL disabling Tx")
             self._tx_enable_obj.value = False
@@ -30,5 +30,4 @@ class TxCtrlCmd(AbcCmd):
             self._last_tx_enable_obj.value = int(time())
             ret = True
 
-        return struct.pack(res_format, ret)
-
+        return struct.pack(self.res_format, ret)

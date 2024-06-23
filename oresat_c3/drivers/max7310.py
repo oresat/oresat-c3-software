@@ -79,7 +79,13 @@ class Max7310:
             )
 
         self._mock = mock
-        self._mock_regs = [0x00, 0x00, 0xF0, 0xFF, 0x01]  # default values according to spec
+        self._mock_regs = [
+            0x00,
+            0x00,
+            0xF0,
+            0xFF,
+            0x01,
+        ]  # default values according to spec
         self._bus_num = bus_num
         self._addr = addr
 
@@ -121,7 +127,11 @@ class Max7310:
             raise Max7310Error(f"invalid pin_num: {pin_num}, must be between 0 and 7")
 
     def configure(
-        self, output_port: int, polarity_inversion: int, configuration: int, timeout: int
+        self,
+        output_port: int,
+        polarity_inversion: int,
+        configuration: int,
+        timeout: int,
     ):
         """
         Configure the MAX7310 registers.

@@ -153,12 +153,6 @@
     }
 
     /** Enable / disable a node button callback */
-<<<<<<< HEAD
-    async function nodeOnClick(nodeId) {
-      let value = "OFF";
-      if (document.getElementById(`node${nodeId}Button`).innerText === "Enable") {
-       value = "ON";
-=======
     async function nodeOnSelect(nodeId) {
       const select = document.getElementById(`node${nodeId}Select`);
       const data = await writeValue("node_status", nodeId, select.value);
@@ -167,7 +161,6 @@
         state = "BOOT";
       } else if (select.value === COMMANDS["BOOTLOADER"]) {
         state = "BOOTLOADER";
->>>>>>> master
       }
       select.value = null;
       updateNode(nodeId, state);

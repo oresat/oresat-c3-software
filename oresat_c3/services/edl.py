@@ -1,6 +1,5 @@
 """'EDL Service"""
 
-import struct
 from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
@@ -14,11 +13,8 @@ from cfdppy.exceptions import (
     FsmNotCalledAfterPacketInsertion,
     NoRemoteEntityCfgFound,
     SourceFileDoesNotExist,
+    UnretrievedPdusToBeSent,
 )
-from cfdppy.filestore import HostFilestore
-from cfdppy.handler.crc import CrcHelper
-from cfdppy.handler.dest import DestHandler
-from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -36,13 +32,15 @@ from cfdppy.user import (
     TransactionId,
     TransactionParams,
 )
-from olaf import MasterNode, NodeStop, OreSatFileCache, Service, logger
-from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType, ConditionCode, TransmissionMode
+from olaf import MasterNode, NodeStop, Service, logger
+from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
-    FilestoreResponseStatusCode,
+    DirectoryListingResponse,
+    DirectoryOperationMessageType,
     OriginatingTransactionId,
+    ProxyMessageType,
     ProxyPutResponse,
     ProxyPutResponseParams,
 )
@@ -50,6 +48,8 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
+from ..protocols.cachestore import CacheStore
+from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -79,8 +79,7 @@ class EdlService(Service):
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
 
-        upload_dir = f"{node.work_base_dir}/upload"
-        self._file_receiver = EdlFileReciever(upload_dir, node.fwrite_cache)
+        self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
         # objs
         edl_rec = node.od["edl"]
@@ -343,108 +342,6 @@ class EdlService(Service):
         return response
 
 
-class PrefixedFilestore(HostFilestore):
-    """A HostFilestore modified to only run in a specified directory"""
-
-    def __init__(self, prefix: Path):
-        if not prefix.is_dir():
-            raise NotADirectoryError("prefix must be a directory")
-        self._prefix = prefix
-
-    def read_data(self, file: Path, offset: Optional[int], read_len: Optional[int] = None) -> bytes:
-        return super().read_data(self._prefix.joinpath(file), offset, read_len)
-
-    def file_exists(self, path: Path) -> bool:
-        return super().file_exists(self._prefix.joinpath(path))
-
-    def is_directory(self, path: Path) -> bool:
-        return super().is_directory(self._prefix.joinpath(path))
-
-    def truncate_file(self, file: Path):
-        super().truncate_file(self._prefix.joinpath(file))
-
-    def write_data(self, file: Path, data: bytes, offset: Optional[int]):
-        super().write_data(self._prefix.joinpath(file), data, offset)
-
-    def create_file(self, file: Path) -> FilestoreResponseStatusCode:
-        return super().create_file(self._prefix.joinpath(file))
-
-    def delete_file(self, file: Path) -> FilestoreResponseStatusCode:
-        return super().delete_file(self._prefix.joinpath(file))
-
-    def rename_file(self, old_file: Path, new_file: Path) -> FilestoreResponseStatusCode:
-        return super().rename_file(self._prefix.joinpath(old_file), self._prefix.joinpath(new_file))
-
-    def replace_file(self, replaced_file: Path, source_file: Path) -> FilestoreResponseStatusCode:
-        return super().replace_file(
-            self._prefix.joinpath(replaced_file),
-            self._prefix.joinpath(source_file),
-        )
-
-    def remove_directory(
-        self, dir_name: Path, recursive: bool = False
-    ) -> FilestoreResponseStatusCode:
-        return super().remove_directory(self._prefix.joinpath(dir_name), recursive)
-
-    def create_directory(self, dir_name: Path) -> FilestoreResponseStatusCode:
-        return super().create_directory(self._prefix.joinpath(dir_name))
-
-    def list_directory(
-        self, dir_name: Path, target_file: Path, recursive: bool = False
-    ) -> FilestoreResponseStatusCode:
-        return super().list_directory(self._prefix.joinpath(dir_name), target_file, recursive)
-
-
-class VfsCrcHelper(CrcHelper):
-    """CrcHelper but modified to only use Filestore operations.
-
-    It previously would attempt to open the paths passed to it directly instead of asking the
-    filestore, which failed when using the above PrefixFilestore.
-    """
-
-    def calc_modular_checksum(self, file_path: Path) -> bytes:
-        """Calculates the modular checksum of the file in file_path.
-
-        This was a module level function in cfdppy but it accessed the filesystem directly
-        instead of going through a filestore. It needs to become a CrcHelper method to use the
-        provided filestore.
-        """
-        checksum = 0
-        offset = 0
-        while True:
-            data = self.vfs.read_data(file_path, offset, 4)
-            offset += 4
-            if not data:
-                break
-            checksum += int.from_bytes(data.ljust(4, b"\0"), byteorder="big", signed=False)
-
-        checksum %= 2**32
-        return struct.pack("!I", checksum)
-
-    def calc_for_file(self, file_path: Path, file_sz: int, segment_len: int = 4096) -> bytes:
-        if self.checksum_type == ChecksumType.NULL_CHECKSUM:
-            return NULL_CHECKSUM_U32
-        if self.checksum_type == ChecksumType.MODULAR:
-            return self.calc_modular_checksum(file_path)
-        crc_obj = self.generate_crc_calculator()
-        if segment_len == 0:
-            raise ValueError("Segment length can not be 0")
-        if not self.vfs.file_exists(file_path):
-            raise SourceFileDoesNotExist(file_path)
-        current_offset = 0
-
-        # Calculate the file CRC
-        while current_offset < file_sz:
-            if current_offset + segment_len > file_sz:
-                read_len = file_sz - current_offset
-            else:
-                read_len = segment_len
-            if read_len > 0:
-                crc_obj.update(self.vfs.read_data(file_path, current_offset, read_len))
-            current_offset += read_len
-        return crc_obj.digest()
-
-
 class LogFaults(DefaultFaultHandlerBase):
     """A HaultHandler that only logs the faults and nothing more.
 
@@ -478,18 +375,43 @@ class DefaultCheckTimer(CheckTimerProvider):
 class EdlFileReciever(CfdpUserBase):
     """CFDP receiver for file uploads."""
 
-    def __init__(self, upload_dir: str, fwrite_cache: OreSatFileCache):
-        path = Path(upload_dir)
-        path.mkdir(parents=True, exist_ok=True)
-        super().__init__(vfs=PrefixedFilestore(path))
+    def __init__(self, fwrite_cache: CacheStore):
+        super().__init__(vfs=fwrite_cache)
+
+        self.proxy_responses = {  # FIXME: defaultdict with invalid response
+            ProxyMessageType.PUT_REQUEST: self.proxy_put_response,
+            ProxyMessageType.MSG_TO_USER: self.unimplemented,
+            ProxyMessageType.FS_REQUEST: self.unimplemented,
+            ProxyMessageType.FAULT_HANDLER_OVERRIDE: self.unimplemented,
+            ProxyMessageType.TRANSMISSION_MODE: self.unimplemented,
+            ProxyMessageType.FLOW_LABEL: self.unimplemented,
+            ProxyMessageType.SEGMENTATION_CTRL: self.unimplemented,
+            ProxyMessageType.PUT_RESPONSE: self.unimplemented,
+            ProxyMessageType.FS_RESPONSE: self.unimplemented,
+            ProxyMessageType.PUT_CANCEL: self.unimplemented,
+            ProxyMessageType.CLOSURE_REQUEST: self.unimplemented,
+            DirectoryOperationMessageType.LISTING_REQUEST: self.directory_listing_response,
+            DirectoryOperationMessageType.LISTING_RESPONSE: self.unimplemented,
+            DirectoryOperationMessageType.CUSTOM_LISTING_PARAMETERS: self.unimplemented,
+        }
 
         SOURCE_ID = ByteFieldU8(0)
         DEST_ID = ByteFieldU8(1)
+        fault_handler = LogFaults()
+        # The default setting is NOTICE_OF_CANCELLATION but during that process the positive ack
+        # counter gets reset, meaning we keep retrying the handler forever. This manifests for
+        # example if the final source -> dest ack for FinishedPDU gets dropped. Source considers
+        # the transaction finished, and will refuse to respond, dest will be stuck re-sending the
+        # FinishedPDU every ack_timer interval forever. Setting it to ABANDON_TRANSACTION means it
+        # just resets after the ack counter reaches its count.
+        fault_handler.set_handler(
+            ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
+        )
 
         localcfg = LocalEntityCfg(
             local_entity_id=DEST_ID,
             indication_cfg=IndicationCfg(),
-            default_fault_handlers=LogFaults(),
+            default_fault_handlers=fault_handler,
         )
 
         remote_entities = RemoteEntityCfgTable(
@@ -509,8 +431,7 @@ class EdlFileReciever(CfdpUserBase):
             ]
         )
 
-        self.fwrite_cache = fwrite_cache
-        self.dest = DestHandler(
+        self.dest = FixedDestHandler(
             cfg=localcfg,
             user=self,
             remote_cfg_table=remote_entities,
@@ -518,13 +439,14 @@ class EdlFileReciever(CfdpUserBase):
         )
         self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
-        self.source = SourceHandler(
+        self.source = VfsSourceHandler(
             cfg=localcfg,
             user=self,
             remote_cfg_table=remote_entities,
             check_timer_provider=DefaultCheckTimer(),
             seq_num_provider=SeqCountProvider(16),
         )
+        self.source._crc_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
         self.active_requests: dict[TransactionId, TransactionId] = {}
@@ -559,7 +481,7 @@ class EdlFileReciever(CfdpUserBase):
             if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
                 try:
                     self.dest.insert_packet(pdu)
-                except FsmNotCalledAfterPacketInsertion:
+                except Exception:
                     # Usually this exception means the library is being used wrong, so we have
                     # to be careful here. However there is a bug in the presence of dropped packets
                     # where dest._params.last_inserted_packet does not get cleared.
@@ -568,7 +490,7 @@ class EdlFileReciever(CfdpUserBase):
             else:
                 try:
                     self.source.insert_packet(pdu)
-                except FsmNotCalledAfterPacketInsertion:
+                except Exception:
                     logger.exception("source.state_machine() didn't properly clear inserted packet")
                     self.source.reset()
 
@@ -588,8 +510,13 @@ class EdlFileReciever(CfdpUserBase):
                     # there's a better idea of how to handle this, please change.
                     self.scheduled_requests.put(self.missing_file_response(request))
 
-        self.dest.state_machine()
-        self.source.state_machine()
+        try:
+            self.dest.state_machine()
+            self.source.state_machine()
+        except Exception:
+            logger.exception("state_machine failed to update")
+            self.dest.reset()
+            self.source.reset()
 
         pdus = []
         while self.dest.packets_ready:
@@ -600,6 +527,10 @@ class EdlFileReciever(CfdpUserBase):
         for out in pdus:
             logger.info(f"---> {out}")
         return pdus or None
+
+    def unimplemented(self, _source, _tid, _reserved_message) -> PutRequest:
+        """Default method for responding to unimplemented requests"""
+        return None
 
     def missing_file_response(self, invalid: PutRequest) -> PutRequest:
         """Generates a resonse put for when a proxy request tries to access a missing file"""
@@ -627,6 +558,58 @@ class EdlFileReciever(CfdpUserBase):
             ],
         )
 
+    def proxy_put_response(self, _source, _tid, reserved_message) -> PutRequest:
+        """Response for a proxy put request"""
+        params = reserved_message.get_proxy_put_request_params()
+        return PutRequest(
+            destination_id=params.dest_entity_id,
+            source_file=Path(params.source_file_as_path),
+            dest_file=Path(params.dest_file_as_path),
+            trans_mode=None,
+            closure_requested=True,
+            msgs_to_user=[
+                OriginatingTransactionId(params.transaction_id).to_generic_msg_to_user_tlv()
+            ],
+        )
+
+    def directory_listing_response(self, source, tid, reserved_message) -> PutRequest:
+        """Response for a directory listing request"""
+        # See CFDP 6.3.4
+        params = reserved_message.get_dir_listing_request_params()
+        self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
+        return PutRequest(
+            destination_id=source,
+            source_file=params.dir_file_name_as_path,
+            dest_file=params.dir_file_name_as_path,
+            trans_mode=None,
+            closure_requested=True,
+            msgs_to_user=[
+                DirectoryListingResponse(
+                    listing_success=True,
+                    dir_params=params,
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(tid).to_generic_msg_to_user_tlv(),
+            ],
+        )
+
+    def proxy_request_complete(self, originating_id, params) -> PutRequest:
+        """Indicates that a proxy put request was successful"""
+        return PutRequest(
+            destination_id=originating_id.source_id,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
+            # trans_mode defaults to ACKNOWLEGED
+            closure_requested=True,
+            msgs_to_user=[
+                ProxyPutResponse(
+                    ProxyPutResponseParams.from_finished_params(params.finished_params)
+                ).to_generic_msg_to_user_tlv(),
+                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
+            ],
+        )
+
     def transaction_indication(self, transaction_indication_params: TransactionParams):
         logger.info(f"Indication: Transaction. {transaction_indication_params}")
         t_id = transaction_indication_params.transaction_id
@@ -642,44 +625,18 @@ class EdlFileReciever(CfdpUserBase):
         if params.transaction_id in self.active_requests:
             originating_id = self.active_requests.get(params.transaction_id)
             assert originating_id is not None
-            put = PutRequest(
-                destination_id=originating_id.source_id,
-                source_file=None,
-                dest_file=None,
-                trans_mode=None,
-                # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
-                # trans_mode defaults to ACKNOWLEGED
-                closure_requested=True,
-                msgs_to_user=[
-                    ProxyPutResponse(
-                        ProxyPutResponseParams.from_finished_params(params.finished_params)
-                    ).to_generic_msg_to_user_tlv(),
-                    OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
-                ],
-            )
+            put = self.proxy_request_complete(originating_id, params)
             self.scheduled_requests.put(put)
             del self.active_requests[params.transaction_id]
 
     def metadata_recv_indication(self, params: MetadataRecvParams):
         logger.info(f"Indication: Metadata Recv. {params}")
         for msg in params.msgs_to_user or []:
-            if msg.is_reserved_cfdp_message():
-                reserved = msg.to_reserved_msg_tlv()
-                if reserved.is_cfdp_proxy_operation():
-                    proxyparams = reserved.get_proxy_put_request_params()
-                    put = PutRequest(
-                        destination_id=proxyparams.dest_entity_id,
-                        source_file=Path(proxyparams.source_file_as_path),
-                        dest_file=Path(proxyparams.dest_file_as_path),
-                        trans_mode=None,
-                        closure_requested=None,
-                        msgs_to_user=[
-                            OriginatingTransactionId(
-                                params.transaction_id
-                            ).to_generic_msg_to_user_tlv()
-                        ],
-                    )
-                    self.scheduled_requests.put(put)
+            if r := msg.to_reserved_msg_tlv():  # is None if not a reserved TLV message
+                op = r.get_cfdp_proxy_message_type() or r.get_directory_operation_type()
+                put = self.proxy_responses[op](params.source_id, params.transaction_id, r)
+                self.scheduled_requests.put(put)
+            # Ignore non-reserved messages for now
 
     def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
         logger.info(f"Indication: File Segment Recv. {params}")

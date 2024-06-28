@@ -117,7 +117,7 @@ class Max7310:
                 raise Max7310Error(f"MAX7310 at address 0x{self._addr:02X} does not exist")
 
     def _valid_pin(self, pin_num: int):
-        if pin_num <= 0 or pin_num > 8:
+        if pin_num < 0 or pin_num > 8:
             raise Max7310Error(f"invalid pin_num: {pin_num}, must be between 0 and 7")
 
     def configure(

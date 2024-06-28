@@ -2,7 +2,7 @@ bitstring
 black
 build
 cfdp-py
-dataclasses_json
+dataclasses-json
 git+https://github.com/oresat/oresat-adcs-software.git@max-dev
 isort
 oresat-configs

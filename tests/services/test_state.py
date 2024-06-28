@@ -3,8 +3,7 @@
 import unittest
 from time import time
 
-import can
-from olaf import MasterNode, NodeStop
+from olaf import CanNetwork, MasterNode, NodeStop
 from oresat_configs import OreSatConfig, OreSatId
 
 from oresat_c3 import C3State
@@ -18,8 +17,8 @@ class TestState(unittest.TestCase):
         config = OreSatConfig(OreSatId.ORESAT0_5)
         self.od = config.od_db["c3"]
         fram_def = config.fram_def
-        self.bus = can.interface.Bus(interface="virtual")
-        self.node = MasterNode(self.od, config.od_db, self.bus)
+        network = CanNetwork("virtual", "vcan0")
+        self.node = MasterNode(network, self.od, config.od_db)
 
         self.service = StateService(fram_def, mock_hw=True)
 
@@ -30,9 +29,6 @@ class TestState(unittest.TestCase):
         self.service._event.set()
         self.service.start(self.node)
         self.service.stop()
-
-    def tearDown(self):
-        self.bus.shutdown()
 
     def test_pre_deploy(self):
         """Test state transistion(s) from PRE_DEPLOY state"""

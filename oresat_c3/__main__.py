@@ -20,6 +20,7 @@ from olaf import (
 )
 
 from . import C3State, __version__
+from .protocols.cachestore import CacheStore
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
@@ -127,8 +128,12 @@ def main():
     thread = Thread(target=watchdog, daemon=True)
     thread.start()
 
+    # The C3 needs a special OreSatFileCache that can speak CFDP
+    app.node._fwrite_cache = CacheStore(app.node.fwrite_cache.dir)  # pylint: disable=W0212
+
     app.od["versions"]["sw_version"].value = __version__
-    app.od["hw_id"].value = get_hw_id(mock_hw)
+    if app.od["versions"]["hw_version"].value == "6.0":
+        app.od["hw_id"].value = get_hw_id(mock_hw)
 
     state_service = StateService(config.fram_def, mock_hw)
     radios_service = RadiosService(mock_hw)

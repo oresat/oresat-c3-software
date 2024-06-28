@@ -19,8 +19,10 @@ classifiers = [
 ]
 dependencies = [
     "bitstring",
+    "cfdp-py",
+    "dataclasses-json",
     "oresat-configs",
-    "oresat-olaf>=3.4.0",
+    "oresat-olaf>=3.5.0",
     "smbus2",
     "spacepackets",
 ]
@@ -46,7 +48,7 @@ line_length = 100
 
 [tool.pylama]
 format = "pylint"
-skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*"
+skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*,.direnv/*"
 linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
 # E402:     Module level import not at top of file
 # C901:     Function is too complex

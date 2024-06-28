@@ -2,7 +2,10 @@
 
 from enum import Enum, IntEnum
 
-__version__ = "0.2.3"
+try:
+    from ._version import version as __version__  # type: ignore
+except ImportError:
+    __version__ = "0.0.0"  # package is not installed
 
 
 class C3State(IntEnum):

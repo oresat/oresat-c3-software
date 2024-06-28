@@ -22,6 +22,7 @@
   <form>
     <br/>
     <input id="apply_button" type="button" value="APPLY"></input>
+    <input id="calibrate_button" type="button" value="--- CALIBRATE ---"></input>
     <input id="reset_button" type="reset" value="RESET"></input>
     <br/>
     <div id="adcsMgrTableDiv">
@@ -41,6 +42,7 @@
   </form>
   <script>
     async function updateFeedbackValues() {
+      // update all feedback cells via sdo callback
       let feedback_json = await readValue("adcs_manager", "feedback");
       let feedback = JSON.parse(feedback_json.value);
       for (let actuator in feedback) {
@@ -49,20 +51,27 @@
       }
     }
     
-
+    async function calibrateActuators() {
+      // calibrate actuators, namely reaction wheels
+      console.log('Calibrating actuators');
+      // calibration is number 3
+      writeValue("adcs_manager", "mode", 3);
+      return 0;
+    }
+    
     async function applyControlSignals() {
-      console.log("submitting control signals");
+      // send the control signals to the c3 card
       let ctrl_inputs = document.getElementsByClassName("ctrl_input");
-      console.log(ctrl_inputs);
       let ctrl_signals = {};
+      // retreive all control signals from the cells
       for (const ctrl_input_element of ctrl_inputs) {
         // Send write values for c3 card to send control signal
-	
 	let name = ctrl_input_element.id.split("-")[1];
 	let ctrl_signal = document.getElementById(`signal-${name}`);
 	ctrl_signal.innerText = ctrl_input_element.value;
 	ctrl_signals[name] = parseInt(ctrl_input_element.value);
       }
+      // send control values
       writeValue("adcs_manager", "signals", JSON.stringify(ctrl_signals));
       return 0;
     }
@@ -120,6 +129,7 @@
 
     // setup
     buildTable();
+    document.getElementById("calibrate_button").addEventListener("click", calibrateActuators)
     // make custom event listener for reset button
     document.getElementById("reset_button").addEventListener("click", function(e) {e.preventDefault(); resetControlSignals();})
     // make custom event listener for apply button

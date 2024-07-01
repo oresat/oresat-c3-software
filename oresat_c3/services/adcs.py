@@ -2,6 +2,7 @@
 
 import math
 import json
+import numpy as np
 import threading
 from time import time, sleep, monotonic_ns
 from enum import Enum, IntEnum, unique
@@ -81,6 +82,18 @@ class AdcsService(Service):
             self.control_signals[actuator] = 0.0
             self.actuator_feedback[actuator] = 0.0
 
+
+        self.np_arrays = {
+                "position": np.array([]),         # ECI position
+                "lin_vel": np.array([]),          # ECI linear velocity
+                "attitude": np.array([]),         # attitude quaternion with respect to inertial frame
+                "body_ang_vel": np.array([]),     # angular velocity in body frame coordinates with respect to inertial frame
+                "wheel_vel": np.array([]),        # velocities of reaction wheels
+                "mag_field": np.array([]),         # present magnetic field reading
+                "cur_cmd": np.array([]),          # magnetorquer current commands
+                "wheel_accl": np.array([])        # wheel acceleration commands
+                }
+
         logger.info("ADCS service object initiated")
         self.calibrating = False
         self.status_code = ADCS_Status.NONE
@@ -121,9 +134,23 @@ class AdcsService(Service):
             sleep(2)
             self.set_mode(ADCS_Mode.MANUAL)
 
+
+        # Create numpy array of position (ECI coordinates)
+        # Create numpy array of lin_vel (ECI coordinates)
+        # Create attitude quaternion relative to inertial frame
+        # Create body_ang_vel relative to inertial frame
+        # Create numpy array of current wheel velocties
+        # Create numpy array of magnetic field readings
+        
+        # Magnetorqer commands for current
+        # Wheel acceleration commands
+
         # Read sensors, data is stored in self.sensor_data
-        self.gyro_monitor()
+        # self.gyro_monitor() part of xyz monitor
         self.mag_monitor(log=True)
+        
+        adcs_position, adcs_lin_vel = self.gps_ecef_monitor()
+
         self.gps_monitor()
         self.gps_time()
         ecef_data = self.gps_ecef_monitor()
@@ -145,6 +172,7 @@ class AdcsService(Service):
         self.rw_control()        
 
         # End of ADCS control loop
+        print(self.np_arrays)
         sleep(1)
     
 
@@ -258,7 +286,10 @@ class AdcsService(Service):
         pass
 
     def mt_monitor(self, log=False):
-        """Monitor magnetorquers"""
+        """Monitor magnetorquers
+
+        Return
+            A numpy array of x, y, z currents"""
         if log:
             logger.info("Monitoring magnetorquers")
         
@@ -267,7 +298,6 @@ class AdcsService(Service):
         for name,axis in directions.items():
             self.sensor_data["magnetorquer"][axis] = self.node.od["adcs"]["magnetorquer_" +name].value
             self.actuator_feedback["mt_"+axis] = self.node.od["adcs"]["magnetorquer_"+name].value
-
 
     def mt_control(self, log=False):
         """Send control signal to magnetorquers"""
@@ -279,6 +309,8 @@ class AdcsService(Service):
                 logger.info(f"Sending {self.control_signals[key]} to {key}")
             self.write_sdo('adcs', 'magnetorquer', f'current_{val}_setpoint', self.control_signals[key])
 
+        # be naive and say that at this point, these are the control signals for the numpy arrays
+        self.np_arrays["cur_cmd"] = np.array([self.control_signals['mt_x'], self.control_signals['mt_y'], self.control_signals['mt_z']])
     
     # REACTION WHEEL FUNCTIONS
     def rw_apply_state(self, rw_name, state):
@@ -443,6 +475,12 @@ class AdcsService(Service):
             temp_data[rw_name] = {num: self.node.od[rw_name]['temperature_sensor_'+str(num)].value for num in range(1, 4)}
             logger.info(f"{rw_name} has temps {temp_data[rw_name]}")
 
+
+        # save wheel velocity as numpy array
+        self.np_arrays["wheel_vel"] = np.array([self.node.od[rw_name]["motor_velocity"].value \
+                                                for rw_name in ["rw_"+str(num) for num in range(1, num_rws+1)]])
+
+
     def rw_control(self, num_rws=4, log=False):
         """Sends the control signal to the reaction wheels"""
         
@@ -469,6 +507,9 @@ class AdcsService(Service):
 
 
             self.write_sdo(rw_name, 'signals', 'setpoint', self.control_signals[rw_name])
+
+        # Well heck, adcs control theory wants wheel acceleration but I am only giving velocity
+        # self.np_arrays["whl_accl"]
         pass
 
 
@@ -520,6 +561,8 @@ class AdcsService(Service):
                 for subindex in ["right_ascension", "declination", "roll", "time_since_midnight"]}
                 for tracker_num in range(1, num_modules+1)}
 
+
+
     def gps_monitor(self, log_it=False):
         """Monitors the GPS readings"""
         #logger.debug("Monitoring GPS")
@@ -532,12 +575,25 @@ class AdcsService(Service):
         logger.info("GPS time: %s"%self.node.od["gps"]["skytraq_time_since_midnight"].value)
 
     def gps_ecef_monitor(self):
+        """ Gets the ECEF Position and Velccity
+
+        Returns:
+            ecef_position, ecef_velocity (numpy arrays for x, y, z coordinates)
+        """
         axis_list = ["x", "y", "z"]
-        ecef_data = dict()
-        ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
-        ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
+
+        # Dictionary format
+        #ecef_data = dict()
+        #ecef_data["position"] = {axis: self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list}
+        #ecef_data["velocity"] = {axis: self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list}
         
-        return ecef_data
+        # Numpy array format
+        ecef_position = np.array([self.node.od["gps"]["skytraq_ecef_" + axis].value for axis in axis_list])
+        ecef_velocity = np.array([self.node.od["gps"]["skytraq_ecef_v" + axis].value for axis in axis_list])
+
+        return ecef_position, ecef_velocity
+
+
 
 
     # Additional data retrieval to consider control type

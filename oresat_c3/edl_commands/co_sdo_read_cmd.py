@@ -6,8 +6,5 @@ class CoSdoReadCmd(AbcCmd):
     req_format = "BHB"
     res_format = None
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
+    def run(self, request: tuple) -> tuple:
         logger.info("")

@@ -6,8 +6,6 @@ class PingCmd(AbcCmd):
     req_format = "I"
     res_format = "I"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
-        logger.info("")
+    def run(self, request: tuple) -> tuple:
+        logger.info("EDL ping")
+        return request

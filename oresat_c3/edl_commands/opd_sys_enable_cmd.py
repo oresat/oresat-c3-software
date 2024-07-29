@@ -6,8 +6,14 @@ class OpdSysEnableCmd(AbcCmd):
     req_format = "?"
     res_format = "?"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
+    def run(self, request: tuple) -> tuple:
+        (enable,) = request
+        if enable:
+            logger.info("EDL enabling OPD subsystem")
+            self.node_mngr.opd.enable()
+        else:
+            logger.info("EDL disabling OPD subsystem")
+            self.node_mngr.opd.disable()
 
-    def run(self, request: bytes) -> bytes:
-        logger.info("")
+        (ret,) = self.node_mngr.opd.status.value
+        return ret

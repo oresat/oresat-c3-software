@@ -1,4 +1,4 @@
-from .abc_cmd import AbcCmd, logger, struct
+from .abc_cmd import AbcCmd, logger, NodeStop  # ?
 
 
 class C3SoftResetCmd(AbcCmd):
@@ -6,13 +6,6 @@ class C3SoftResetCmd(AbcCmd):
     req_format = None
     res_format = None
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
-        (enable,) = struct.unpack(self.req_format, request)
-
+    def run(self, request: tuple) -> tuple:
         logger.info("EDL soft reset")
         self.node.stop(self.node_mngr.NodeStop.SOFT_RESET)
-
-        return struct.pack(self.res_format, enable)

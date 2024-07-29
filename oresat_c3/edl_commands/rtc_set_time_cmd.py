@@ -1,4 +1,5 @@
 from .abc_cmd import AbcCmd, logger
+from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 
 
 class RtcSetTimeCmd(AbcCmd):
@@ -6,8 +7,8 @@ class RtcSetTimeCmd(AbcCmd):
     req_format = "I"
     res_format = "?"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
-        logger.info("")
+    def run(self, request: tuple) -> tuple:
+        (ts,) = request
+        logger.info(f"EDL setting the RTC time to {ts}")
+        set_rtc_time(ts)
+        set_system_time_to_rtc_time()

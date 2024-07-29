@@ -6,8 +6,6 @@ class TimeSyncCmd(AbcCmd):
     req_format = None
     res_format = "?"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
-        logger.info("")
+    def run(self, request: tuple) -> tuple:
+        logger.info("EDL sending time sync TPDO")
+        self.node.send_tpdo(0)

@@ -6,8 +6,7 @@ class OpdScanCmd(AbcCmd):
     req_format = None
     res_format = "B"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
-        logger.info("")
+    def run(self, request: tuple) -> tuple:
+        logger.info("EDL scaning for all OPD nodes")
+        (ret,) = self.node_mngr.opd.scan()
+        return ret

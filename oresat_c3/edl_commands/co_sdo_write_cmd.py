@@ -6,10 +6,7 @@ class CoSdoWriteCmd(AbcCmd):
     req_format = None
     res_format = "I"
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
+    def run(self, request: tuple) -> tuple:
         logger.info("")
 
     def _edl_req_sdo_write_pack_cb(values: tuple) -> bytes:

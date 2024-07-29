@@ -1,4 +1,5 @@
 from .abc_cmd import AbcCmd, logger
+from ..services import BeaconService
 
 
 class BeaconPingCmd(AbcCmd):
@@ -6,9 +7,11 @@ class BeaconPingCmd(AbcCmd):
     req_format = None
     res_format = None
 
-    def __init__(self, node, node_mngr):
-        self.node = node
+    def __init__(
+        beacon_service: BeaconService,
+    ):
+        super().__init__()  # ?
 
-    def run(self, request: bytes) -> bytes:
+    def run(self, request: tuple) -> tuple:
         logger.info("EDL beacon")
-        self._beacon_service.send()
+        self.beacon_service.send()  # ?

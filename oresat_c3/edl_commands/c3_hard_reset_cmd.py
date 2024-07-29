@@ -1,4 +1,4 @@
-from .abc_cmd import AbcCmd, logger
+from .abc_cmd import AbcCmd, logger, NodeStop  # ?
 
 
 class C3HardResetCmd(AbcCmd):
@@ -6,9 +6,6 @@ class C3HardResetCmd(AbcCmd):
     req_format = None
     res_format = None
 
-    def __init__(self, node, node_mngr):
-        self.node = node
-
-    def run(self, request: bytes) -> bytes:
+    def run(self, request: tuple) -> tuple:
         logger.info("EDL hard reset")
         self.node.stop(self.node_mngr.NodeStop.HARD_RESET)

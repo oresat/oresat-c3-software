@@ -26,8 +26,6 @@ from spacepackets.uslp.header import (  # type: ignore
     SourceOrDestField,
 )
 
-from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
-
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
 
@@ -81,14 +79,14 @@ class EdlPacket:
 
     def __init__(
         self,
-        payload: Union[EdlCommandRequest, EdlCommandResponse, AbstractPduBase],
+        payload: Union[bytes, AbstractPduBase],
         seq_num: int,
         src_dest: SourceOrDestField,
     ):
         """
         Parameters
         ----------
-        payload: EdlCommandRequest, EdlCommandResponse, or AbstractPduBase
+        payload: bytes or AbstractPduBase
             The payload object.
         seq_num: int
             The sequence number for packet.
@@ -96,12 +94,12 @@ class EdlPacket:
             Origin of packet, use `SRC_DEST_ORESAT` or `SRC_DEST_UNICLOGS`.
         """
 
-        if isinstance(payload, (EdlCommandRequest, EdlCommandResponse)):
+        if isinstance(payload, (bytes, bytearray)):
             vcid = EdlVcid.C3_COMMAND
         elif isinstance(payload, AbstractPduBase):
             vcid = EdlVcid.FILE_TRANSFER
         else:
-            raise EdlCommandCode(f"unknown payload object: {type(payload)}")
+            raise EdlPacketError(f"unknown payload object: {type(payload)}")
 
         self.vcid = vcid
         self.src_dest = src_dest
@@ -128,10 +126,13 @@ class EdlPacket:
             The HMAC key to use.
         """
 
-        try:
-            payload_raw = self.payload.pack()
-        except Exception as e:
-            raise EdlPacketError(e) from e
+        if isinstance(self.payload, (bytes, bytearray)):
+            payload_raw = self.payload
+        else:
+            try:
+                payload_raw = self.payload.pack()
+            except Exception as e:
+                raise EdlPacketError(e) from e
 
         tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
 
@@ -199,13 +200,7 @@ class EdlPacket:
             raise EdlPacketError(f"invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}")
 
         if frame.header.vcid == EdlVcid.C3_COMMAND:
-            try:
-                if frame.header.src_dest == SRC_DEST_ORESAT:
-                    payload = EdlCommandRequest.unpack(payload_raw)
-                else:
-                    payload = EdlCommandResponse.unpack(payload_raw)
-            except EdlCommandError as e:
-                raise EdlPacketError(e) from e
+            payload = payload_raw
         elif frame.header.vcid == EdlVcid.FILE_TRANSFER:
             try:
                 payload = PduFactory.from_raw(payload_raw)

@@ -8,10 +8,13 @@ from argparse import ArgumentParser
 from threading import Thread
 from time import monotonic, sleep, time
 
+from oresat_configs import OreSatConfig, OreSatId
+
 sys.path.insert(0, os.path.abspath(".."))
 
-from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
+
+EDL_CMD_DEFS = OreSatConfig(OreSatId.ORESAT0_5).edl_cmd_defs
 
 sent = 0
 recv = 0
@@ -31,11 +34,11 @@ def send_thread(address: tuple, hmac_key: bytes, seq_num: int, delay: float, ver
         seq_num += 1
         seq_num &= 0xFF_FF_FF_FF
 
-        values = (loop,)
-        print(f"Request PING: {values} | seq_num: {seq_num}")
+        print(f"Request PING: {loop} | seq_num: {seq_num}")
 
         try:
-            req = EdlCommandRequest(EdlCommandCode.PING, values)
+            cmd_def = EDL_CMD_DEFS["ping"]
+            req = bytes([cmd_def.uid]) + cmd_def.encode_request(loop)
             req_packet = EdlPacket(req, seq_num, SRC_DEST_ORESAT)
             req_message = req_packet.pack(hmac_key)
 
@@ -54,7 +57,8 @@ def send_thread(address: tuple, hmac_key: bytes, seq_num: int, delay: float, ver
         if delay > 0:
             sleep(delay - ((monotonic() - start_time) % delay))
 
-        print(f"Sent: {sent} | Recv: {recv} | Return: {100 - ((sent - recv) * 100) // sent}%\n")
+        return_rate = 0 if sent == 0 else 100 - ((sent - recv) * 100) // sent
+        print(f"Sent: {sent} | Recv: {recv} | Return: {return_rate}%\n")
 
 
 def main():
@@ -122,6 +126,7 @@ def main():
     )
     t.start()
 
+    cmd_def = EDL_CMD_DEFS["ping"]
     while True:
         try:
             res_message = downlink_socket.recv(0xFF_FF)
@@ -129,12 +134,13 @@ def main():
                 print(res_message.hex())
 
             res_packet = EdlPacket.unpack(res_message, hmac_key)
+            value = cmd_def.decode_request(res_packet.payload[1:])[0]
             recv += 1
 
             timediff = -1.0
             if loop in last_ts:
                 timediff = time() - last_ts[loop]
-            print(f"Response PING: {res_packet.payload.values} | {int(timediff * 1000)} ms")
+            print(f"Response PING: {value} | {int(timediff * 1000)} ms")
         except KeyboardInterrupt:
             break
         except Exception:  # pylint: disable=W0718

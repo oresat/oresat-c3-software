@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from olaf import MasterNode, logger, NodeStop
+from olaf import MasterNode
 from services.node_manager import NodeManagerService
 
 

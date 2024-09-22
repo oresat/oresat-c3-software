@@ -1,5 +1,3 @@
-# Tx control
-
 import time
 from .abc_cmd import AbcCmd, logger
 

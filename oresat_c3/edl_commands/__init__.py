@@ -1,5 +1,3 @@
-# EDL command init
-
 from . import (
     TxCtrlCmd,
     C3SoftResetCmd,

@@ -7,9 +7,7 @@ class BeaconPingCmd(AbcCmd):
     req_format = None
     res_format = None
 
-    def __init__(
-        beacon_service: BeaconService,
-    ):
+    def __init__(beacon_service: BeaconService):
         super().__init__()  # ?
 
     def run(self, request: tuple) -> tuple:

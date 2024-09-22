@@ -1,4 +1,4 @@
-from .abc_cmd import AbcCmd, logger, NodeStop  # ?
+from .abc_cmd import AbcCmd, logger
 
 
 class C3SoftResetCmd(AbcCmd):

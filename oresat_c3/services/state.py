@@ -113,7 +113,6 @@ class StateService(Service):
 
         result = subprocess.run(
             ["systemctl", "stop", "oresat-c3-watchdog"],
-            shell=True,
             check=False,
             capture_output=True,
         )

@@ -283,8 +283,6 @@ class NodeManagerService(Service):
             if self._loops % 10 == 0 and self._data[name].status == NodeState.NOT_FOUND:
                 self.opd[name].probe(True)
 
-            if info.opd_always_on and info.status == NodeState.OFF:
-                self.enable(name)
 
             if info.status == NodeState.DEAD and self.opd[name].is_enabled:
                 self.opd[name].disable()  # make sure this is disabled

@@ -129,9 +129,9 @@ def main():
         app.od["hw_id"].value = get_hw_id(mock_hw)
 
     state_service = StateService(config.fram_def, mock_hw)
-    radios_service = RadiosService(mock_hw)
-    beacon_service = BeaconService(config.beacon_def, radios_service)
+    radios_service = RadiosService(app.od["status"], mock_hw)
     node_mgr_service = NodeManagerService(config.cards, mock_hw)
+    beacon_service = BeaconService(config.beacon_def, radios_service, node_mgr_service)
     edl_service = EdlService(app.node, radios_service, node_mgr_service, beacon_service)
 
     app.add_service(state_service)  # add state first to restore state from F-RAM

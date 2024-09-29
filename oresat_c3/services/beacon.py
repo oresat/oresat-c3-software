@@ -18,9 +18,10 @@ from .radios import RadiosService
 class BeaconService(Service):
     """Beacon Service."""
 
-    def __init__(self, beacon_def: dict, radios_service: RadiosService):
+    def __init__(self, beacon_def: dict, radios_service: RadiosService, n):
         super().__init__()
 
+        self.n = n
         self._beacon_def = beacon_def
         self._radios_service = radios_service
         self._ts = 0.0
@@ -64,10 +65,13 @@ class BeaconService(Service):
             self.sleep(1)
             return  # do nothing
 
+        self.n.enable(0x18)
+        self.sleep(12)
         if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
             self.send()
 
-        self.sleep(self._delay_obj.value)
+        self.n.disable(0x18)
+        self.sleep(self._delay_obj.value - 12)
 
     def send(self):
         """Send a beacon now."""

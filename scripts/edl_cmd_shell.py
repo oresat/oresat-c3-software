@@ -221,6 +221,9 @@ class EdlCommandShell(Cmd):
         print("  <index> is the index or object name")
         print("  <subindex> is the subindex or object name")
         print("  <value> is value to write")
+        print()
+        print("If <index>.<subindex> is of type DOMAIN, <value> will be interpreted as a filename")
+        print("and the contents will be written.")
 
     def do_sdo_write(self, arg: str):
         """Do the sdo_write command."""
@@ -285,7 +288,18 @@ class EdlCommandShell(Cmd):
         elif obj.data_type == canopen.objectdictionary.VISIBLE_STRING:
             value = args[3]
         elif obj.data_type == canopen.objectdictionary.DOMAIN:
-            value = args[3].encode("ascii")
+            try:
+                with open(args[3], "rb") as f:
+                    value = f.read()
+            except FileNotFoundError as e:
+                print(f"{e.__class__.__name__}: {e}")
+                return
+        elif obj.data_type == canopen.objectdictionary.OCTET_STRING:
+            try:
+                value = bytes.fromhex(args[3])
+            except ValueError:
+                value = args[3].encode("ascii")
+
         else:
             print(f"invalid OD obj type {obj} 0x{obj.data_type:X}")
             return

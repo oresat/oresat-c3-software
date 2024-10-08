@@ -1,7 +1,7 @@
 bitstring
 black
 build
-cfdp-py
+cfdp-py==0.1.2
 dataclasses-json
 isort
 oresat-configs

@@ -5,7 +5,6 @@ import os
 import socket
 import sys
 from argparse import ArgumentParser
-from threading import Thread
 from time import monotonic, sleep, time
 
 sys.path.insert(0, os.path.abspath(".."))
@@ -13,54 +12,77 @@ sys.path.insert(0, os.path.abspath(".."))
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
-sent = 0
-recv = 0
-loop = 0
-last_ts = {}
+
+class Timeout:
+    """Tracks how long to sleep until the start of the next loop iteration.
+
+    Waiting for a response packet may return early so there's multiple calls
+    that need to know the time until the next cycle.
+    """
+
+    def __init__(self, delay):
+        self.start = monotonic()
+        self.delay = delay
+
+    def next(self, loop):
+        return max(self.start + self.delay * loop - monotonic(), 0)
 
 
-def send_thread(address: tuple, hmac_key: bytes, seq_num: int, delay: float, verbose: bool):
-    """Send ping thread"""
-    global sent  # pylint: disable=W0603
-    global loop  # pylint: disable=W0603
-    uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    start_time = monotonic()
+def ping_loop(
+    seq_num: int,
+    uplink: socket.socket,
+    downlink: socket.socket,
+    timeout: Timeout,
+    hmac_key: bytes,
+    verbose: bool,
+):
+    loop = 0
+    sent = 0
+    recv = 0
 
     while True:
+        sleep(timeout.next(loop))
         loop += 1
         seq_num += 1
         seq_num &= 0xFF_FF_FF_FF
 
-        values = (loop,)
-        print(f"Request PING: {values} | seq_num: {seq_num}")
+        request = EdlCommandRequest(EdlCommandCode.PING, (loop,))
+        message = EdlPacket(request, seq_num, SRC_DEST_ORESAT).pack(hmac_key)
+        if verbose:
+            print("-->", message.hex())
 
+        print(f"Seqnum: {seq_num:4} | Loop {loop:4} | ", end="", flush=True)
         try:
-            req = EdlCommandRequest(EdlCommandCode.PING, values)
-            req_packet = EdlPacket(req, seq_num, SRC_DEST_ORESAT)
-            req_message = req_packet.pack(hmac_key)
-
-            if verbose:
-                print(req_message.hex())
-
-            uplink_socket.sendto(req_message, address)
-            last_ts[loop] = time()
-            for i in last_ts:
-                if i > loop + 10:
-                    del last_ts[loop]
+            uplink.send(message)
+            last_ts = time()
             sent += 1
-        except Exception:  # pylint: disable=W0718
-            pass
+        except ConnectionRefusedError:
+            print("Connection Refused: Upstream not available to receive packets")
+            continue
 
-        if delay > 0:
-            sleep(delay - ((monotonic() - start_time) % delay))
+        print(f"Sent: {sent:4} | ", end="", flush=True)
 
-        print(f"Sent: {sent} | Recv: {recv} | Return: {100 - ((sent - recv) * 100) // sent}%\n")
+        downlink.settimeout(timeout.next(loop))
+        try:
+            response = downlink.recv(4096)
+        except socket.timeout:
+            print("(timeout)")
+            continue
+        timediff = int((time() - last_ts) * 1000)
+
+        payload = EdlPacket.unpack(response, hmac_key).payload.values[0]
+        if payload != loop:
+            print(f"Unexpected payload {payload}, expected {loop}")
+        else:
+            recv += 1
+            rate = 100 - ((sent - recv) * 100) // sent
+            print(f"PING: {payload} | Recv: {recv:4} | {timediff:4} ms | Return: {rate}%")
+
+        if verbose:
+            print("<==", response.hex())
 
 
 def main():
-    """Loop EDL ping for testing."""
-    global recv  # pylint: disable=W0603
-
     parser = ArgumentParser("Send a EDL ping in a loop")
     parser.add_argument(
         "-o", "--host", default="localhost", help="address to use, default is localhost"
@@ -98,47 +120,31 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.loop_delay < 0:
+        print(f"Invalid delay {args.loop_delay}, must be >= 0")
+        return
+
     if args.hmac:
         if len(args.hmac) != 64:
             print("Invalid hmac, must be hex string of 32 bytes")
-            sys.exit(1)
-        else:
-            hmac_key = bytes.fromhex(args.hmac)
+            return
+        hmac_key = bytes.fromhex(args.hmac)
     else:
-        hmac_key = b"\x00" * 32
+        hmac_key = bytes(32)
 
-    uplink_address = (args.host, args.uplink_port)
-
+    downlink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
-    downlink_address = (downlink_host, args.downlink_port)
-    downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    downlink_socket.bind(downlink_address)
-    downlink_socket.settimeout(1)
+    downlink.bind((downlink_host, args.downlink_port))
 
-    t = Thread(
-        target=send_thread,
-        args=(uplink_address, hmac_key, args.sequence_number, args.loop_delay / 1000, args.verbose),
-        daemon=True,
-    )
-    t.start()
+    uplink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    uplink.connect((args.host, args.uplink_port))
 
-    while True:
-        try:
-            res_message = downlink_socket.recv(0xFF_FF)
-            if args.verbose:
-                print(res_message.hex())
+    timeout = Timeout(args.loop_delay / 1000)
 
-            res_packet = EdlPacket.unpack(res_message, hmac_key)
-            recv += 1
-
-            timediff = -1.0
-            if loop in last_ts:
-                timediff = time() - last_ts[loop]
-            print(f"Response PING: {res_packet.payload.values} | {int(timediff * 1000)} ms")
-        except KeyboardInterrupt:
-            break
-        except Exception:  # pylint: disable=W0718
-            continue
+    try:
+        ping_loop(args.sequence_number, uplink, downlink, timeout, hmac_key, args.verbose)
+    except KeyboardInterrupt:
+        print()  # ctrl-c has a good chance of happening during a parial line
 
 
 if __name__ == "__main__":

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Quick shell to manually send EDL commands."""
+"""Sends EDL ping commands continuously, tracking responses"""
 
 import os
 import socket
 import sys
 from argparse import ArgumentParser
-from time import monotonic, sleep, time
+from collections import OrderedDict
+from dataclasses import dataclass
+from time import monotonic
+from typing import Generator, Union
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -16,70 +19,157 @@ from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 class Timeout:
     """Tracks how long to sleep until the start of the next loop iteration.
 
-    Waiting for a response packet may return early so there's multiple calls
-    that need to know the time until the next cycle.
+    The idea is we'd like to wait until a specific time but the timer only accepts durations
+    and may wake up early. This class turns an absolute time (given in loops) into a relative
+    duration from now and makes it easy to resume the timer if woken up early. Should be created
+    close (in time) to the start of the loop.
+
+    Parameters
+    ----------
+    delay: duration in seconds of one loop iteration
     """
 
-    def __init__(self, delay):
+    def __init__(self, delay: float):
         self.start = monotonic()
         self.delay = delay
 
-    def next(self, loop):
-        return max(self.start + self.delay * loop - monotonic(), 0)
+    def next(self, loop: int) -> Generator[float, None, None]:
+        """Generates a monotonically decreasing series of timeouts for the given loop iteration.
+
+        Parameters
+        ----------
+        loop: non-negative int giving the current loop iteration
+        """
+
+        while (t := self.delay * loop + self.start - monotonic()) > 0:
+            yield t
 
 
-def ping_loop(
-    seq_num: int,
-    uplink: socket.socket,
-    downlink: socket.socket,
-    timeout: Timeout,
-    hmac_key: bytes,
-    verbose: bool,
-):
+class Link:
+    """Manages sending and receiving pings, tracking various stats in the process
+
+    Parameters
+    ----------
+    host: address to send pings to, either an IP or a hostname
+    up_port: port on host to send to
+    down_port: local port to listen on
+    seqn: EDL sequence number to start on
+    hmac: EDL HMAC key
+    """
+
+    def __init__(self, host: str, up_port: int, down_port: int, seqn: int, hmac: bytes):
+        self._uplink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._uplink.connect((host, up_port))
+
+        self._downlink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._downlink.bind((host if host in ["localhost", "127.0.0.1"] else "", down_port))
+
+        self.sent = 0
+        self.echo = 0
+        self.seqn = seqn
+        self.hmac = hmac
+        self.stim: OrderedDict[int, float] = OrderedDict()
+        self.last = 0
+
+    def send(self, value: int) -> bytes:
+        if not value > self.last:
+            raise ValueError("value must be monotonically increasing")
+        self.last = value
+
+        self.seqn = self.seqn + 1 & 0xFFFF_FFFF
+        request = EdlCommandRequest(EdlCommandCode.PING, (value,))
+        message = EdlPacket(request, self.seqn, SRC_DEST_ORESAT).pack(self.hmac)
+
+        self._uplink.send(message)
+        self.stim[value] = monotonic()
+        self.sent += 1
+        return message
+
+    @dataclass
+    class Invalid:
+        """Return type for an abnormal ping response with value 'payload' and content 'raw'.
+
+        This could be caused by abnormal conditions (udp reorder/duplicate, bugs in c3, multiple
+        c3s responding, ...)
+        """
+
+        payload: int
+        raw: bytes
+
+    @dataclass
+    class Lost:
+        """Return type indicating that 'count' pings have been dropped"""
+
+        count: int
+
+    @dataclass
+    class Recv:
+        """Return type for a successful ping response with latency 'delay' and content 'raw'"""
+
+        delay: float
+        raw: bytes
+
+    Result = Union[Invalid, Lost, Recv]
+
+    def recv(self, timeout: Generator[float, None, None]) -> Generator[Result, None, None]:
+        for t in timeout:
+            self._downlink.settimeout(t)
+            response = self._downlink.recv(4096)
+            payload = EdlPacket.unpack(response, self.hmac).payload.values[0]
+            t_recv = monotonic()
+
+            # self.stim is monotonic but not necessarily contiguous.
+            if payload not in self.stim:
+                yield self.Invalid(payload, response)
+                continue
+
+            lost = 0
+            while self.stim:
+                value, t_sent = self.stim.popitem(last=False)
+                if payload == value:
+                    break
+                lost += 1
+
+            if lost > 0:
+                yield self.Lost(lost)
+            self.echo += 1
+            yield self.Recv(t_recv - t_sent, response)
+
+    def rate(self):
+        return 100 * self.echo // self.sent
+
+
+def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
+    print("Loop | Seqn  Sent  [Recv (Rate) Latency or Lost×]", end="", flush=True)
     loop = 0
-    sent = 0
-    recv = 0
-
-    while True:
-        sleep(timeout.next(loop))
+    while count < 0 or loop < count:
         loop += 1
-        seq_num += 1
-        seq_num &= 0xFF_FF_FF_FF
+        print(f"\n{loop:4} |", end="", flush=True)
 
-        request = EdlCommandRequest(EdlCommandCode.PING, (loop,))
-        message = EdlPacket(request, seq_num, SRC_DEST_ORESAT).pack(hmac_key)
-        if verbose:
-            print("-->", message.hex())
-
-        print(f"Seqnum: {seq_num:4} | Loop {loop:4} | ", end="", flush=True)
         try:
-            uplink.send(message)
-            last_ts = time()
-            sent += 1
+            message = link.send(loop)
+            if verbose:
+                print("\n↖", message.hex())
         except ConnectionRefusedError:
-            print("Connection Refused: Upstream not available to receive packets")
+            print("Connection Refused: Uplink destination not available to receive packets")
             continue
+        print(f"{link.seqn:4}# {link.sent:4}↖  ", end="", flush=True)
 
-        print(f"Sent: {sent:4} | ", end="", flush=True)
-
-        downlink.settimeout(timeout.next(loop))
         try:
-            response = downlink.recv(4096)
+            for result in link.recv(timeout.next(loop)):
+                print(f"[{link.echo:4}↙ ({link.rate():3}%) ", end="", flush=True)
+                if isinstance(result, Link.Recv):
+                    print(f"{int(result.delay * 1000):4}ms]", end="", flush=True)
+                    if verbose:
+                        print("\n↙", result.raw.hex())
+                elif isinstance(result, Link.Lost):
+                    print(f"{result.count:4}× ]", end="", flush=True)
+                elif isinstance(result, Link.Invalid):
+                    print(f"Unexpected payload {result.payload}, expected {loop}]")
+                    if verbose:
+                        print("\n↙", result.raw.hex())
         except socket.timeout:
-            print("(timeout)")
-            continue
-        timediff = int((time() - last_ts) * 1000)
-
-        payload = EdlPacket.unpack(response, hmac_key).payload.values[0]
-        if payload != loop:
-            print(f"Unexpected payload {payload}, expected {loop}")
-        else:
-            recv += 1
-            rate = 100 - ((sent - recv) * 100) // sent
-            print(f"PING: {payload} | Recv: {recv:4} | {timediff:4} ms | Return: {rate}%")
-
-        if verbose:
-            print("<==", response.hex())
+            pass
 
 
 def main():
@@ -118,6 +208,14 @@ def main():
         default="",
         help="edl hmac, must be 32 bytes, default all zero",
     )
+    parser.add_argument(
+        "-c",
+        "--count",
+        default=-1,
+        type=int,
+        help="send up to COUNT pings before stopping. Negative values are forever",
+    )
+
     args = parser.parse_args()
 
     if args.loop_delay < 0:
@@ -132,19 +230,15 @@ def main():
     else:
         hmac_key = bytes(32)
 
-    downlink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
-    downlink.bind((downlink_host, args.downlink_port))
-
-    uplink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    uplink.connect((args.host, args.uplink_port))
-
+    link = Link(args.host, args.uplink_port, args.downlink_port, args.sequence_number, hmac_key)
     timeout = Timeout(args.loop_delay / 1000)
 
     try:
-        ping_loop(args.sequence_number, uplink, downlink, timeout, hmac_key, args.verbose)
+        ping_loop(link, timeout, args.count, args.verbose)
     except KeyboardInterrupt:
-        print()  # ctrl-c has a good chance of happening during a parial line
+        pass
+    finally:
+        print("\nNext sequence number:", link.seqn)
 
 
 if __name__ == "__main__":

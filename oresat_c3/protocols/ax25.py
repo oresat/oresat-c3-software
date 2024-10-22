@@ -1,5 +1,7 @@
 """Anything dealing with packing AX.25 packets."""
 
+from dataclasses import dataclass
+
 import bitstring
 
 AX25_CALLSIGN_LEN = 6
@@ -106,3 +108,58 @@ def ax25_pack(
     )
 
     return header + payload
+
+
+@dataclass
+class Ax25:
+    """Holds the contents of an AX.25 packet"""
+
+    dest_callsign: str
+    dest_ssid: int
+    src_callsign: str
+    src_ssid: int
+    control: int
+    pid: int
+    command: bool
+    response: bool
+    payload: bytes
+
+
+def ax25_unpack(raw: bytes) -> Ax25:
+    """
+    Unpacks a AX25 packet.
+
+    Parameters
+    ----------
+    raw: bytes
+        Raw bytes of an AX25 packet
+
+    Returns
+    -------
+    AX25
+        The AX25 fields.
+    """
+    # Unpack AX25 packet header
+    dest = raw[:AX25_CALLSIGN_LEN]
+    dest_ssid = raw[AX25_CALLSIGN_LEN]
+    src = raw[AX25_CALLSIGN_LEN + 1 : 2 * AX25_CALLSIGN_LEN + 1]
+    src_ssid = raw[2 * AX25_CALLSIGN_LEN + 1]
+    control = raw[2 * AX25_CALLSIGN_LEN + 2]
+    pid = raw[2 * AX25_CALLSIGN_LEN + 3]
+    payload = raw[2 * AX25_CALLSIGN_LEN + 4 :]
+
+    # callsigns are bitshifted by 1
+    dest_callsign = (bitstring.BitArray(dest) >> 1).bytes.decode("ascii").rstrip()
+    src_callsign = (bitstring.BitArray(src) >> 1).bytes.decode("ascii").rstrip()
+
+    return Ax25(
+        dest_callsign=dest_callsign,
+        dest_ssid=(dest_ssid & 0x1F) >> 1,
+        src_callsign=src_callsign,
+        src_ssid=(src_ssid & 0x1F) >> 1,
+        control=control,
+        pid=pid,
+        command=bool(dest_ssid & 1 << 7),
+        response=bool(src_ssid & 1 << 7),
+        payload=payload,
+    )

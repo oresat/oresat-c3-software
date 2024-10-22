@@ -33,6 +33,8 @@ def main():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind((host, args.beacon_port))
 
+    print("loop | source->dest  |   LBand EDL seq   rej  Batt V1       V2")
+
     loop = 0
     while True:
         loop += 1
@@ -43,13 +45,20 @@ def main():
         crc = int.from_bytes(ax.payload[-4:], "little")
         if crc != crc32(ax.payload[:-4]):
             print(" | invalid CRC", end="")
-
-        if ax.payload[:3] != bytes("{{z", "ascii"):
+        elif ax.payload[:3] != bytes("{{z", "ascii"):
             print(" | invalid payload header", ax.payload[:3], end="")
-        print()
-
+        else:
+            lband_rx = int.from_bytes(ax.payload[38:42], "little")
+            edl_seq = int.from_bytes(ax.payload[53:57], "little")
+            edl_rej = int.from_bytes(ax.payload[57:61], "little")
+            vbatt_1 = int.from_bytes(ax.payload[65:67], "little")
+            vbatt_2 = int.from_bytes(ax.payload[101:103], "little")
+            print(
+                f" | {lband_rx:4} rx {edl_seq:6}# {edl_rej:4}× {vbatt_1:6}mV {vbatt_2:6}mV", end=""
+            )
         if args.verbose:
-            print(raw.hex())
+            print("\n", raw.hex(), end="")
+        print()
 
 
 if __name__ == "__main__":

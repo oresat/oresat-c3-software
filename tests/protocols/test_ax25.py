@@ -2,11 +2,39 @@
 
 import unittest
 
-from oresat_c3.protocols.ax25 import AX25_PAYLOAD_MAX_LEN, Ax25Error, ax25_pack
+from oresat_c3.protocols.ax25 import AX25_PAYLOAD_MAX_LEN, Ax25, Ax25Error, ax25_pack, ax25_unpack
 
 
 class TestAx25(unittest.TestCase):
-    """Test ax25_pack."""
+    """Test ax25_pack and ax_25 unpack"""
+
+    def test_ax25_roundtrip(self):
+        """Test if unpack can recreate a packed packet"""
+        src = Ax25(
+            dest_callsign="DEST",
+            dest_ssid=1,
+            src_callsign="SRC",
+            src_ssid=1,
+            control=1,
+            pid=1,
+            command=True,
+            response=True,
+            payload=b"\x01\x02\x03",
+        )
+        result = ax25_unpack(
+            ax25_pack(
+                dest_callsign=src.dest_callsign,
+                dest_ssid=src.dest_ssid,
+                src_callsign=src.src_callsign,
+                src_ssid=src.src_ssid,
+                control=src.control,
+                pid=src.pid,
+                command=src.command,
+                response=src.response,
+                payload=src.payload,
+            )
+        )
+        self.assertEqual(src, result)
 
     def test_ax25_pack_invalid_dest_callsign_length(self):
         """Set destination callsign with a length greater than AX25_CALLSIGN_LEN"""

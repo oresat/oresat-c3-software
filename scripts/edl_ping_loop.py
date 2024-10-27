@@ -53,11 +53,11 @@ class Link:
     host: address to send pings to, either an IP or a hostname
     up_port: port on host to send to
     down_port: local port to listen on
-    seqn: EDL sequence number to start on
+    sequence_number: EDL sequence number to start on
     hmac: EDL HMAC key
     """
 
-    def __init__(self, host: str, up_port: int, down_port: int, seqn: int, hmac: bytes):
+    def __init__(self, host: str, up_port: int, down_port: int, sequence_number: int, hmac: bytes):
         self._uplink = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self._uplink.connect((host, up_port))
 
@@ -66,9 +66,9 @@ class Link:
 
         self.sent = 0
         self.echo = 0
-        self.seqn = seqn
+        self.sequence_number = sequence_number
         self.hmac = hmac
-        self.stim: OrderedDict[int, float] = OrderedDict()
+        self.sent_times: OrderedDict[int, float] = OrderedDict()
         self.last = 0
 
     def send(self, value: int) -> bytes:
@@ -76,12 +76,12 @@ class Link:
             raise ValueError("value must be monotonically increasing")
         self.last = value
 
-        self.seqn = self.seqn + 1 & 0xFFFF_FFFF
+        self.sequence_number = self.sequence_number + 1 & 0xFFFF_FFFF
         request = EdlCommandRequest(EdlCommandCode.PING, (value,))
-        message = EdlPacket(request, self.seqn, SRC_DEST_ORESAT).pack(self.hmac)
+        message = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT).pack(self.hmac)
 
         self._uplink.send(message)
-        self.stim[value] = monotonic()
+        self.sent_times[value] = monotonic()
         self.sent += 1
         return message
 
@@ -118,14 +118,15 @@ class Link:
             payload = EdlPacket.unpack(response, self.hmac).payload.values[0]
             t_recv = monotonic()
 
-            # self.stim is monotonic but not necessarily contiguous.
-            if payload not in self.stim:
+            # self.sent_times.keys() are monotonic (not to be confused with the timestamps from
+            # the monotonic() clock) but not necessarily contiguous.
+            if payload not in self.sent_times:
                 yield self.Invalid(payload, response)
                 continue
 
             lost = 0
-            while self.stim:
-                value, t_sent = self.stim.popitem(last=False)
+            while self.sent_times:
+                value, t_sent = self.sent_times.popitem(last=False)
                 if payload == value:
                     break
                 lost += 1
@@ -140,7 +141,7 @@ class Link:
 
 
 def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
-    print("Loop | Seqn  Sent  [Recv (Rate) Latency or Lost×]", end="", flush=True)
+    print("Loop | Seqn  Sent  [ Recv (Rate) Latency or Lost×]", end="", flush=True)
     loop = 0
     while count < 0 or loop < count:
         loop += 1
@@ -153,7 +154,7 @@ def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
         except ConnectionRefusedError:
             print("Connection Refused: Uplink destination not available to receive packets")
             continue
-        print(f"{link.seqn:4}# {link.sent:4}↖  ", end="", flush=True)
+        print(f"{link.sequence_number:4}# {link.sent:4}↖  ", end="", flush=True)
 
         try:
             for result in link.recv(timeout.next(loop)):
@@ -238,7 +239,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        print("\nNext sequence number:", link.seqn)
+        print("\nNext sequence number:", link.sequence_number)
 
 
 if __name__ == "__main__":

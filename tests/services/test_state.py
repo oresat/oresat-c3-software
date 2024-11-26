@@ -4,7 +4,7 @@ import unittest
 from time import time
 
 from olaf import CanNetwork, MasterNode, NodeStop
-from oresat_configs import OreSatConfig, OreSatId
+from oresat_configs import Mission, OreSatConfig
 
 from oresat_c3 import C3State
 from oresat_c3.services.state import StateService
@@ -14,7 +14,7 @@ class TestState(unittest.TestCase):
     """Test the C3 state service."""
 
     def setUp(self):
-        config = OreSatConfig(OreSatId.ORESAT0_5)
+        config = OreSatConfig(Mission.default())
         self.od = config.od_db["c3"]
         fram_def = config.fram_def
         network = CanNetwork("virtual", "vcan0")

@@ -10,7 +10,7 @@ from time import time
 from typing import Any, Union
 
 import canopen
-from oresat_configs import OreSatConfig, OreSatId
+from oresat_configs import Mission, OreSatConfig
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -29,7 +29,7 @@ class EdlCommandShell(Cmd):
     ):
         super().__init__()
 
-        self.configs = OreSatConfig(OreSatId.ORESAT0_5)
+        self.configs = OreSatConfig(Mission.default())
         self._hmac_key = hmac_key
         self._timeout = 5
         self._seq_num = seq_num

@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from dataclasses import dataclass
 from time import monotonic
-from typing import Generator, Union
+from typing import Generator, Optional, Union
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -71,21 +71,25 @@ class Link:
         self.sent_times: OrderedDict[int, float] = OrderedDict()
         self.last = 0
 
-    def send(self, value: int) -> bytes:
+    def send(self, request: EdlCommandRequest) -> bytes:
+        self.sequence_number = self.sequence_number + 1 & 0xFFFF_FFFF
+        message = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT).pack(self.hmac)
+        self._uplink.send(message)
+        return message
+
+    def ping(self, value: int) -> bytes:
         if not value > self.last:
             raise ValueError("value must be monotonically increasing")
         self.last = value
-
-        self.sequence_number = self.sequence_number + 1 & 0xFFFF_FFFF
-        request = EdlCommandRequest(EdlCommandCode.PING, (value,))
-        message = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT).pack(self.hmac)
-
-        self._uplink.send(message)
+        message = self.send(EdlCommandRequest(EdlCommandCode.PING, (value,)))
         self.sent_times[value] = monotonic()
         self.sent += 1
         return message
 
-    @dataclass
+    def beacon_ping(self) -> bytes:
+        return self.send(EdlCommandRequest(EdlCommandCode.BEACON_PING, None))
+
+    @dataclass(frozen=True)
     class Invalid:
         """Return type for an abnormal ping response with value 'payload' and content 'raw'.
 
@@ -96,13 +100,13 @@ class Link:
         payload: int
         raw: bytes
 
-    @dataclass
+    @dataclass(frozen=True)
     class Lost:
         """Return type indicating that 'count' pings have been dropped"""
 
         count: int
 
-    @dataclass
+    @dataclass(frozen=True)
     class Recv:
         """Return type for a successful ping response with latency 'delay' and content 'raw'"""
 
@@ -140,7 +144,7 @@ class Link:
         return 100 * self.echo // self.sent
 
 
-def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
+def ping_loop(link: Link, timeout: Timeout, count: int, beacon: Optional[int], verbose: bool):
     print("Loop | Seqn  Sent  [ Recv (Rate) Latency or Lost×]", end="", flush=True)
     loop = 0
     while count < 0 or loop < count:
@@ -148,13 +152,17 @@ def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
         print(f"\n{loop:4} |", end="", flush=True)
 
         try:
-            message = link.send(loop)
+            if beacon is None or loop % beacon:
+                message = link.ping(loop)
+                print(f"{link.sequence_number:4}# {link.sent:4}↖  ", end="", flush=True)
+            else:
+                message = link.beacon_ping()
+                print(f"{link.sequence_number:4}# BECN↖  ", end="", flush=True)
             if verbose:
                 print("\n↖", message.hex())
         except ConnectionRefusedError:
             print("Connection Refused: Uplink destination not available to receive packets")
             continue
-        print(f"{link.sequence_number:4}# {link.sent:4}↖  ", end="", flush=True)
 
         try:
             for result in link.recv(timeout.next(loop)):
@@ -223,11 +231,22 @@ def main():
         type=int,
         help="send up to COUNT pings before stopping. Negative values are forever",
     )
+    parser.add_argument(
+        "-b",
+        "--beacon-ping",
+        action='store_const',
+        const=30,
+        help="Send a beacon ping every %(const)s normal pings",
+    )
 
     args = parser.parse_args()
 
     if args.loop_delay < 0:
         print(f"Invalid delay {args.loop_delay}, must be >= 0")
+        return
+
+    if args.beacon_ping is not None and args.beacon_ping <= 0:
+        print(f"Invalid beacon ping interval {args.beacon_ping}, must be > 0")
         return
 
     if args.hmac:
@@ -242,7 +261,7 @@ def main():
     timeout = Timeout(args.loop_delay / 1000)
 
     try:
-        ping_loop(link, timeout, args.count, args.verbose)
+        ping_loop(link, timeout, args.count, args.beacon_ping, args.verbose)
     except KeyboardInterrupt:
         pass
     finally:

@@ -158,15 +158,22 @@ def ping_loop(link: Link, timeout: Timeout, count: int, verbose: bool):
 
         try:
             for result in link.recv(timeout.next(loop)):
-                print(f"[{link.echo:4}↙ ({link.rate():3}%) ", end="", flush=True)
                 if isinstance(result, Link.Recv):
-                    print(f"{int(result.delay * 1000):4}ms]", end="", flush=True)
+                    print(
+                        f"[{link.echo:4}↙ ({link.rate():3}%)",
+                        f"{int(result.delay * 1000):4}ms]",
+                        end="",
+                        flush=True,
+                    )
                     if verbose:
                         print("\n↙", result.raw.hex())
                 elif isinstance(result, Link.Lost):
-                    print(f"{result.count:4}× ]", end="", flush=True)
+                    print(f"[      ({link.rate():3}%) {result.count:4}× ]", end="", flush=True)
                 elif isinstance(result, Link.Invalid):
-                    print(f"Unexpected payload {result.payload}, expected {loop}]")
+                    print(
+                        f"[{link.echo:4}↙ ({link.rate():3}%)",
+                        f"Unexpected payload {result.payload}, expected {loop}]",
+                    )
                     if verbose:
                         print("\n↙", result.raw.hex())
         except socket.timeout:

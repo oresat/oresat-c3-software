@@ -74,8 +74,7 @@ class Max7310:
 
         if addr < self.ADDR_MIN or addr > self.ADDR_MAX:
             raise Max7310Error(
-                f"self._addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} "
-                f"and 0x{self.ADDR_MAX:X}"
+                f"self._addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} and 0x{self.ADDR_MAX:X}"
             )
 
         self._mock = mock

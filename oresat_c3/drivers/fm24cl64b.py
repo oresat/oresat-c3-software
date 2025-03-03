@@ -38,8 +38,7 @@ class Fm24cl64b:
 
         if addr not in self.ADDRESSES:
             raise Fm24cl64bError(
-                f"arg addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} "
-                f"and 0x{self.ADDR_MAX:X}"
+                f"arg addr 0x{addr:X} is not between 0x{self.ADDR_MIN:X} and 0x{self.ADDR_MAX:X}"
             )
 
         self._bus_num = bus_num

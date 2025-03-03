@@ -1,8 +1,7 @@
-"""Antennas subsystem."""
-
 from time import sleep
 
-from olaf import GPIO_IN, GPIO_OUT, Adc, Gpio
+from ..board.adc import Adc
+from ..board.gpio import GPIO_IN, GPIO_OUT, Gpio
 
 
 class Antennas:

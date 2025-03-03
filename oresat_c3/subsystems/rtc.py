@@ -1,12 +1,10 @@
-"""Common RTC functions."""
-
 import os
 import struct
 from datetime import datetime, timezone
 from fcntl import ioctl
 from time import CLOCK_REALTIME, clock_settime, time
 
-from olaf import logger
+from loguru import logger
 
 
 def get_rtc_time() -> float:

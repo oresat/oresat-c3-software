@@ -5,7 +5,7 @@ SI41xx RF Synthesizer driver.
 from enum import IntEnum
 from typing import Union
 
-from olaf import Gpio
+from ..board.gpio import Gpio
 
 
 class Si41xxRegister(IntEnum):

@@ -131,8 +131,9 @@ dmypy.json
 # Drawio
 .*.drawio.bkp
 
-# Generated rst files
+# Generated files
 /docs/beacon.rst
+*/gen/
 
 # Vim
 *.swp

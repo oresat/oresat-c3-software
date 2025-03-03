@@ -1,26 +1,18 @@
 """OreSat C3 app main."""
 
-import os
 import socket
+import sys
 import time
-from threading import Thread
+from argparse import ArgumentParser
 
-from olaf import (
-    Gpio,
-    GpioError,
-    ServiceState,
-    UpdaterState,
-    app,
-    logger,
-    olaf_run,
-    olaf_setup,
-    render_olaf_template,
-    rest_api,
-    set_cpufreq_gov,
-)
+from loguru import logger
+from oresat_libcanopend import NodeClient
 
-from . import C3State, __version__
-from .protocols.cachestore import CacheStore
+from . import __version__
+from .board.cpufreq import set_cpufreq_gov
+from .board.gpio import Gpio, GpioError
+from .gen.od import C3Entry, Mission, Status, SystemReset, UpdaterStatus
+from .services import Service
 from .services.beacon import BeaconService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
@@ -29,35 +21,23 @@ from .services.state import StateService
 from .subsystems.rtc import set_system_time_to_rtc_time
 
 
-@rest_api.app.route("/beacon")
-def beacon_template():
-    """Render beacon template."""
-    return render_olaf_template("beacon.html", name="Beacon")
-
-
-@rest_api.app.route("/state")
-def state_template():
-    """Render state template."""
-    return render_olaf_template("state.html", name="State")
-
-
-@rest_api.app.route("/node-manager")
-def node_mgr_template():
-    """Render node manager template."""
-    return render_olaf_template("node_manager.html", name="Node Manager")
-
-
-@rest_api.app.route("/keys")
-def keys_template():
-    """Render keys template."""
-    return render_olaf_template("keys.html", name="Keys")
+def get_hw_version() -> str:
+    version = "0.0"
+    try:
+        with open("/sys/bus/i2c/devices/XXXX/eeprom", "rb") as f:
+            raw = f.read(28)
+            version = raw[12:16].decode()
+            version = f"v{version[:2]}.{version[2:]}"
+    except Exception:
+        logger.error("failed to read hardware version from eeprom")
+    return version
 
 
 def get_hw_id(mock: bool) -> int:
     """
     Get the hardware ID of the C3 card.
 
-    There are 5 gpio pins used to get the unique hardware of the card.
+    There are 5 gpio pins used to get the unique hardware of the v6.0 card.
     """
 
     hw_id = 0
@@ -70,83 +50,111 @@ def get_hw_id(mock: bool) -> int:
     return hw_id
 
 
-def watchdog():
-    """Pet the watchdog app (which pets the watchdog circuit)."""
+class Watchdog:
+    def __init__(self, port: int = 20001):
+        self._port = port
+        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    performance = True
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    loop = 0
+    def pet(self):
+        self._socket.sendto(b"PET", ("localhost", self._port))
 
-    while True:
-        time.sleep(1)
-        loop += 1
+    def run(self, node: NodeClient, services: list[Service]):
+        performance = True
+        loop = 0
 
-        failed = 0
-        flight_mode = app.od["flight_mode"].value
+        while node.od_read(C3Entry.SYSTEM_RESET) == SystemReset.NO_RESET:
+            time.sleep(1)
+            loop += 1
 
-        for service in app._services:  # pylint: disable=W0212
-            failed += int(service.status == ServiceState.FAILED)
-        if loop % 10 == 0 and (not flight_mode or failed == 0):
-            logger.debug("watchdog pet")
-            udp_socket.sendto(b"PET", ("localhost", 20001))
+            failed = 0
+            flight_mode = node.od_read(C3Entry.FLIGHT_MODE)
 
-        if not flight_mode:
-            continue
+            for service in services:  # pylint: disable=W0212
+                failed += int(not service.is_running)
+            if loop % 10 == 0 and (not flight_mode or failed == 0):
+                logger.debug("watchdog pet")
+                self.pet()
 
-        updating = app.od["updater"]["status"].value == UpdaterState.UPDATING
-        edl = app.od["status"].value == C3State.EDL
+            if not flight_mode:
+                continue
 
-        if not performance and (updating or edl):
-            logger.info("setting cpufreq governor to performance mode")
-            set_cpufreq_gov("performance")
-            performance = True
-        elif performance and not updating and not edl:
-            logger.info("setting cpufreq governor to powersave mode")
-            set_cpufreq_gov("powersave")
-            performance = False
+            updating = node.od_read(C3Entry.UPDATER_STATUS) == UpdaterStatus.IN_PROGRESS
+            edl = node.od_read(C3Entry.STATUS) == Status.EDL
+
+            if not performance and (updating or edl):
+                logger.info("setting cpufreq governor to performance mode")
+                set_cpufreq_gov("performance")
+                performance = True
+            elif performance and not updating and not edl:
+                logger.info("setting cpufreq governor to powersave mode")
+                set_cpufreq_gov("powersave")
+                performance = False
 
 
 def main():
-    """OreSat C3 app main."""
+    watchdog = Watchdog()
+    watchdog.pet()  # pet watchdog ASAP
+
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-o", "--oresat", type=float, choices=[0, 0.5, 1], default=0.5, help="oresat mission"
+    )
+    parser.add_argument("-m", "--mock-hw", action="store_true", help="mock hardware")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
+    args = parser.parse_args()
+
+    if args.verbose:
+        level = "DEBUG"
+    else:
+        level = "INFO"
+
+    logger.remove()  # remove default logger
+    logger.add(sys.stdout, level=level, backtrace=True)
 
     set_system_time_to_rtc_time()
 
-    path = os.path.dirname(os.path.abspath(__file__))
+    node = NodeClient(C3Entry)
 
-    args, config = olaf_setup("c3")
-    mock_args = [i.lower() for i in args.mock_hw]
-    mock_hw = len(mock_args) != 0
+    mission = Mission[f"ORESAT{args.oresat}".replace(".", "_")]
+    node.od_write(C3Entry.MISSION, mission)
 
-    # start watchdog thread ASAP
-    thread = Thread(target=watchdog, daemon=True)
-    thread.start()
+    node.od_write(C3Entry.VERSIONS_SW_VERSION, __version__)
+    node.od_write(C3Entry.VERSIONS_HW_VERSION, get_hw_version())
+    if node.od_read(C3Entry.VERSIONS_HW_VERSION) == "6.0":
+        node.od_write(C3Entry.HW_ID, get_hw_id(args.mock_hw))
 
-    # The C3 needs a special OreSatFileCache that can speak CFDP
-    app.node._fwrite_cache = CacheStore(app.node.fwrite_cache.dir)  # pylint: disable=W0212
+    state_service = StateService(node, args.mock_hw)  # first to restore state from F-RAM
+    radios_service = RadiosService(node, args.mock_hw)
+    beacon_service = BeaconService(node, radios_service)
+    node_mgr_service = NodeManagerService(node, args.mock_hw)
+    edl_service = EdlService(node, radios_service, node_mgr_service, beacon_service)
 
-    app.od["versions"]["sw_version"].value = __version__
-    if app.od["versions"]["hw_version"].value == "6.0":
-        app.od["hw_id"].value = get_hw_id(mock_hw)
+    services = [
+        state_service,
+        radios_service,
+        beacon_service,
+        edl_service,
+        node_mgr_service,
+    ]
 
-    state_service = StateService(config.fram_def, mock_hw)
-    radios_service = RadiosService(mock_hw)
-    beacon_service = BeaconService(config.beacon_def, radios_service)
-    node_mgr_service = NodeManagerService(config.cards, mock_hw)
-    edl_service = EdlService(app.node, radios_service, node_mgr_service, beacon_service)
+    for service in services:
+        service.start()
 
-    app.add_service(state_service)  # add state first to restore state from F-RAM
-    app.add_service(radios_service)
-    app.add_service(beacon_service)
-    app.add_service(edl_service)
-    app.add_service(node_mgr_service)
+    try:
+        watchdog.run(node, services)
+    except KeyboardInterrupt:
+        pass
 
-    for file_name in os.listdir(f"{path}/templates"):
-        rest_api.add_template(f"{path}/templates/{file_name}")
+    for service in services:
+        service.stop()  # put hw in a good state
 
     # on factory reset clear F-RAM
-    app.set_factory_reset_callback(state_service.clear_state)
+    reset = node.od_read(C3Entry.SYSTEM_RESET)
+    if reset == SystemReset.FACTORY_RESET:
+        state_service.clear_state()
 
-    olaf_run()
+    if reset != SystemReset.NO_RESET:
+        logger.info(reset.name)
 
 
 if __name__ == "__main__":

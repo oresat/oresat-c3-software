@@ -1,5 +1,3 @@
-"""'EDL Service"""
-
 from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
@@ -7,14 +5,8 @@ from queue import Empty, SimpleQueue
 from time import time
 from typing import Any, Optional
 
-import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import (
-    FsmNotCalledAfterPacketInsertion,
-    NoRemoteEntityCfgFound,
-    SourceFileDoesNotExist,
-    UnretrievedPdusToBeSent,
-)
+from cfdppy.exceptions import NoRemoteEntityCfgFound, SourceFileDoesNotExist
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -32,7 +24,8 @@ from cfdppy.user import (
     TransactionId,
     TransactionParams,
 )
-from olaf import MasterNode, NodeStop, Service, logger
+from loguru import logger
+from oresat_libcanopend import NodeClient
 from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
@@ -48,7 +41,7 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
-from ..protocols.cachestore import CacheStore
+from ..gen.od import C3Entry, SystemReset
 from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
@@ -58,6 +51,7 @@ from ..protocols.edl_command import (
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
+from . import Service
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
@@ -68,55 +62,40 @@ class EdlService(Service):
 
     def __init__(
         self,
-        node: MasterNode,
+        node: NodeClient,
         radios_service: RadiosService,
         node_mgr_service: NodeManagerService,
         beacon_service: BeaconService,
     ):
-        super().__init__()
+        super().__init__(node)
 
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
 
-        self._file_receiver = EdlFileReciever(node.fwrite_cache)
+        self._file_receiver = EdlFileReciever()
 
-        # objs
-        edl_rec = node.od["edl"]
-        tx_rec = node.od["tx_control"]
-        self._flight_mode_obj = node.od["flight_mode"]
-        self._seq_num = edl_rec["sequence_count"].value
-        self._tx_enable_obj = tx_rec["enable"]
-        self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
-        self._edl_sequence_count_obj = edl_rec["sequence_count"]
-        self._edl_rejected_count_obj = edl_rec["rejected_count"]
-        self._last_edl_obj = edl_rec["last_timestamp"]
+        self._active_key_entry = C3Entry.EDL_CRYPTO_KEY_1
 
     @property
     def _hmac_key(self) -> bytes:
-        edl_rec = self.node.od["edl"]
-        active_key = edl_rec["active_crypto_key"].value
-        return edl_rec[f"crypto_key_{active_key}"].value
+        return self.node.od_read(self._active_key_entry)
 
-    @property
-    def _flight_mode(self) -> bool:
-        return bool(self._flight_mode_obj.value)
+    def _increase_count(self, entry):
+        count = self.node.od_read(entry)
+        count += 1
+        count &= 0xFF_FF_FF_FF
+        self.node.od_write(entry, count)
 
-    @property
-    def _sequence_count(self) -> int:
-        return self._edl_sequence_count_obj.value
-
-    @_sequence_count.setter
-    def _sequence_count(self, value):
-        self._edl_sequence_count_obj.value = value
-
-    @property
-    def _rejected_count(self) -> int:
-        return self._edl_rejected_count_obj.value
-
-    @_rejected_count.setter
-    def _rejected_count(self, value):
-        self._edl_rejected_count_obj.value = value
+    def _set_active_key(self, key_num: int):
+        self.node.od_write(C3Entry.EDL_ACTIVE_CRYPTO_KEY, key_num)
+        key_entries = [
+            C3Entry.EDL_CRYPTO_KEY_1,
+            C3Entry.EDL_CRYPTO_KEY_2,
+            C3Entry.EDL_CRYPTO_KEY_3,
+            C3Entry.EDL_CRYPTO_KEY_4,
+        ]
+        self._active_key_entry = key_entries[key_num]
 
     def _upack_last_recv(self) -> Optional[EdlPacket]:
         try:
@@ -125,25 +104,27 @@ class EdlService(Service):
             return None
 
         try:
-            packet = EdlPacket.unpack(message, self._hmac_key, not self._flight_mode)
+            packet = EdlPacket.unpack(
+                message, self._hmac_key, not self.node.od_read(C3Entry.FLIGHT_MODE)
+            )
         except EdlPacketError as e:
-            self._rejected_count += 1
-            self._rejected_count &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
+            self._increase_count(C3Entry.EDL_REJECTED_COUNT)
             return None  # no responses to invalid packets
 
-        if self._flight_mode and packet.seq_num < self._sequence_count:
+        if self.node.od_read(C3Entry.FLIGHT_MODE) and packet.seq_num < self.node.od_read(
+            C3Entry.EDL_SEQUENCE_COUNT
+        ):
             logger.error(
                 f"invalid EDL request packet sequence number of {packet.seq_num}, should be > "
-                f"{self._sequence_count}"
+                f"{self.node.od_read(C3Entry.EDL_SEQUENCE_COUNT)}"
             )
             return None  # no responses to invalid packets
 
-        self._last_edl_obj.value = int(time())
+        self.node.od_read(C3Entry.EDL_LAST_TIMESTAMP, int(time()))
 
-        if self._flight_mode:
-            self._sequence_count = packet.seq_num
-            self._sequence_count &= 0xFF_FF_FF_FF
+        if self.node.od_read(C3Entry.FLIGHT_MODE):
+            self._increase_count(C3Entry.EDL_SEQUENCE_COUNT)
 
         return packet
 
@@ -194,23 +175,23 @@ class EdlService(Service):
         if request.code == EdlCommandCode.TX_CTRL:
             if request.args[0] == 0:
                 logger.info("EDL disabling Tx")
-                self._tx_enable_obj.value = False
-                self._last_tx_enable_obj.value = 0
+                self.node.od_write(C3Entry.TX_CONTROL_ENABLE, False)
+                self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
                 ret = False
             else:
                 logger.info("EDL enabling Tx")
-                self._tx_enable_obj.value = True
-                self._last_tx_enable_obj.value = int(time())
+                self.node.od_write(C3Entry.TX_CONTROL_ENABLE, True)
+                self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, int(time()))
                 ret = True
         elif request.code == EdlCommandCode.C3_SOFT_RESET:
             logger.info("EDL soft reset")
-            self.node.stop(NodeStop.SOFT_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.SOFT_RESET)
         elif request.code == EdlCommandCode.C3_HARD_RESET:
             logger.info("EDL hard reset")
-            self.node.stop(NodeStop.HARD_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.HARD_RESET)
         elif request.code == EdlCommandCode.C3_FACTORY_RESET:
             logger.info("EDL factory reset")
-            self.node.stop(NodeStop.FACTORY_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
             node_id = request.args[0]
             name = self._node_mgr_service.node_id_to_name[node_id]
@@ -226,16 +207,11 @@ class EdlService(Service):
             logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
             try:
                 if node_id == 1:
-                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
-                    if var_index and subindex == 0:
-                        obj = self.node.od[index]
-                    elif not var_index:
-                        obj = self.node.od[index][subindex]
-                    else:
-                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
-                    self.node._on_sdo_write(index, subindex, obj, data)  # pylint: disable=W0212
+                    entry = C3Entry.find_entry(index, subindex)
+                    value = entry.decode(data)
+                    self.node.sdo_write(node_id, entry, value)
                 else:
-                    self.node.sdo_write(name, index, subindex, data)
+                    raise NotImplementedError()
                 ret = 0
             except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
@@ -307,29 +283,17 @@ class EdlService(Service):
             ecode = 0
             try:
                 if node_id == 1:
-                    var_index = isinstance(self.node.od[index], canopen.objectdictionary.Variable)
-                    if var_index and subindex == 0:
-                        obj = self.node.od[index]
-                    elif not var_index:
-                        obj = self.node.od[index][subindex]
-                    else:
-                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
-                    value = self.node._on_sdo_read(index, subindex, obj)  # pylint: disable=W0212
-                    data = obj.encode_raw(value)
+                    entry = C3Entry.find_entry(index, subindex)
+                    value = self.node.sdo_read(node_id, entry)
+                    data = entry.encode(value)
                 else:
-                    value = self.node.sdo_read(name, index, subindex)
-                    od = self.node.od_db[name]
-                    var_index = isinstance(od[index], canopen.objectdictionary.Variable)
-                    if var_index and subindex == 0:
-                        obj = od[index]
-                    elif not var_index:
-                        obj = od[index][subindex]
-                    else:
-                        raise canopen.sdo.exceptions.SdoAbortedError(0x06090011)
-                    data = obj.encode_raw(value)
+                    raise NotImplementedError()
             except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
                 ecode = e.code
+            except Exception as e:
+                logger.error(e)
+                ecode = 0x06090011
             ret = (ecode, len(data), data)
 
         if ret is not None and not isinstance(ret, tuple):
@@ -375,8 +339,8 @@ class DefaultCheckTimer(CheckTimerProvider):
 class EdlFileReciever(CfdpUserBase):
     """CFDP receiver for file uploads."""
 
-    def __init__(self, fwrite_cache: CacheStore):
-        super().__init__(vfs=fwrite_cache)
+    def __init__(self):
+        super().__init__()
 
         self.proxy_responses = {  # FIXME: defaultdict with invalid response
             ProxyMessageType.PUT_REQUEST: self.proxy_put_response,

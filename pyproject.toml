@@ -18,11 +18,11 @@ classifiers = [
     "Topic :: Software Development :: Embedded Systems",
 ]
 dependencies = [
+    "bottle",
     "bitstring",
     "cfdp-py==0.1.2",
     "dataclasses-json",
-    "oresat-configs",
-    "oresat-olaf>=3.5.0",
+    "oresat-canopend",
     "smbus2",
     "spacepackets",
 ]

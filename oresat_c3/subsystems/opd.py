@@ -8,8 +8,10 @@ from enum import IntEnum
 from time import sleep
 from typing import Union
 
-from olaf import Adc, Gpio, logger
+from loguru import logger
 
+from ..board.adc import Adc
+from ..board.gpio import Gpio
 from ..drivers.max7310 import Max7310, Max7310Error
 
 
@@ -585,7 +587,6 @@ class Opd:
 
     @uart_node.setter
     def uart_node(self, name: Union[str, None]):
-
         self._uart_disconnect()
         if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:
             return

@@ -19,6 +19,7 @@ from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
 from .subsystems.rtc import set_system_time_to_rtc_time
+from .ui import Ui
 
 
 def get_hw_version() -> str:
@@ -139,6 +140,9 @@ def main():
 
     for service in services:
         service.start()
+
+    ui = Ui()
+    ui.start()
 
     try:
         watchdog.run(node, services)

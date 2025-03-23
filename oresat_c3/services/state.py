@@ -6,7 +6,7 @@ from loguru import logger
 from oresat_libcanopend import DataType, NodeClient
 
 from ..drivers.fm24cl64b import Fm24cl64b
-from ..gen.c3_od import C3Entry, C3Status
+from ..gen.c3_od import C3Entry, C3Status, C3UpdaterStatus, C3SystemReset
 from ..gen.fram import FRAM_DEF
 from ..subsystems.antennas import Antennas
 from ..subsystems.rtc import set_rtc_time
@@ -57,7 +57,7 @@ class StateService(Service):
             self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
 
     def _reset(self):
-        if self.node.od_write(C3Entry.UPDATER_STATUS) == SoftwareUpdaterStatus.IN_PROGRESS:
+        if self.node.od_write(C3Entry.UPDATER_STATUS) == C3UpdaterStatus.IN_PROGRESS:
             return
 
         logger.info("system reset")
@@ -71,7 +71,7 @@ class StateService(Service):
 
         if result.returncode != 0:
             logger.error("stopping watchdog app failed, doing a hard reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, SoftwareSystemReset.HARD_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.HARD_RESET)
 
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""

@@ -6,8 +6,8 @@ from loguru import logger
 from oresat_libcanopend import DataType, NodeClient
 
 from ..drivers.fm24cl64b import Fm24cl64b
+from ..gen.c3_od import C3Entry, C3Status
 from ..gen.fram import FRAM_DEF
-from ..gen.od import C3Entry, Status, SystemReset, UpdaterStatus
 from ..subsystems.antennas import Antennas
 from ..subsystems.rtc import set_rtc_time
 from . import Service
@@ -25,15 +25,15 @@ class StateService(Service):
         self._antennas = Antennas(mock_hw)
         self._attempts = 0
         self._loops = 0
-        self._last_state = Status.PRE_DEPLOY
+        self._last_state = C3Status.PRE_DEPLOY
         self._last_antennas_deploy = 0
         self._start_time = monotonic()
 
         self.restore_state()
         if not self.node.od_read(C3Entry.TX_CONTROL_ENABLE):
             self.node.od_write(C3Entry.EDL_LAST_TIMESTAMP, 0)
-        if self.node.od_read(C3Entry.STATUS) == Status.EDL:
-            self.node.od_write(C3Entry.STATUS, Status.STANDBY)
+        if self.node.od_read(C3Entry.STATUS) == C3Status.EDL:
+            self.node.od_write(C3Entry.STATUS, C3Status.STANDBY)
 
         self.node.add_write_callback(C3Entry.TX_CONTROL_ENABLE, self._on_write_tx_enable)
 
@@ -57,7 +57,7 @@ class StateService(Service):
             self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
 
     def _reset(self):
-        if self.node.od_write(C3Entry.UPDATER_STATUS) == UpdaterStatus.IN_PROGRESS:
+        if self.node.od_write(C3Entry.UPDATER_STATUS) == SoftwareUpdaterStatus.IN_PROGRESS:
             return
 
         logger.info("system reset")
@@ -71,7 +71,7 @@ class StateService(Service):
 
         if result.returncode != 0:
             logger.error("stopping watchdog app failed, doing a hard reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.HARD_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, SoftwareSystemReset.HARD_RESET)
 
     def _pre_deploy(self):
         """PRE_DEPLOY state method."""
@@ -83,7 +83,7 @@ class StateService(Service):
                 self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, int(time()))
         else:
             logger.info("pre-deploy timeout reached")
-            self.node.od_write(C3Entry.STATUS, Status.DEPLOY)
+            self.node.od_write(C3Entry.STATUS, C3Status.DEPLOY)
 
     def _deploy(self):
         """DEPLOY state method."""
@@ -98,7 +98,7 @@ class StateService(Service):
             ) and self.is_bat_lvl_good:
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
                 self._antennas.deploy(
-                    self.node.od_read(C3Entry.ANTENNAS_ATTEMPTS_TIMEOUT),
+                    self.node.od_read(C3Entry.ANTENNAS_ATTEMPT_TIMEOUT),
                     self.node.od_read(C3Entry.ANTENNAS_ATTEMPT_BETWEEN_TIMEOUT),
                 )
                 self._last_antennas_deploy = monotonic()
@@ -106,7 +106,7 @@ class StateService(Service):
             # wait for battery to be at a good level
         else:
             logger.info("antennas deployed")
-            self.node.od_write(C3Entry.STATUS, Status.STANDBY)
+            self.node.od_write(C3Entry.STATUS, C3Status.STANDBY)
             self.node.od_write(C3Entry.ANTENNAS_DEPLOYED, True)
             self._attempts = 0
 
@@ -114,30 +114,30 @@ class StateService(Service):
         """STANDBY state method."""
 
         if self.has_edl_timed_out:
-            self.node.od_write(C3Entry.STATUS, Status.EDL)
+            self.node.od_write(C3Entry.STATUS, C3Status.EDL)
         elif self.has_reset_timed_out:
             self._reset()
         elif not self.has_tx_timed_out and self.is_bat_lvl_good:
-            self.node.od_write(C3Entry.STATUS, Status.BEACON)
+            self.node.od_write(C3Entry.STATUS, C3Status.BEACON)
 
     def _beacon(self):
         """BEACON state method."""
 
         if self.has_edl_timed_out:
-            self.node.od_write(C3Entry.STATUS, Status.EDL)
+            self.node.od_write(C3Entry.STATUS, C3Status.EDL)
         elif self.has_reset_timed_out:
             self._reset()
         elif self.has_tx_timed_out or not self.is_bat_lvl_good:
-            self.node.od_write(C3Entry.STATUS, Status.STANDBY)
+            self.node.od_write(C3Entry.STATUS, C3Status.STANDBY)
 
     def _edl(self):
         """EDL state method."""
 
         if not self.has_edl_timed_out:
             if not self.has_tx_timed_out and self.is_bat_lvl_good:
-                self.node.od_write(C3Entry.STATUS, Status.BEACON)
+                self.node.od_write(C3Entry.STATUS, C3Status.BEACON)
             else:
-                self.node.od_write(C3Entry.STATUS, Status.STANDBY)
+                self.node.od_write(C3Entry.STATUS, C3Status.STANDBY)
 
     def on_loop(self):
         if self.has_tx_timed_out and self.node.od_read(C3Entry.TX_CONTROL_ENABLE):
@@ -152,20 +152,20 @@ class StateService(Service):
             )
             logger.info(f"C3 state change: {self._last_state.name} -> {state.name}")
 
-        if state == Status.PRE_DEPLOY:
+        if state == C3Status.PRE_DEPLOY:
             self._pre_deploy()
-        elif state == Status.DEPLOY:
+        elif state == C3Status.DEPLOY:
             self._deploy()
-        elif state == Status.STANDBY:
+        elif state == C3Status.STANDBY:
             self._standby()
-        elif state == Status.BEACON:
+        elif state == C3Status.BEACON:
             self._beacon()
-        elif state == Status.EDL:
+        elif state == C3Status.EDL:
             self._edl()
         else:
-            logger.error(f"C3 invalid state: {self._c3_state_obj.value}, resetting to PRE_DEPLOY")
-            self._c3_state_obj.value = Status.PRE_DEPLOY.value
-            self._last_state = self._c3_state_obj.value
+            logger.error(f"C3 invalid state: {state}, resetting to PRE_DEPLOY")
+            self.node.od_write(C3Entry.STATUS, C3Status.PRE_DEPLOY)
+            self._last_state = C3Status.PRE_DEPLOY
             return
 
         self._last_state = self.node.od_read(C3Entry.STATUS)
@@ -188,17 +188,17 @@ class StateService(Service):
     def has_tx_timed_out(self) -> bool:
         """bool: Helper property to check if the tx timeout has been reached."""
 
-        return (
-            time() - self.node.od_read(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP)
-        ) > self.node.od_read(C3Entry.TX_CONTROL_TIMEOUT)
+        last_tx_enable_ts = self.node.od_read(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP)
+        tx_enable_timeout = self.node.od_read(C3Entry.TX_CONTROL_TIMEOUT)
+        return time() - last_tx_enable_ts > tx_enable_timeout
 
     @property
     def has_edl_timed_out(self) -> bool:
         """bool: Helper property to check if the edl timeout has been reached."""
 
-        return (time() - self.node.od_read(C3Entry.EDL_LAST_TIMESTAMP)) < self.node.od_read(
-            C3Entry.EDL_TIMEOUT
-        )
+        last_edl_ts = self.node.od_read(C3Entry.EDL_LAST_TIMESTAMP)
+        edl_timeout = self.node.od_read(C3Entry.EDL_TIMEOUT)
+        return time() - last_edl_ts < edl_timeout
 
     @property
     def is_bat_lvl_good(self) -> bool:
@@ -220,12 +220,12 @@ class StateService(Service):
     def store_state(self):
         """Store the state in F-RAM."""
 
-        if self.node.od_read(C3Entry.STATUS) == Status.PRE_DEPLOY:
+        if self.node.od_read(C3Entry.STATUS) == C3Status.PRE_DEPLOY:
             return  # Do not store state in PRE_DEPLOY state
 
         offset = 0
         for entry in FRAM_DEF:
-            if entry.data_type == DataType.BYTES:
+            if entry.data_type == DataType.OCTET_STR:
                 raw = self.node.od_read(entry, use_enum=False)
                 raw_len = len(entry.default)
             else:
@@ -241,7 +241,7 @@ class StateService(Service):
 
         offset = 0
         for entry in FRAM_DEF:
-            if entry.data_type == DataType.BYTES:
+            if entry.data_type == DataType.OCTET_STR:
                 size = len(entry.default)
                 raw = self._fram.read(offset, size)
                 self.node.od_write(entry, raw)
@@ -249,8 +249,8 @@ class StateService(Service):
                 size = len(entry.encode(entry.default))
                 raw = self._fram.read(offset, size)
                 value = entry.decode(raw)
-                if entry == C3Entry.STATUS and value not in Status:  # incase of empty FRAM
-                    value = Status.PRE_DEPLOY
+                if entry == C3Entry.STATUS and value not in C3Status:  # incase of empty FRAM
+                    value = C3Status.PRE_DEPLOY
                 self.node.od_write(entry, value)
             offset += size
 

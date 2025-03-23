@@ -26,7 +26,12 @@ from spacepackets.uslp.header import (  # type: ignore
     SourceOrDestField,
 )
 
-from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
+from .edl_command import (
+    EdlCommandCode,
+    EdlCommandError,
+    EdlCommandRequest,
+    EdlCommandResponse,
+)
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE

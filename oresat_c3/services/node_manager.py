@@ -7,8 +7,9 @@ from loguru import logger
 from oresat_libcanopend import NodeClient
 from oresat_libcanopend import NodeState as CanopenNodeState
 
-from ..gen.nodes import MISSION_NODES, Node, NodeProcessor
-from ..gen.od import C3Entry, NodeStatus, OpdNodeStatus
+from ..gen.c3_od import C3Entry, C3NodeStatus, C3OpdNodeStatus
+from ..gen.missions import Mission
+from ..gen.nodes import NodeDef, NodeProcessor
 from ..subsystems.opd import Opd, OpdNode, OpdOctavoNode, OpdState, OpdStm32Node
 from . import Service
 
@@ -21,10 +22,10 @@ class Emcy:
 
 
 @dataclass
-class NodeData(Node):
+class NodeData(NodeDef):
     opd_resets: int = 0
     last_enable: float = 0.0
-    status: NodeStatus = NodeStatus.NOT_FOUND
+    status: C3NodeStatus = C3NodeStatus.NOT_FOUND
     last_hb: float = 0.0
     hb_state: Optional[CanopenNodeState] = None
     emcys: list[Emcy] = field(default_factory=list)
@@ -53,10 +54,10 @@ class NodeManagerService(Service):
             mock=mock_hw,
         )
 
-        mission = self.node.od_read(C3Entry.MISSION)
-        cards = MISSION_NODES[mission]
+        sat_id = self.node.od_read(C3Entry.SATELLITE_ID)
+        self.mission = Mission.from_id(sat_id)
 
-        for card in cards:
+        for card in self.mission.nodes:
             if card.opd_address == 0:
                 continue  # not an opd node
 
@@ -71,10 +72,10 @@ class NodeManagerService(Service):
 
             self.opd[card.name] = node
 
-        self.opd_addr_to_name = {card.opd_address: card.name for card in cards}
-        self.node_id_to_name = {card.node_id: card.name for card in cards}
+        self.opd_addr_to_name = {card.opd_address: card.name for card in self.mission.nodes}
+        self.node_id_to_name = {card.node_id: card.name for card in self.mission.nodes}
 
-        self._data = {card.name: NodeData(**asdict(card)) for card in cards}
+        self._data = {card.name: NodeData(**asdict(card)) for card in self.mission.nodes}
         self._loops = -1
 
         self.node.od_write(C3Entry.NODE_MANAGER_TOTAL_NODES, len(list(self._data)))
@@ -85,10 +86,11 @@ class NodeManagerService(Service):
         self.node.add_write_callback(C3Entry.OPD_UART_NODE_SELECT, self._set_uart_node_select)
 
         for name in self._data:
-            if self._data[name].node_id == 0:
+            card = self._data[name]
+            if card.node_id == 0:
                 continue  # not a CANopen node
             self.node.add_write_callback(
-                C3Entry[f"NODE_STATUS_{str(name)}".upper()],
+                C3Entry[f"NODE_STATUS_NODE_ID_{card.node_id}".upper()],
                 lambda v, n=name: self._set_node_status(n, v),
             )
 
@@ -105,17 +107,17 @@ class NodeManagerService(Service):
         emcy = Emcy(code, info, monotonic())
         self._data[name].emcys.append(emcy)
 
-    def _check_co_nodes_state(self, name: str) -> NodeStatus:
+    def _check_co_nodes_state(self, name: str) -> C3NodeStatus:
         """Get a CANopen node's state."""
 
         node = self._data[name]
         next_state = node.status
         last_hb = self._data[name].last_hb
 
-        if next_state == NodeStatus.DEAD:
+        if next_state == C3NodeStatus.DEAD:
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
                 # if the node start sending heartbeats again (really only for flatsat)
-                next_state = NodeStatus.ON
+                next_state = C3NodeStatus.ON
             return next_state
 
         if node.processor == "stm32":
@@ -125,11 +127,11 @@ class NodeManagerService(Service):
 
         if node.last_enable + timeout > monotonic():
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
-                next_state = NodeStatus.BOOT
+                next_state = C3NodeStatus.BOOT
             else:
-                next_state = NodeStatus.ON
-        elif node.status == NodeStatus.ERROR:
-            next_state = NodeStatus.ERROR
+                next_state = C3NodeStatus.ON
+        elif node.status == C3NodeStatus.ERROR:
+            next_state = C3NodeStatus.ERROR
         elif (
             self.node.od_read(C3Entry.FLIGHT_MODE)
             and self.node.bus_state == "NETWORK_UP"
@@ -138,26 +140,26 @@ class NodeManagerService(Service):
             logger.error(
                 f"CANopen node {name} has had no heartbeats in {self._RESET_TIMEOUT_S} seconds"
             )
-            next_state = NodeStatus.ERROR
+            next_state = C3NodeStatus.ERROR
         else:
-            next_state = NodeStatus.ON
+            next_state = C3NodeStatus.ON
 
         return next_state
 
-    def _get_nodes_state(self, name: str) -> NodeStatus:
+    def _get_nodes_state(self, name: str) -> C3NodeStatus:
         """Determine a node's state."""
 
         # update status of data not on the OPD
         if self._data[name].opd_address == 0:
             if monotonic() > (self._data[name].last_hb + self._HB_TIMEOUT):
-                next_state = NodeStatus.OFF
+                next_state = C3NodeStatus.OFF
             else:
-                next_state = NodeStatus.ON
+                next_state = C3NodeStatus.ON
             return next_state
 
         # opd subsystem is off
         if self.opd.status == OpdState.DISABLED:
-            return NodeStatus.NOT_FOUND
+            return C3NodeStatus.NOT_FOUND
 
         prev_state = self._data[name].status
 
@@ -166,24 +168,24 @@ class NodeManagerService(Service):
 
         # update status of data on the OPD
         if self.opd.status == OpdState.DEAD:
-            next_state = NodeStatus.DEAD
+            next_state = C3NodeStatus.DEAD
         else:
             status = self.opd[name].status
             if self._data[name].opd_resets >= self._MAX_CO_RESETS:
-                next_state = NodeStatus.DEAD
-            elif status == OpdNodeStatus.FAULT:
-                next_state = NodeStatus.ERROR
-            elif status == OpdNodeStatus.NOT_FOUND:
-                next_state = NodeStatus.NOT_FOUND
-            elif status == OpdNodeStatus.ENABLED:
+                next_state = C3NodeStatus.DEAD
+            elif status == C3OpdNodeStatus.FAULT:
+                next_state = C3NodeStatus.ERROR
+            elif status == C3OpdNodeStatus.NOT_FOUND:
+                next_state = C3NodeStatus.NOT_FOUND
+            elif status == C3OpdNodeStatus.ENABLED:
                 if self._data[name].processor == "stm32" and self.opd[name].in_bootloader_mode:
-                    next_state = NodeStatus.BOOTLOADER
+                    next_state = C3NodeStatus.BOOTLOADER
                 elif self._data[name].node_id != 0:  # aka CANopen nodes
                     next_state = self._check_co_nodes_state(name)
                 else:
-                    next_state = NodeStatus.ON
-            elif status == OpdNodeStatus.DISABLED:
-                next_state = NodeStatus.OFF
+                    next_state = C3NodeStatus.ON
+            elif status == C3OpdNodeStatus.DISABLED:
+                next_state = C3NodeStatus.OFF
 
         return next_state
 
@@ -204,12 +206,12 @@ class NodeManagerService(Service):
             state = self._get_nodes_state(name)
             if self._loops != 0 and state != last_state:
                 logger.info(f"node {name} state change {last_state.name} -> {state.name}")
-            nodes_off += int(state == NodeStatus.OFF)
-            nodes_booting += int(state == NodeStatus.BOOT)
-            nodes_on += int(state == NodeStatus.ON)
-            nodes_with_errors += int(state == NodeStatus.ERROR)
-            nodes_not_found += int(state == NodeStatus.NOT_FOUND)
-            nodes_dead += int(state == NodeStatus.DEAD)
+            nodes_off += int(state == C3NodeStatus.OFF)
+            nodes_booting += int(state == C3NodeStatus.BOOT)
+            nodes_on += int(state == C3NodeStatus.ON)
+            nodes_with_errors += int(state == C3NodeStatus.ERROR)
+            nodes_not_found += int(state == C3NodeStatus.NOT_FOUND)
+            nodes_dead += int(state == C3NodeStatus.DEAD)
             node.status = state
 
         self.node.od_write(C3Entry.NODE_MANAGER_NODES_OFF, nodes_off)
@@ -231,20 +233,20 @@ class NodeManagerService(Service):
             if info.opd_address == 0:
                 continue
 
-            if self._loops % 10 == 0 and self._data[name].status == NodeStatus.NOT_FOUND:
+            if self._loops % 10 == 0 and self._data[name].status == C3NodeStatus.NOT_FOUND:
                 self.opd[name].probe(True)
 
-            if info.opd_always_on and info.status == NodeStatus.OFF:
+            if info.opd_always_on and info.status == C3NodeStatus.OFF:
                 self.enable(name)
 
-            if info.status == NodeStatus.DEAD and self.opd[name].is_enabled:
+            if info.status == C3NodeStatus.DEAD and self.opd[name].is_enabled:
                 self.opd[name].disable()  # make sure this is disabled
-            elif info.status == NodeStatus.ERROR:
+            elif info.status == C3NodeStatus.ERROR:
                 logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
                 self.opd[name].reset(1)
                 self._data[name].last_enable = monotonic()
                 info.opd_resets += 1
-            elif info.status in [NodeStatus.ON, NodeStatus.OFF]:
+            elif info.status in [C3NodeStatus.ON, C3NodeStatus.OFF]:
                 info.opd_resets = 0
 
     def enable(self, name: Union[str, int], bootloader_mode: bool = False):
@@ -269,11 +271,11 @@ class NodeManagerService(Service):
             logger.warning(f"cannot enable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if node.status != NodeStatus.OFF:
+        if node.status != C3NodeStatus.OFF:
             logger.debug(f"cannot enable node {name} unless it is disabled")
             return
 
-        if node.status == NodeStatus.DEAD:
+        if node.status == C3NodeStatus.DEAD:
             logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
@@ -306,7 +308,7 @@ class NodeManagerService(Service):
             logger.warning(f"cannot disable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if node.status in [NodeStatus.OFF, NodeStatus.DEAD]:
+        if node.status in [NodeStatus.OFF, C3NodeStatus.DEAD]:
             logger.debug(f"cannot disable node {name} as it is already disabled or dead")
             return
 
@@ -314,7 +316,7 @@ class NodeManagerService(Service):
             self.opd[node.child].disable()
         self.opd[name].disable()
 
-    def node_status(self, name: Union[str, int]) -> NodeStatus:
+    def node_status(self, name: Union[str, int]) -> C3NodeStatus:
         """Get the status of a OreSat node."""
 
         if isinstance(name, int):
@@ -328,11 +330,11 @@ class NodeManagerService(Service):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
-        if state == NodeStatus.ON:
+        if state == C3NodeStatus.ON:
             self.enable(name)
-        elif state == NodeStatus.OFF:
+        elif state == C3NodeStatus.OFF:
             self.disable(name)
-        elif state == NodeStatus.BOOTLOADER:
+        elif state == C3NodeStatus.BOOTLOADER:
             self.enable(name, True)
 
     def _get_status_json(self) -> str:
@@ -359,9 +361,9 @@ class NodeManagerService(Service):
         if value == 0:
             self.opd.disable()
             for name, node in self._data.items():
-                if node.opd_address != 0 and node.status != NodeStatus.NOT_FOUND:
+                if node.opd_address != 0 and node.status != C3NodeStatus.NOT_FOUND:
                     logger.info(f"node {name} state change {node.status.name} -> NOT_FOUND")
-                    node.status = NodeStatus.NOT_FOUND
+                    node.status = C3NodeStatus.NOT_FOUND
         elif value == 1:
             if self.opd.status == OpdState.DISABLED:
                 for node in self._data.values():

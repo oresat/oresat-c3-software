@@ -6,8 +6,8 @@ from bottle import TEMPLATE_PATH, Bottle, request, template
 from oresat_libcanopend import DataType, NodeClient
 
 from ..__init__ import __version__
-from ..gen.nodes import MISSION_NODES
-from ..gen.od import C3Entry
+from ..gen.c3_od import C3Entry
+from ..gen.missions import Mission
 from ..services.beacon import BeaconService
 from ..services.node_manager import NodeManagerService
 
@@ -20,8 +20,8 @@ class Ui:
         self.beacon = beacon
         self.node_manager = node_manager
 
-        mission = self.node.od_read(C3Entry.MISSION)
-        self.cards = MISSION_NODES[mission]
+        sat_id = node.od_read(C3Entry.SATELLITE_ID)
+        self.mission = Mission.from_id(sat_id)
 
         self.app = Bottle()
         self.thread = Thread(target=self._run, daemon=True)
@@ -44,7 +44,6 @@ class Ui:
 
         # used by templates
         self.routes = [(route[0], route[0].replace("-", " ").title()) for route in routes]
-        self.mission = mission.name.replace("ORESAT", "OreSat").replace("_", ".")
 
     def _run(self):
         self.app.run(port=8000, quiet=True)
@@ -55,7 +54,7 @@ class Ui:
     def get_index(self):
         return template(
             "./index.tpl",
-            mission=self.mission,
+            mission=self.mission.nice_name,
             version=__version__,
             routes=self.routes,
             hw_version=self.node.od_read(C3Entry.VERSIONS_HW_VERSION),
@@ -85,7 +84,12 @@ class Ui:
             self.node.od_write(entry, data[entry.name])
 
     def template(self, path: str):
-        return template(path, mission=self.mission, version=__version__, routes=self.routes)
+        return template(
+            path,
+            mission=self.mission.nice_name,
+            version=__version__,
+            routes=self.routes,
+        )
 
     def get_keys_page(self):
         return self.template("./keys.tpl")
@@ -134,7 +138,7 @@ class Ui:
 
     def get_nm_data(self) -> dict:
         data = []
-        for card in self.cards:
+        for card in self.mission.nodes:
             data.append(
                 {
                     "name": card.name,

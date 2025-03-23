@@ -1,5 +1,3 @@
-"""OreSat C3 app main."""
-
 import socket
 import sys
 import time
@@ -11,7 +9,8 @@ from oresat_libcanopend import NodeClient
 from . import __version__
 from .board.cpufreq import set_cpufreq_gov
 from .board.gpio import Gpio, GpioError
-from .gen.od import C3Entry, Mission, Status, SystemReset, UpdaterStatus
+from .gen.c3_od import C3Entry, C3Status, C3SystemReset, C3UpdaterStatus
+from .gen.missions import Mission
 from .services import Service
 from .services.beacon import BeaconService
 from .services.edl import EdlService
@@ -63,7 +62,7 @@ class Watchdog:
         performance = True
         loop = 0
 
-        while node.od_read(C3Entry.SYSTEM_RESET) == SystemReset.NO_RESET:
+        while node.od_read(C3Entry.SYSTEM_RESET) == C3SystemReset.NO_STOP:
             time.sleep(1)
             loop += 1
 
@@ -79,8 +78,8 @@ class Watchdog:
             if not flight_mode:
                 continue
 
-            updating = node.od_read(C3Entry.UPDATER_STATUS) == UpdaterStatus.IN_PROGRESS
-            edl = node.od_read(C3Entry.STATUS) == Status.EDL
+            updating = node.od_read(C3Entry.UPDATER_STATUS) == C3UpdaterStatus.IN_PROGRESS
+            edl = node.od_read(C3Entry.STATUS) == C3Status.EDL
 
             if not performance and (updating or edl):
                 logger.info("setting cpufreq governor to performance mode")
@@ -96,9 +95,15 @@ def main():
     watchdog = Watchdog()
     watchdog.pet()  # pet watchdog ASAP
 
+    oresat_nums = [str(m.nice_name[len("oresat") :]) for m in Mission]
+
     parser = ArgumentParser()
     parser.add_argument(
-        "-o", "--oresat", type=float, choices=[0, 0.5, 1], default=0.5, help="oresat mission"
+        "-o",
+        "--oresat",
+        choices=oresat_nums,
+        default="0.5",
+        help="oresat mission number",
     )
     parser.add_argument("-m", "--mock-hw", action="store_true", help="mock hardware")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
@@ -117,7 +122,7 @@ def main():
     node = NodeClient(C3Entry)
 
     mission = Mission[f"ORESAT{args.oresat}".replace(".", "_")]
-    node.od_write(C3Entry.MISSION, mission)
+    node.od_write(C3Entry.SATELLITE_ID, mission.id)
 
     node.od_write(C3Entry.VERSIONS_SW_VERSION, __version__)
     node.od_write(C3Entry.VERSIONS_HW_VERSION, get_hw_version())
@@ -141,7 +146,7 @@ def main():
     for service in services:
         service.start()
 
-    ui = Ui()
+    ui = Ui(node, node_mgr_service, beacon_service)
     ui.start()
 
     try:
@@ -154,10 +159,10 @@ def main():
 
     # on factory reset clear F-RAM
     reset = node.od_read(C3Entry.SYSTEM_RESET)
-    if reset == SystemReset.FACTORY_RESET:
+    if reset == C3SystemReset.FACTORY_RESET:
         state_service.clear_state()
 
-    if reset != SystemReset.NO_RESET:
+    if reset != C3SystemReset.NO_STOP:
         logger.info(reset.name)
 
 

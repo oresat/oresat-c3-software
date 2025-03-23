@@ -26,7 +26,12 @@ from cfdppy.user import (
 )
 from loguru import logger
 from oresat_libcanopend import NodeClient
-from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
+from spacepackets.cfdp import (
+    ChecksumType,
+    ConditionCode,
+    FaultHandlerCode,
+    TransmissionMode,
+)
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
@@ -41,7 +46,7 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
-from ..gen.od import C3Entry, SystemReset
+from ..gen.c3_od import C3Entry, C3SystemReset
 from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
@@ -90,10 +95,10 @@ class EdlService(Service):
     def _set_active_key(self, key_num: int):
         self.node.od_write(C3Entry.EDL_ACTIVE_CRYPTO_KEY, key_num)
         key_entries = [
+            C3Entry.EDL_CRYPTO_KEY_0,
             C3Entry.EDL_CRYPTO_KEY_1,
             C3Entry.EDL_CRYPTO_KEY_2,
             C3Entry.EDL_CRYPTO_KEY_3,
-            C3Entry.EDL_CRYPTO_KEY_4,
         ]
         self._active_key_entry = key_entries[key_num]
 
@@ -185,13 +190,13 @@ class EdlService(Service):
                 ret = True
         elif request.code == EdlCommandCode.C3_SOFT_RESET:
             logger.info("EDL soft reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.SOFT_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.SOFT_RESET)
         elif request.code == EdlCommandCode.C3_HARD_RESET:
             logger.info("EDL hard reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.HARD_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.HARD_RESET)
         elif request.code == EdlCommandCode.C3_FACTORY_RESET:
             logger.info("EDL factory reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, SystemReset.FACTORY_RESET)
+            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
             node_id = request.args[0]
             name = self._node_mgr_service.node_id_to_name[node_id]
@@ -213,9 +218,9 @@ class EdlService(Service):
                 else:
                     raise NotImplementedError()
                 ret = 0
-            except canopen.sdo.exceptions.SdoAbortedError as e:
+            except Exception as e:
                 logger.error(e)
-                ret = e.code
+                ret = 1
         elif request.code == EdlCommandCode.CO_SYNC:
             logger.info("EDL sending CANopen SYNC message")
             self.node.send_sync()
@@ -369,7 +374,8 @@ class EdlFileReciever(CfdpUserBase):
         # FinishedPDU every ack_timer interval forever. Setting it to ABANDON_TRANSACTION means it
         # just resets after the ack counter reaches its count.
         fault_handler.set_handler(
-            ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
+            ConditionCode.POSITIVE_ACK_LIMIT_REACHED,
+            FaultHandlerCode.ABANDON_TRANSACTION,
         )
 
         localcfg = LocalEntityCfg(

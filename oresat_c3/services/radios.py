@@ -7,7 +7,7 @@ from oresat_libcanopend import NodeClient
 
 from ..board.gpio import Gpio
 from ..drivers.si41xx import Si41xx, Si41xxIfdiv
-from ..gen.od import C3Entry
+from ..gen.c3_od import C3Entry
 from . import Service
 
 

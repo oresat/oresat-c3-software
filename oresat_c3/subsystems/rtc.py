@@ -53,7 +53,17 @@ def set_rtc_time(ts: float):
     else:
         dt = datetime.fromtimestamp(ts, tz=timezone.utc)
         # last 3 values (wday, yday, isdst) are unused
-        values = (dt.second, dt.minute, dt.hour, dt.day, dt.month - 1, dt.year - 1900, 0, 0, 0)
+        values = (
+            dt.second,
+            dt.minute,
+            dt.hour,
+            dt.day,
+            dt.month - 1,
+            dt.year - 1900,
+            0,
+            0,
+            0,
+        )
     raw = struct.pack("9i", *values)
     with open(rtc_path) as f:
         ioctl(f, 0x4024700A, raw)  # magic number is the ioctl request code to set rtc time

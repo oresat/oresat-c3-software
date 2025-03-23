@@ -4,9 +4,8 @@ from time import time
 from loguru import logger
 from oresat_libcanopend import NodeClient
 
-from ..gen.beacon import BEACON_DEFS
-from ..gen.od import C3Entry, Status
-from ..protocols.ax25 import ax25_pack
+from ..gen.c3_od import C3Entry, C3Status
+from ..gen.missions import Mission
 from . import Service
 from .radios import RadiosService
 
@@ -15,8 +14,9 @@ class BeaconService(Service):
     def __init__(self, node: NodeClient, radios_service: RadiosService):
         super().__init__(node)
 
-        mission = node.od_read(C3Entry.MISSION)
-        self._beacon_def = BEACON_DEFS[mission]
+        sat_id = node.od_read(C3Entry.SATELLITE_ID)
+        self.mission = Mission.from_id(sat_id)
+
         self._radios_service = radios_service
         self.node.add_write_callback(C3Entry.BEACON_SEND_NOW, self._on_write_send_now)
 
@@ -28,7 +28,7 @@ class BeaconService(Service):
 
         if (
             self.node.od_read(C3Entry.TX_CONTROL_ENABLE)
-            and self.node.od_read(C3Entry.STATUS) == Status.BEACON
+            and self.node.od_read(C3Entry.STATUS) == C3Status.BEACON
         ):
             self.send()
 
@@ -36,22 +36,12 @@ class BeaconService(Service):
 
     def send(self):
         payload = bytes()
-        for entry in self._beacon_def:
+        for entry in self.mission.body:
             value = self.node.od_read(entry)
             payload += entry.encode(value)
-        payload += zlib.crc32(payload, 0).to_bytes(4, "little")
+        payload += zlib.crc32(payload[16:], 0).to_bytes(4, "little")
 
-        packet = ax25_pack(
-            self.node.od_read(C3Entry.BEACON_DEST_CALLSIGN),
-            self.node.od_read(C3Entry.BEACON_DEST_SSID),
-            self.node.od_read(C3Entry.BEACON_SRC_CALLSIGN),
-            self.node.od_read(C3Entry.BEACON_SRC_SSID),
-            self.node.od_read(C3Entry.BEACON_CONTROL),
-            self.node.od_read(C3Entry.BEACON_PID),
-            self.node.od_read(C3Entry.BEACON_COMMAND),
-            self.node.od_read(C3Entry.BEACON_RESPONSE),
-            payload,
-        )
+        packet = self.mission.header = payload
 
         logger.debug("beacon")
         self.node.od_read(C3Entry.BEACON_LAST_TIMESTAMP, time())

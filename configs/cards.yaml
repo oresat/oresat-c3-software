@@ -1,0 +1,202 @@
+configs:
+  - name: software
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/sw_common.yaml
+
+  - name: firmware
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/fw_common.yaml
+
+  - name: adcs
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/adcs.yaml
+
+  - name: battery
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/battery.yaml
+
+  - name: c3
+    od_source: od.yaml
+
+  - name: cfc
+    od_source: https://raw.githubusercontent.com/oresat/oresat-cfc-software/refs/heads/canopend/od.yaml
+
+  - name: diode_test
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/diode_test.yaml
+
+  - name: dxwifi
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/dxwifi.yaml
+
+  - name: gps
+    od_source: https://raw.githubusercontent.com/oresat/oresat-gps-software/refs/heads/canopend/od.yaml
+
+  - name: reaction_wheel
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/reaction_wheel.yaml
+
+  - name: solar
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/solar.yaml
+
+  - name: star_tracker
+    od_source: https://raw.githubusercontent.com/oresat/oresat-configs/refs/heads/master/oresat_configs/base/star_tracker.yaml
+
+cards:
+  - name: battery_1
+    nice_name: Battery 1
+    base: battery
+    common: firmware
+    node_id: 0x4
+    opd_address: 0x18
+    opd_always_on: true
+
+  - name: battery_2
+    nice_name: Battery 2
+    base: battery
+    common: firmware
+    node_id: 0x8
+    opd_address: 0x1F
+    opd_always_on: true
+    missions: [oresat1]
+
+  - name: solar_1
+    nice_name: Solar 1
+    base: solar
+    common: firmware
+    node_id: 0xC
+
+  - name: solar_2
+    nice_name: Solar 2
+    base: solar
+    common: firmware
+    node_id: 0x10
+
+  - name: solar_3
+    nice_name: Solar 3
+    base: solar
+    common: firmware
+    node_id: 0x14
+
+  - name: solar_4
+    nice_name: Solar 4
+    base: solar
+    common: firmware
+    node_id: 0x18
+
+  - name: solar_5
+    nice_name: Solar 5
+    base: solar
+    common: firmware
+    node_id: 0x1C
+    missions: [oresat0_5, oresat1]
+
+  - name: solar_6
+    nice_name: Solar 6
+    base: solar
+    common: firmware
+    node_id: 0x20
+    missions: [oresat0_5, oresat1]
+
+  - name: solar_7
+    nice_name: Solar 7
+    base: solar
+    common: firmware
+    node_id: 0x24
+    missions: [oresat1]
+
+  - name: solar_8
+    nice_name: Solar 8
+    base: solar
+    common: firmware
+    node_id: 0x28
+    missions: [oresat1]
+
+  - name: star_tracker_1
+    nice_name: Star Tracker 1
+    base: star_tracker
+    common: software
+    node_id: 0x2C
+    opd_address: 0x1C
+
+  - name: star_tracker_2
+    nice_name: Star Tracker 2
+    base: star_tracker
+    common: software
+    node_id: 0x30
+    opd_address: 0x24
+    missions: [oresat1]
+
+  - name: gps
+    nice_name: GPS
+    base: gps
+    common: software
+    node_id: 0x34
+    opd_address: 0x19
+
+  - name: adcs
+    nice_name: ADCS
+    base: adcs
+    common: firmware
+    node_id: 0x38
+    opd_address: 0x1A
+
+  - name: rw_1
+    nice_name: Reaction Wheel 1
+    base: reaction_wheel
+    common: firmware
+    node_id: 0x3C
+    opd_address: 0x20
+    missions: [oresat0_5, oresat1]
+
+  - name: rw_2
+    nice_name: Reaction Wheel 2
+    base: reaction_wheel
+    common: firmware
+    node_id: 0x40
+    opd_address: 0x21
+    missions: [oresat0_5, oresat1]
+
+  - name: rw_3
+    nice_name: Reaction Wheel 3
+    base: reaction_wheel
+    common: firmware
+    node_id: 0x44
+    opd_address: 0x22
+    missions: [oresat0_5, oresat1]
+
+  - name: rw_4
+    nice_name: Reaction Wheel 4
+    base: reaction_wheel
+    common: firmware
+    node_id: 0x48
+    opd_address: 0x23
+    missions: [oresat0_5, oresat1]
+
+  - name: dxwifi
+    nice_name: DxWiFi
+    base: dxwifi
+    common: software
+    node_id: 0x4C
+    opd_address: 0x1B
+
+  - name: cfc_processor
+    nice_name: CFC Processor
+    base: cfc
+    common: software
+    node_id: 0x50
+    opd_address: 0x1D
+    child: cfc_sensor
+    missions: [oresat0_5, oresat1]
+
+  - name: cfc_sensor
+    nice_name: CFC Sensor
+    opd_address: 0x1E
+    missions: [oresat0_5, oresat1]
+
+  - name: diode_test
+    nice_name: Diode Test
+    base: diode_test
+    common: firmware
+    node_id: 0x54
+    opd_address: 0x11
+    missions: [oresat0_5, oresat1]
+
+master:
+  name: c3
+  nice_name: C3
+  base: c3
+  node_id: 0x1

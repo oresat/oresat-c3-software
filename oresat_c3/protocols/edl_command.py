@@ -13,7 +13,14 @@ from enum import IntEnum, auto
 
 EdlCommand = namedtuple(
     "EdlCommand",
-    ["req_fmt", "res_fmt", "req_pack_func", "req_unpack_func", "res_pack_func", "res_unpack_func"],
+    [
+        "req_fmt",
+        "res_fmt",
+        "req_pack_func",
+        "req_unpack_func",
+        "res_pack_func",
+        "res_unpack_func",
+    ],
     defaults=(None, None, None, None, None, None),
 )
 """

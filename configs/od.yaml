@@ -1,0 +1,886 @@
+std_objects:
+  - device_type
+  - error_register
+  - predefined_error_field
+  - cob_id_sync
+  - communication_cycle_period
+  - cob_id_emergency_message
+  - inhibit_time_emcy
+  - producer_heartbeat_time
+  - identity
+  - synchronous_counter_overflow_value
+  - sdo_server_parameter
+  - consumer_heartbeat_time
+  - sdo_client_parameter
+  - os_command
+  - utc
+  - scet
+
+objects:
+  - index: 0x3000
+    name: satellite_id
+    data_type: uint8
+    description: the unique oresat satellite id
+    access_type: const
+
+  - index: 0x3001
+    name: flight_mode
+    data_type: bool
+    description: card is in flight mode
+    access_type: rw
+    default: true
+
+  - index: 0x3002
+    name: versions
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: hw_version
+        data_type: str
+        description: card hardware version
+        access_type: const
+        default: "0.0"
+
+      - subindex: 0x2
+        name: configs_version
+        data_type: str
+        description: oresat configs version
+        access_type: const
+        default: "0.0.0"
+
+      - subindex: 0x3
+        name: olaf_version
+        data_type: str
+        description: olaf library version
+        access_type: const
+        default: "0.0.0"
+
+      - subindex: 0x4
+        name: sw_version
+        data_type: str
+        description: software app version
+        access_type: const
+        default: "0.0.0"
+
+  - index: 0x3003
+    name: system
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: reset
+        data_type: uint8
+        description: reset the app
+        value_descriptions:
+          no_stop: 0
+          soft_reset: 1
+          hard_reset: 2
+          factory_reset: 3
+          poweroff: 4
+        access_type: wo
+
+      - subindex: 0x2
+        name: storage_percent
+        data_type: uint8
+        description: the current storage percent used
+        access_type: ro
+        high_limit: 100
+        unit: "%"
+
+      - subindex: 0x3
+        name: ram_percent
+        data_type: uint8
+        description: the current ram percent used
+        access_type: ro
+        high_limit: 100
+        unit: "%"
+
+      - subindex: 0x4
+        name: unix_time
+        data_type: uint32
+        description: unix time
+        access_type: ro
+        unit: s
+
+      - subindex: 0x5
+        name: uptime
+        data_type: uint32
+        description: uptime
+        access_type: ro
+        unit: s
+
+      - subindex: 0x6
+        name: power_cycles
+        data_type: uint16
+        description: the number of power cycles
+        access_type: ro
+
+      # subindex 0x7 reserved for temperature
+      # subindex 0x8 reserved for vrefint
+
+      - subindex: 0x9
+        name: boot_select
+        data_type: uint8
+        bit_definitions:
+          CURRENT_BOOT: 0
+          NEXT_BOOT: 1
+        access_type: ro
+
+  - index: 0x3004
+    name: fread_cache
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: length
+        data_type: uint8
+        description: number of files in fread cache
+        access_type: ro
+
+  - index: 0x3005
+    name: fwrite_cache
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: length
+        data_type: uint8
+        description: number of files in fwrite cache
+        access_type: ro
+
+  - index: 0x3006
+    name: updater
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: status
+        data_type: uint8
+        description: status of the updater
+        value_descriptions:
+          successful: 0
+          pre_process_error: 1
+          run_error: 2
+          in_progress: 0xff
+        access_type: ro
+
+      - subindex: 0x2
+        name: cache_length
+        data_type: uint8
+        description: number of updates cached
+        access_type: ro
+
+  - index: 0x3009
+    name: board_id
+    data_type: uint8
+    description: the unique board id for the board revision
+    access_type: const
+
+  - index: 0x4000
+    name: status
+    data_type: uint8
+    value_descriptions:
+      pre_deploy: 66
+      deploy: 67
+      standby: 68
+      beacon: 69
+      edl: 70
+    access_type: ro
+    default: 66
+
+  - index: 0x4001
+    name: reset_timeout
+    data_type: uint32
+    description: the reset system timeout
+    access_type: const
+    default: 86400  # 24 hours
+    unit: s
+
+  - index: 0x4002
+    name: mode
+    data_type: uint8
+    description: the oresat system mode
+    access_type: ro
+
+  - index: 0x4003
+    name: hw_id
+    data_type: uint8
+    description: the hardware id
+    access_type: ro
+
+  - index: 0x4004
+    name: tx_control
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: enable
+        data_type: bool
+        description: tx status
+        access_type: ro
+
+      - subindex: 0x2
+        name: timeout
+        data_type: uint32
+        description: tx enable timeout
+        access_type: const
+        default: 2592000  # 30 days
+        unit: s
+
+      - subindex: 0x3
+        name: last_enable_timestamp
+        data_type: uint32
+        description: last tx enable timestamp
+        access_type: ro
+        unit: s
+
+  - index: 0x4005
+    name: antennas
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: deployed
+        data_type: bool
+        description: antennas are deployed
+        access_type: ro
+
+      - subindex: 0x2
+        name: attempts
+        data_type: uint8
+        description: number of deployment attempts before continuing
+        access_type: const
+        default: 3
+
+      - subindex: 0x3
+        name: pre_attempt_timeout
+        data_type: uint16
+        description: timeout before trying to deploy the antennas
+        access_type: const
+        default: 300  # 5 minutes
+        unit: s
+
+      - subindex: 0x4
+        name: attempt_timeout
+        data_type: uint8
+        description: duration of a deployment attempt
+        access_type: const
+        default: 10
+        unit: s
+
+      - subindex: 0x5
+        name: reattempt_timeout
+        data_type: uint8
+        description: timeout between deployment reattempts
+        access_type: const
+        default: 15
+        unit: s
+
+      - subindex: 0x6
+        name: deploy_monopole_now
+        data_type: bool
+        description: deploy the monopole antennas now
+        access_type: wo
+
+      - subindex: 0x7
+        name: deploy_helical_now
+        data_type: bool
+        description: deploy the helical antenna now
+        access_type: wo
+
+      - subindex: 0x8
+        name: good_test_threshold
+        data_type: uint16
+        description: |
+          when testing the antennas, any voltage above this threshold is considered good
+        access_type: const
+        default: 100
+        unit: mV
+
+      - subindex: 0x9
+        name: test_monopole_is_good
+        data_type: bool
+        description: test the monopole antennas
+        access_type: ro
+
+      - subindex: 0xa
+        name: test_helical_is_good
+        data_type: bool
+        description: test the helical antenna
+        access_type: ro
+
+      - subindex: 0xb
+        name: monopole_voltage
+        data_type: uint16
+        description: monopole voltage
+        access_type: ro
+        unit: mV
+
+      - subindex: 0xc
+        name: helical_voltage
+        data_type: uint16
+        description: helical voltage
+        access_type: ro
+        unit: mV
+
+      - subindex: 0xd
+        name: attempt_between_timeout
+        data_type: uint32
+        description: timeout between monopole and helical deployments for an attempt
+        access_type: const
+        default: 5
+        unit: s
+
+  - index: 0x4006
+    name: lband
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: rx_bytes
+        data_type: uint32
+        description: lband received byte count
+        access_type: ro
+        unit: B
+
+      - subindex: 0x2
+        name: rx_packets
+        data_type: uint32
+        description: lband received packet count
+        access_type: ro
+
+      - subindex: 0x3
+        name: rssi
+        data_type: int8
+        description: lband rssi of last packet received as reported by AX5043
+        access_type: ro
+        unit: dB
+
+      - subindex: 0x4
+        name: synth_lock
+        data_type: bool
+        description: lband si41xx synthesizer lock indicator
+        access_type: ro
+
+      - subindex: 0x5
+        name: synth_relock_count
+        data_type: uint8
+        description: lband si41xx synthesizer relock count since boot
+        access_type: ro
+
+  - index: 0x4007
+    name: uhf
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: rx_bytes
+        data_type: uint32
+        description: uhf received byte count
+        access_type: ro
+        unit: B
+
+      - subindex: 0x2
+        name: rx_packets
+        data_type: uint32
+        description: uhf received packet count
+        access_type: ro
+
+      - subindex: 0x3
+        name: rssi
+        data_type: int8
+        description: uhf rssi of last packet received after lna, filters, and digital channel filter
+        access_type: ro
+        unit: dB
+
+  - index: 0x4008
+    name: edl
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: crypto_key_0
+        data_type: octet_str
+        description: edl crypto key 0
+        access_type: wo
+        str_length: 32
+
+      - subindex: 0x2
+        name: crypto_key_1
+        data_type: octet_str
+        description: edl crypto key 1
+        access_type: wo
+        str_length: 32
+
+      - subindex: 0x3
+        name: crypto_key_2
+        data_type: octet_str
+        description: edl crypto key 2
+        access_type: wo
+        str_length: 32
+
+      - subindex: 0x4
+        name: crypto_key_3
+        data_type: octet_str
+        description: edl crypto key 3
+        access_type: wo
+        str_length: 32
+
+      - subindex: 0x5
+        name: active_crypto_key
+        data_type: uint8
+        description: selected edl crypto key
+        access_type: ro
+        high_limit: 3
+
+      - subindex: 0x6
+        name: sequence_count
+        data_type: uint32
+        description: edl sequence count
+        access_type: ro
+
+      - subindex: 0x7
+        name: rejected_count
+        data_type: uint32
+        description: edl sequence count
+        access_type: ro
+
+      - subindex: 0x8
+        name: vc1_sequence_count
+        data_type: uint32
+        description: edl virtual channel 1 sequence count
+        access_type: ro
+
+      - subindex: 0x9
+        name: vc1_rejected_count
+        data_type: uint32
+        description: edl virtual channel 1 reject count
+        access_type: ro
+
+      - subindex: 0xa
+        name: vc1_expedite_count
+        data_type: uint32
+        description: edl virtual channel 1 expedite count
+        access_type: ro
+
+      - subindex: 0xb
+        name: last_timestamp
+        data_type: uint64
+        description: scet timestamp of last valid edl command
+        access_type: ro
+
+      - subindex: 0xc
+        name: timeout
+        data_type: uint32
+        description: edl timeout
+        access_type: const
+        default: 60
+        unit: s
+
+  - index: 0x4009
+    name: opd
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: status
+        data_type: uint8
+        description: opd system enable status
+        value_descriptions:
+          disabled: 0
+          enabled: 1
+          fault: 2
+          dead: 3
+        access_type: rw
+
+      - subindex: 0x2
+        name: has_fault
+        data_type: uint8
+        description: opd system circuit has a fault
+        access_type: ro
+
+      - subindex: 0x3
+        name: current
+        data_type: uint8
+        description: opd system current draw
+        access_type: ro
+        unit: mA
+
+      - subindex: 0x4
+        name: scan
+        data_type: bool
+        description: scan for opd nodes
+        access_type: wo
+
+      - subindex: 0x5
+        name: reset
+        data_type: bool
+        description: reset the opd system
+        access_type: wo
+
+      - subindex: 0x6
+        name: reset_attempts
+        data_type: uint8
+        description: number of reset attempts for the opd system before it is considered dead
+        access_type: rw
+        default: 3
+
+      - subindex: 0x7
+        name: reset_delay
+        data_type: uint8
+        description: delay between opd system resets
+        access_type: rw
+        default: 10
+        unit: s
+
+      - subindex: 0x8
+        name: nodes_status_json
+        data_type: str
+        description: status of all node as a json string
+        access_type: ro
+        default: "{}"
+
+      - subindex: 0x9
+        name: node_select
+        data_type: uint8
+        description: select a opd node via its node id
+        access_type: rw
+
+      - subindex: 0xa
+        name: node_status
+        data_type: uint8
+        description: enable/disable selected node on write or get current state by read
+        value_descriptions:
+          disabled: 0x0
+          boot: 0x1
+          enabled: 0x2
+          fault: 0x3
+          not_found: 0x4
+          bootloader: 0x5
+          dead: 0xff
+        access_type: rw
+
+      - subindex: 0xb
+        name: node_reset
+        data_type: bool
+        description: reset the selected node
+        access_type: wo
+
+      - subindex: 0xc
+        name: node_reset_attempts
+        data_type: uint8
+        description: number of reset attempts for a opd node before it is considered dead
+        access_type: rw
+        default: 3
+
+      - subindex: 0xd
+        name: uart_node_select
+        data_type: uint8
+        description: select a node to connect to UART or 0 for no node
+        access_type: rw
+        default: 0
+
+  - index: 0x400a
+    name: beacon
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: revision
+        data_type: uint8
+        description: the beacon revision number
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0x2
+        name: src_callsign
+        data_type: str
+        description: the ax.25 header source callsign
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0x3
+        name: dest_callsign
+        data_type: str
+        description: the ax.25 header destination callsign
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0x4
+        name: start_chars
+        data_type: str
+        description: the aprs start characters
+        access_type: const
+        default: "{{z"
+
+      - subindex: 0x5
+        name: delay
+        data_type: uint32
+        description: delay between beacons or 0 to disable
+        access_type: const
+        default: 30
+        unit: s
+
+      - subindex: 0x6
+        name: send_now
+        data_type: bool
+        description: send a beacon now
+        access_type: wo
+
+      - subindex: 0x7
+        name: last_timestamp
+        data_type: uint64
+        description: scet timestamp of last beacon
+        access_type: ro
+
+      - subindex: 0x8
+        name: src_ssid
+        data_type: uint8
+        description: the ax.25 header source ssid
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0x9
+        name: dest_ssid
+        data_type: uint8
+        description: the ax.25 header destination ssid
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0xa
+        name: control
+        data_type: uint8
+        description: the ax.25 header control field
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0xb
+        name: pid
+        data_type: uint8
+        description: the ax.25 header pid (protocol identifier) field
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0xc
+        name: command
+        data_type: bool
+        description: the ax.25 header destination c-bit value
+        access_type: const
+        # default set via beacon.yaml file
+
+      - subindex: 0xd
+        name: response
+        data_type: bool
+        description: the ax.25 header source c-bit value
+        access_type: const
+        # default set via beacon.yaml file
+
+  - index: 0x400b
+    name: rtc
+    object_type: record
+    description: rtc info, OreSat0 only as Linux handles the rtc
+    subindexes:
+      - subindex: 0x1
+        name: timestamp
+        data_type: uint32
+        description: the last saved timestamp
+        unit: s
+
+      - subindex: 0x2
+        name: alarm_a
+        data_type: uint32
+        description: the last state of alarm a
+
+      - subindex: 0x3
+        name: alarm_b
+        data_type: uint32
+        description: the last state of alarm b
+
+      - subindex: 0x4
+        name: wakeup_interval
+        data_type: uint32
+        description: the last state of wakeup interval
+
+  - index: 0x400c
+    name: node_manager
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: status_json
+        data_type: str
+        description: JSON with status of all nodes
+        access_type: ro
+        default: "[]"
+
+      - subindex: 0x2
+        name: total_nodes
+        data_type: uint8
+        description: total number of OreSat nodes
+        access_type: ro
+
+      - subindex: 0x3
+        name: nodes_off
+        data_type: uint8
+        description: number of OreSat nodes in off state
+        access_type: ro
+
+      - subindex: 0x4
+        name: nodes_booting
+        data_type: uint8
+        description: number of OreSat nodes in boot state
+        access_type: ro
+
+      - subindex: 0x5
+        name: nodes_on
+        data_type: uint8
+        description: number of OreSat nodes in on state
+        access_type: ro
+
+      - subindex: 0x6
+        name: nodes_with_errors
+        data_type: uint8
+        description: number of OreSat nodes in error state
+        access_type: ro
+
+      - subindex: 0x7
+        name: nodes_not_found
+        data_type: uint8
+        description: number of OreSat nodes in not_found state
+        access_type: ro
+
+      - subindex: 0x8
+        name: nodes_dead
+        data_type: uint8
+        description: number of OreSat nodes in dead state
+        access_type: ro
+
+  - index: 0x400d
+    name: node_status
+    object_type: array
+    description: OreSat node status
+    generate_subindexes:
+      subindexes: 0x7F
+      name: node_id
+      data_type: uint8
+      access_type: ro
+      value_descriptions:
+        'off': 0
+        boot: 1
+        'on': 2
+        error: 3
+        not_found: 4
+        dead: 0xff
+
+  - index: 0x400e
+    name: adcs_manager
+    object_type: record
+    subindexes:
+      - subindex: 0x1
+        name: mode
+        data_type: uint8
+        description: requested adcs mission mode to follow
+        access_type: rw
+        value_descriptions:
+          none: 0
+          standby: 1
+          hold: 2
+          calibrate: 3
+          spindown: 4
+          detumble: 5
+          bbq: 6
+          point: 7
+          manual: 8
+
+      - subindex: 0x2
+        name: status
+        data_type: uint8
+        description: adcs service status
+        access_type: ro
+        value_descriptions:
+          none: 0
+          idle: 1
+          starting: 2
+          mission: 3
+          degraded: 4
+          unsafe: 5
+          error: 6
+          done: 7
+
+      - subindex: 0x3
+        name: signals
+        data_type: str
+        description: json string of requested control signals
+        access_type: rw
+        default: "{}"
+
+      - subindex: 0x4
+        name: feedback
+        data_type: str
+        description: json string of feedback signals
+        access_type: ro
+        default: "{}"
+
+tpdos:
+  - num: 1  # time sync TPDO
+    fields:
+      - [scet]
+
+  - num: 2
+    fields:
+      - [status]
+      - [tx_control, enable]
+      - [mode]
+      - [adcs_manager, mode]
+      - [adcs_manager, status]
+    event_timer_ms: 5000
+
+  - num: 3
+    fields:
+      - [edl, sequence_count]
+      - [edl, rejected_count]
+    event_timer_ms: 5000
+
+  - num: 4
+    fields:
+      - [opd, status]
+      - [opd, has_fault]
+    event_timer_ms: 5000
+
+  - num: 5
+    fields:
+      - [node_manager, total_nodes]
+      - [node_manager, nodes_off]
+      - [node_manager, nodes_booting]
+      - [node_manager, nodes_on]
+      - [node_manager, nodes_with_errors]
+      - [node_manager, nodes_not_found]
+      - [node_manager, nodes_dead]
+    event_timer_ms: 5000
+
+  - num: 6
+    fields:
+      - [uhf, rx_packets]
+      - [uhf, rssi]
+    event_timer_ms: 5000
+
+  - num: 7
+    fields:
+      - [lband, rx_packets]
+      - [lband, rssi]
+      - [lband, synth_relock_count]
+    event_timer_ms: 5000
+
+fram:
+  # DO NOT change this order, only append!
+  - [status]
+  - [rtc, timestamp]
+  - [rtc, alarm_a]
+  - [rtc, alarm_b]
+  - [rtc, wakeup_interval]
+  - [tx_control, last_enable_timestamp]
+  - [edl, last_timestamp]
+  - [antennas, deployed]
+  - [system, power_cycles]
+  - [lband, rx_bytes]
+  - [lband, rx_packets]
+  - [edl, vc1_sequence_count]
+  - [edl, vc1_expedite_count]
+  - [edl, sequence_count]
+  - [edl, rejected_count]
+  - [edl, crypto_key_0]
+  - [edl, crypto_key_1]
+  - [edl, crypto_key_2]
+  - [edl, crypto_key_3]
+  - [edl, active_crypto_key]
+  - [uhf, rx_bytes]
+  - [uhf, rx_packets]
+  - [tx_control, enable]

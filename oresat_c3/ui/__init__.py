@@ -74,7 +74,7 @@ class Ui:
     def get_status_data(self):
         data = self.get_entry(C3Entry.FLIGHT_MODE)
         data["CANOPEND_STATUS"] = "CONNECTED" if self.node.is_connected else "DISCONNECTED"
-        data["CAN_BUS_STATUS"] = self.node.bus_status.name
+        data["CAN_BUS_STATUS"] = self.node.bus_state.name
         return data
 
     def put_status_data(self):

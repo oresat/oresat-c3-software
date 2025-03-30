@@ -4,7 +4,7 @@ import time
 from argparse import ArgumentParser
 
 from loguru import logger
-from oresat_libcanopend import MasterNodeClient
+from oresat_libcanopend import ManagerNodeClient
 
 from . import __version__
 from .board.cpufreq import set_cpufreq_gov
@@ -58,7 +58,7 @@ class Watchdog:
     def pet(self):
         self._socket.sendto(b"PET", ("localhost", self._port))
 
-    def run(self, node: MasterNodeClient, services: list[Service]):
+    def run(self, node: ManagerNodeClient, services: list[Service]):
         performance = True
         loop = 0
 
@@ -119,7 +119,7 @@ def main():
 
     set_system_time_to_rtc_time()
 
-    node = MasterNodeClient(C3Entry)
+    node = ManagerNodeClient(C3Entry)
 
     mission = Mission[f"ORESAT{args.oresat}".replace(".", "_")]
     node.od_write(C3Entry.SATELLITE_ID, mission.id)

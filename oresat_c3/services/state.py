@@ -6,7 +6,7 @@ from loguru import logger
 from oresat_libcanopend import DataType, NodeClient
 
 from ..drivers.fm24cl64b import Fm24cl64b
-from ..gen.c3_od import C3Entry, C3Status, C3UpdaterStatus, C3SystemReset
+from ..gen.c3_od import C3Entry, C3Status, C3SystemReset, C3UpdaterStatus
 from ..gen.fram import FRAM_DEF
 from ..subsystems.antennas import Antennas
 from ..subsystems.rtc import set_rtc_time

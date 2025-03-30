@@ -9,6 +9,8 @@ from ..gen.missions import Mission
 from . import Service
 from .radios import RadiosService
 
+AX25_HEADER_LEN = 16
+
 
 class BeaconService(Service):
     def __init__(self, node: NodeClient, radios_service: RadiosService):
@@ -35,17 +37,15 @@ class BeaconService(Service):
         self.sleep(delay)
 
     def send(self):
-        payload = bytes()
+        msg = self.mission.header
         for entry in self.mission.body:
             value = self.node.od_read(entry)
-            payload += entry.encode(value)
-        payload += zlib.crc32(payload[16:], 0).to_bytes(4, "little")
-
-        packet = self.mission.header = payload
+            msg += entry.encode(value)
+        msg += zlib.crc32(msg[AX25_HEADER_LEN:], 0).to_bytes(4, "little")
 
         logger.debug("beacon")
         self.node.od_read(C3Entry.BEACON_LAST_TIMESTAMP, time())
-        self._radios_service.send_beacon(packet)
+        self._radios_service.send_beacon(msg)
 
     def _on_write_send_now(self, value: bool):
         if value:

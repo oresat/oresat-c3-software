@@ -1,3 +1,6 @@
+name: c3
+nice_name: C3
+
 std_objects:
   - device_type
   - error_register
@@ -808,6 +811,11 @@ objects:
         description: json string of feedback signals
         access_type: ro
         default: "{}"
+
+  - index: 0x400f
+    name: padding_byte
+    data_type: uint8
+    description: padding byte to be used in beacon and fram defs
 
 tpdos:
   - num: 1  # time sync TPDO

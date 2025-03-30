@@ -195,7 +195,7 @@ cards:
     opd_address: 0x11
     missions: [oresat0_5, oresat1]
 
-master:
+manager:
   name: c3
   nice_name: C3
   base: c3

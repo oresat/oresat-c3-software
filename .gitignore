@@ -134,6 +134,11 @@ dmypy.json
 # Generated files
 /docs/beacon.rst
 */gen/
+*.dcf
+*.dbc
+*.xtce
+*.ksy
+*.conf
 
 # Vim
 *.swp
@@ -143,3 +148,6 @@ dmypy.json
 
 # setuptools-scm
 _version.py
+
+# ruff
+.ruff_cache/

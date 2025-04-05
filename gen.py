@@ -5,14 +5,12 @@ import shutil
 from argparse import ArgumentParser
 
 from oresat_configs import (
-    CardsConfig,
-    MissionConfig,
-    load_od_configs,
-    load_od_db,
-    write_canopend_master,
-    write_dbc,
-    write_kaitai,
-    write_xtce,
+    gen_canopend_manager_files,
+    gen_canopend_manager_od_config,
+    gen_dbc,
+    gen_kaitai,
+    gen_rst_manager_files,
+    gen_xtce,
 )
 
 CONFIG_DIR_PATH = "configs"
@@ -22,27 +20,29 @@ MISSION_CONFIGS_PATHS = [
     os.path.join(CONFIG_DIR_PATH, "oresat0_5.yaml"),
     os.path.join(CONFIG_DIR_PATH, "oresat1.yaml"),
 ]
-
 GEN_DIR = "oresat_c3/gen"
+DOCS_DIR = "docs/gen"
 
 parser = ArgumentParser()
-parser.add_argument("gen", choices=["code", "dbc", "xtce", "kaitai", "clean"], default="code")
+parser.add_argument(
+    "gen",
+    nargs="?",
+    choices=["code", "dbc", "docs", "config", "xtce", "kaitai", "clean"],
+    default="code",
+)
 args = parser.parse_args()
 
-cards_config = CardsConfig.from_yaml(CARDS_CONFIG_PATH)
-mission_configs = [MissionConfig.from_yaml(p) for p in MISSION_CONFIGS_PATHS]
-
 if args.gen == "code":
-    write_canopend_master(cards_config, mission_configs, CONFIG_DIR_PATH, GEN_DIR)
+    gen_canopend_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, GEN_DIR)
+if args.gen == "config":
+    gen_canopend_manager_od_config(CARDS_CONFIG_PATH)
 elif args.gen == "dbc":
-    od_configs = load_od_configs(cards_config, CONFIG_DIR_PATH)
-    od_db = load_od_db(od_configs)
-    write_dbc(od_db["c3"])
+    gen_dbc(CARDS_CONFIG_PATH)
+elif args.gen == "docs":
+    gen_rst_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, DOCS_DIR)
 elif args.gen == "xtce":
-    mission_config = mission_configs[0]  # TODO
-    write_xtce(mission_config)
+    gen_xtce(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS)
 elif args.gen == "kaitai":
-    mission_config = mission_configs[0]  # TODO
-    write_kaitai(mission_config)
+    gen_kaitai(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS)
 elif args.gen == "clean":
     shutil.rmtree(GEN_DIR, ignore_errors=True)

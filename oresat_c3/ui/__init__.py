@@ -4,6 +4,7 @@ from typing import Union
 
 from bottle import TEMPLATE_PATH, Bottle, request, template
 from oresat_libcanopend import DataType, NodeClient
+from oresat_libcanopend import __version__ as canopend_version
 
 from ..__init__ import __version__
 from ..gen.c3_od import C3Entry
@@ -58,7 +59,7 @@ class Ui:
             version=__version__,
             routes=self.routes,
             hw_version=self.node.od_read(C3Entry.VERSIONS_HW_VERSION),
-            config_version=self.node.od_read(C3Entry.VERSIONS_CONFIGS_VERSION),
+            canopend_version=canopend_version,
         )
 
     def get_entry(self, entry: Union[C3Entry, list[C3Entry]]):

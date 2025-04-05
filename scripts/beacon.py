@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Listens for and prints C3 beacons"""
 
-
 import os
 import socket
 import sys

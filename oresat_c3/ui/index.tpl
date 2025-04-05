@@ -32,10 +32,6 @@
   </tbody>
   <tbody>
       <td>OreSat CANopend</td>
-      <td>Unknown</td>
-  </tbody>
-  <tbody>
-      <td>OreSat Configs</td>
-      <td>{{config_version}}</td>
+      <td>{{canopend_version}}</td>
   </tbody>
 </table>

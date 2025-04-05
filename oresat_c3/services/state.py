@@ -14,7 +14,7 @@ from . import Service
 
 
 class StateService(Service):
-    BAT_LEVEL_LOW = 6500  # in mV
+    BAT_LEVEL_LOW_MV = 6500
     I2C_BUS_NUM = 2
     FRAM_I2C_ADDR = 0x50
 
@@ -25,7 +25,6 @@ class StateService(Service):
         self._antennas = Antennas(mock_hw)
         self._attempts = 0
         self._loops = 0
-        self._last_state = C3Status.PRE_DEPLOY
         self._last_antennas_deploy = 0
         self._start_time = monotonic()
 
@@ -37,8 +36,8 @@ class StateService(Service):
 
         self.node.add_write_callback(C3Entry.TX_CONTROL_ENABLE, self._on_write_tx_enable)
 
-        self._last_state = self.node.od_read(C3Entry.STATUS)
-        logger.info(f"C3 initial state: {self._last_state.name}")
+        state = self.node.od_read(C3Entry.STATUS)
+        logger.info(f"C3 initial state: {state.name}")
 
         self._start_time = monotonic()
 
@@ -74,8 +73,6 @@ class StateService(Service):
             self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.HARD_RESET)
 
     def _pre_deploy(self):
-        """PRE_DEPLOY state method."""
-
         pre_attempt_timeout = self.node.od_read(C3Entry.ANTENNAS_PRE_ATTEMPT_TIMEOUT)
         if (monotonic() - self._start_time) < pre_attempt_timeout:
             if not self.node.od_read(C3Entry.TX_CONTROL_ENABLE):
@@ -86,16 +83,13 @@ class StateService(Service):
             self.node.od_write(C3Entry.STATUS, C3Status.DEPLOY)
 
     def _deploy(self):
-        """DEPLOY state method."""
-
         reattempt_timeout = self.node.od_read(C3Entry.ANTENNAS_REATTEMPT_TIMEOUT)
         antennas_deployed = self.node.od_read(C3Entry.ANTENNAS_DEPLOYED)
         antennas_attempts = self.node.od_read(C3Entry.ANTENNAS_ATTEMPTS)
 
         if not antennas_deployed and self._attempts < antennas_attempts:
-            if (
-                monotonic() > (self._last_antennas_deploy + reattempt_timeout)
-            ) and self.is_bat_lvl_good:
+            timed_out = monotonic() > (self._last_antennas_deploy + reattempt_timeout)
+            if timed_out and self.is_bat_lvl_good:
                 logger.info(f"deploying antennas, attempt {self._attempts + 1}")
                 self._antennas.deploy(
                     self.node.od_read(C3Entry.ANTENNAS_ATTEMPT_TIMEOUT),
@@ -111,9 +105,7 @@ class StateService(Service):
             self._attempts = 0
 
     def _standby(self):
-        """STANDBY state method."""
-
-        if self.has_edl_timed_out:
+        if not self.has_edl_timed_out:
             self.node.od_write(C3Entry.STATUS, C3Status.EDL)
         elif self.has_reset_timed_out:
             self._reset()
@@ -121,9 +113,7 @@ class StateService(Service):
             self.node.od_write(C3Entry.STATUS, C3Status.BEACON)
 
     def _beacon(self):
-        """BEACON state method."""
-
-        if self.has_edl_timed_out:
+        if not self.has_edl_timed_out:
             self.node.od_write(C3Entry.STATUS, C3Status.EDL)
         elif self.has_reset_timed_out:
             self._reset()
@@ -131,9 +121,7 @@ class StateService(Service):
             self.node.od_write(C3Entry.STATUS, C3Status.STANDBY)
 
     def _edl(self):
-        """EDL state method."""
-
-        if not self.has_edl_timed_out:
+        if self.has_edl_timed_out:
             if not self.has_tx_timed_out and self.is_bat_lvl_good:
                 self.node.od_write(C3Entry.STATUS, C3Status.BEACON)
             else:
@@ -145,13 +133,6 @@ class StateService(Service):
             self.node.od_write(C3Entry.TX_CONTROL_ENABLE, False)
 
         state = self.node.od_read(C3Entry.STATUS)
-        if state != self._last_state:  # incase of change thru REST API
-            logger.info(
-                f"tx en: {self.node.od_read(C3Entry.TX_CONTROL_ENABLE)} "
-                f"| bat good: {self.is_bat_lvl_good}"
-            )
-            logger.info(f"C3 state change: {self._last_state.name} -> {state.name}")
-
         if state == C3Status.PRE_DEPLOY:
             self._pre_deploy()
         elif state == C3Status.DEPLOY:
@@ -165,16 +146,15 @@ class StateService(Service):
         else:
             logger.error(f"C3 invalid state: {state}, resetting to PRE_DEPLOY")
             self.node.od_write(C3Entry.STATUS, C3Status.PRE_DEPLOY)
-            self._last_state = C3Status.PRE_DEPLOY
             return
 
-        self._last_state = self.node.od_read(C3Entry.STATUS)
-        if state != self._last_state:
+        new_state = self.node.od_read(C3Entry.STATUS)
+        if state != new_state:
             logger.info(
                 f"tx en: {self.node.od_read(C3Entry.TX_CONTROL_ENABLE)} "
                 f"| bat good: {self.is_bat_lvl_good}"
             )
-            logger.info(f"C3 state change: {state.name} -> {self._last_state.name}")
+            logger.info(f"C3 state change: {state.name} -> {new_state.name}")
 
         # only save state once a second
         self._loops += 1
@@ -185,41 +165,35 @@ class StateService(Service):
         self.sleep(0.1)
 
     @property
-    def has_tx_timed_out(self) -> bool:
-        """bool: Helper property to check if the tx timeout has been reached."""
+    def is_tx_enabled(self) -> bool:
+        return self.node.od_read(C3Entry.TX_CONTROL_ENABLE)
 
+    @property
+    def has_tx_timed_out(self) -> bool:
         last_tx_enable_ts = self.node.od_read(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP)
         tx_enable_timeout = self.node.od_read(C3Entry.TX_CONTROL_TIMEOUT)
         return time() - last_tx_enable_ts > tx_enable_timeout
 
     @property
     def has_edl_timed_out(self) -> bool:
-        """bool: Helper property to check if the edl timeout has been reached."""
-
         last_edl_ts = self.node.od_read(C3Entry.EDL_LAST_TIMESTAMP)
         edl_timeout = self.node.od_read(C3Entry.EDL_TIMEOUT)
-        return time() - last_edl_ts < edl_timeout
+        return (time() - last_edl_ts) > edl_timeout
 
     @property
     def is_bat_lvl_good(self) -> bool:
-        """bool: Helper property to check if the battery levels are good."""
-
         vbatt_bp1 = self.node.od_read(C3Entry.BATTERY_1_PACK_1_VBATT)
         vbatt_bp2 = self.node.od_read(C3Entry.BATTERY_1_PACK_2_VBATT)
-        return vbatt_bp1 > self.BAT_LEVEL_LOW and vbatt_bp2 > self.BAT_LEVEL_LOW
+        return vbatt_bp1 > self.BAT_LEVEL_LOW_MV and vbatt_bp2 > self.BAT_LEVEL_LOW_MV
 
     @property
     def has_reset_timed_out(self) -> bool:
-        """bool: Helper property to check if the reset timeout has been reached."""
-
         if os.geteuid() != 0 or not self.node.od_read(C3Entry.FLIGHT_MODE):
             return False
 
         return (monotonic() - self._start_time) > self.node.od_read(C3Entry.RESET_TIMEOUT)
 
     def store_state(self):
-        """Store the state in F-RAM."""
-
         if self.node.od_read(C3Entry.STATUS) == C3Status.PRE_DEPLOY:
             return  # Do not store state in PRE_DEPLOY state
 
@@ -237,8 +211,6 @@ class StateService(Service):
             offset += raw_len
 
     def restore_state(self):
-        """Restore the state from F-RAM."""
-
         offset = 0
         for entry in FRAM_DEF:
             if entry.data_type == DataType.OCTET_STR:

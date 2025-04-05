@@ -75,7 +75,7 @@ class TestEdlPacket(unittest.TestCase):
             EdlPacket.unpack(edl_message_req, self.hmac_key)
 
     def test_unpack_invalid_vcid(self):
-        "" "Test unpacking an EDL packet with an invalid VCID." ""
+        "Test unpacking an EDL packet with an invalid VCID."
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)

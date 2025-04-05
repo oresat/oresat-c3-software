@@ -1,4 +1,3 @@
-from olaf import logger
+from loguru import logger
 
-logger.disable("olaf")
 logger.disable("oresat_c3")

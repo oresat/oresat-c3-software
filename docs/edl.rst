@@ -1,5 +1,5 @@
-Engineering Data Link
-=====================
+EDL (Engineering Data Link)
+===========================
 
 .. note:: Octets are used instead of bytes as octets are guaranteed to be 8 bits and bytes are not.
 

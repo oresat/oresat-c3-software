@@ -20,10 +20,10 @@ States
 State Machine
 -------------
 
-For specific timeouts and delays values, see the ``oresat_c3.dcf`` file.
+For specific timeouts and delays values, see the ``od.yaml`` file.
 
-.. note:: State is periodically save to F-RAM. On a reset, the last state will be
-   the initial state.
+.. note:: State is periodically save to F-RAM and before a reset. On a reset, the last state will
+   be the initial state.
 
 .. mermaid::
 

@@ -12,59 +12,77 @@ The C3 card was converted to Octavo A8 card to simplify the code base
 by swapping from heavily embedded system using ChibiOS to a general
 Linux-environment using Python and make to use existing Python libraries.
 
-Like all OreSat software projects it is built using OLAF (OreSat Linux App
-Framework), which it built on top of [CANopen for Python] project. See the
-[oresat-olaf] repo for more info about OLAF.
+This is not the only app on the C3, there are two other apps.
+
+- AX5043 App offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
+- CANopend offloads the CANopen stack. See the [oresat-canopend] repo.
+
+```mermaid
+flowchart TD
+    app@{shape: rounded, label: "C3 App"}
+    ax5043@{shape: rounded, label: "AX5043 App"}
+    canopend@{shape: rounded, label: "CANopend"}
+    cards@{shape: processes, label: "Other Cards"}
+    uniclogs@{shape: processes, label: "UniClOGS Stations"}
+
+    subgraph OreSat
+        subgraph C3 Card
+            app --> |EDL Downlink| ax5043
+            ax5043 --> |EDL Uplink| app
+            app --> |Beacon| ax5043
+            canopend --> |Data| app
+            app --> |Commands| canopend
+        end
+
+        canopend <==> |CANopen over CAN| cards
+    end
+
+    uniclogs -.-> |UHF| ax5043
+    ax5043 -.-> |UHF| uniclogs
+    uniclogs -.-> |L-Band| ax5043
+```
 
 ## Quick Start
-
-**For development**, install `oresat-configs` from the GitHub repo at
-https://github.com/oresat/oresat-configs (not from PyPI). That repo may have
-changes that are not apart of the latest release yet.
 
 Install dependencies
 
 ```bash
-$ pip3 install -r requirements.txt
+pip install .
 ```
 
 Make a virtual CAN bus (skip if using a real CAN bus)
 
 ```bash
-$ sudo ip link add dev vcan0 type vcan
-$ sudo ip link set vcan0 up
+sudo ip link add dev vcan0 type vcan
+sudo ip link set vcan0 up
+```
+
+Generate code from configs
+
+```bash
+./gen.py code
 ```
 
 Run the C3 app
 
 ```bash
-$ python3 -m oresat_c3
+python -m oresat_c3
 ```
 
 Can select the CAN bus to use (`vcan0`, `can0`, etc) with the `-b BUS` argument.
 
-Can mock hardware by using the `-m HARDWARE` flag.
-
-- The`-m all` argument can be used to mock hardware (CAN bus is always
-  required).
-- The `-m opd` argument would only mock the hardware for the OPD subsystem and
-  expect all other hardware
-  to exist.
-- The `-m fram` argument would only mock the F-RAM chip and expect all other
-  hardware to exist.
-- The `-m opd fram` argument would both mock the hardware for the OPD subsystem
-  and the F-RAM chip and expect all other hardware to exist.
+Can mock hardware by using the `-m` or `--mock-hw` flag.
 
 See other options with `-h` flag.
 
-A basic [Flask]-based website for development and integration can be found at
+A basic [Bottle]-based website for development and integration can be found at
 `http://localhost:8000` when the software is running.
 
 ## Project Layout
 
 - `docs/`: Source of Read the Docs documentation.
 - `oresat_c3/`: Source code.
-  - `data/`: Holds the CANopen EDS and DCF files for project.
+  - `gen/`: Generated code not commited to git.
   - `drivers/`: Fully stand-alone (doesn't import anything else from project)
     Pythonic drivers used by project. All drivers can mock hardware it's for.
   - `protocols/`: Anything dealing with packing or unpacking beacon and EDL
@@ -73,8 +91,8 @@ A basic [Flask]-based website for development and integration can be found at
     subsystems with the CANopen node with a dedicated thread.
   - `subsystems/`: Anything dealing with the subsystems of the C3 other than the
     CAN bus.
-  - `templates/`: The [Flask]-based templates to add OLAF's REST API to be used
-    for development and integration (not used in production).
+  - `ui/`: The [Bottle]-based web ui used for development and integration
+    (not used in production).
 - `tests/`: Unit tests.
 
 ## Documentation
@@ -86,7 +104,8 @@ Documentation is hosted on [Read the Docs], see https://oresat-c3-software.readt
 To manually build the documentation:
 
 ```bash
-$ make -C docs html
+./gen.py docs
+make -C docs html
 ```
 
 Open `docs/build/html/index.html` in a web browser
@@ -98,7 +117,7 @@ This project uses python's build in `unittest` module for unit testing.
 To run units:
 
 ```bash
-$ python3 -m unittest
+python -m unittest
 ```
 
 By default all unit tests run with the hardware mocked. When running on the real
@@ -107,7 +126,7 @@ hardware set the `MOCK_HW` environment variable to `"false"` (case insensitive).
 To run units when on real hardware:
 
 ```bash
-$ MOCK_HW="false" python3 -m unittest
+MOCK_HW="false" python -m unittest
 ```
 
 **Note:** The follow environment variables are also available:
@@ -116,8 +135,8 @@ $ MOCK_HW="false" python3 -m unittest
 - `FRAM_ADDR`: The I2C address for the F-RAM chip. Must be in hex (e.g., `"0x50"`)
 
 [oresat-firmware]: https://github.com/oresat/oresat-firmware
-[Flask]: https://flask.palletsprojects.com/en/latest/
-[oresat-olaf]: https://github.com/oresat/oresat-olaf
-[CANopen for Python]: https://github.com/christiansandberg/canopen
 [Read the Docs]: https://readthedocs.org
 [Sphinx]: https://www.sphinx-doc.org/en/master/
+[Bottle]: https://bottlepy.org/docs/dev/
+[oresat-ax5043-driver]: https://github.com/oresat/oresat-ax5043-driver
+[oresat-canopend]: https://github.com/oresat/oresat-canopend

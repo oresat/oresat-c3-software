@@ -6,12 +6,16 @@ The C3's main state machine
 States
 ------
 
-.. autoclass:: oresat_c3.C3State
-   :members:
-   :undoc-members:
-   :member-order: bysource
-   :exclude-members: from_char, to_char
-
+- ``OFFLINE``: This state is never actually reachable by the device. Reset vector is ``PRE_DEPLOY``.
+- ``PRE_DEPLOY``: Holding state after deployment of satellite but before deployment of antennas.
+  Ensures a minimum amount of time passes before attempting to deploy antennas and going active.
+- ``DEPLOY``: Antenna deployment state. Attempts to deploy antennas several times before moving to
+  Standby.
+- ``STANDBY``: Satellite is functional but in standby state. Battery level is too low or tx is
+  disabled.
+- ``BEACON``: Active beaconing state. Broadcasts telemetry packets via radio periodically.
+- ``EDL``: Currently receiving and/or transmitting engineering data link packets with a ground
+  station.
 
 State Machine
 -------------

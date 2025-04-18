@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oresat-c3"
-description = "OreSat C3 OLAF app"
+description = "OreSat C3 app"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "GPL-3.0"}
@@ -15,18 +15,24 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Embedded Systems",
 ]
 dependencies = [
     "bottle",
     "bitstring",
     "cfdp-py==0.1.2",
-    "dataclasses-json",
-    "oresat-canopend",
+    "oresat-libcanopend",
     "smbus2",
     "spacepackets",
 ]
 dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "oresat-configs",
+    "ruff",
+]
 
 [project.scripts]
 oresat-c3 = "oresat_c3.__main__:main"
@@ -38,61 +44,10 @@ version = {attr = "oresat_c3.__version__"}
 exclude = ["docs*", "tests*", "scripts*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.html"]
+"*" = ["*.tpl"]
 
 [tool.setuptools_scm]
 write_to = "oresat_c3/_version.py"
-
-[tool.black]
-line_length = 100
-
-[tool.pylama]
-format = "pylint"
-skip = "*/.tox/*,*/.env/,*/.git/*,*/.github/*,*/build/*,.direnv/*"
-linters = "pycodestyle,pyflakes,pylint,mccabe,mypy,radon"
-# E402:     Module level import not at top of file
-# C901:     Function is too complex
-# C0103:    Arguments are not snake_case naming style or too short
-# E203:     Whitespace before ':' (black does this)
-# R0912:    Too many branches
-# R0915:    Too many statements
-# R0901:    Function is too complex
-# R0914:    Too many local variables
-# R1716:    Simplify chained comparison between the operands
-# C0413:    Imports not at top of module
-# C0206:    Consider iterating dictionaries with .items()
-# R1716:    Simplify chained comparison between the operands
-# W1514:    Using open without explicitly specifying an encoding
-# R0902:    Too many instance attributes
-# R0913:    Too many arguments
-# W0707:    Consider explicitly re-raising
-# R1732:    Consider using 'with' for resource-allocating operations
-# R0903:    Too few public methods
-# R0904:    Too many public methods
-ignore = "E402,C901,C0103,E203,R0912,R0915,R901,R901,R0914,C0413,C0206,R1716,W1514,R0902,R0913,W0707,R1732,R0903,R0904"
-max_line_length = 100
-
-[[tool.pylama.files]]
-path = "*/__init__.py"
-# W0611:    Imported but unused
-# C0114:    Missing module docstring
-ignore = "W0611,C0114"
-
-[tool.mypy]
-ignore_missing_imports = true
-
-[[tool.pylama.files]]
-path = "tests/*"
-# W0212:    Access to a protected member of a class
-ignore = "W0212"
-
-[[tool.mypy.overrides]]
-module = "canopen,olaf,oresat_configs,spacepackets"
-ignore_missing_imports = true
-
-[tool.isort]
-profile = "black"
-line_length = 100
 
 [tool.ruff]
 line-length = 100

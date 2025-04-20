@@ -3,7 +3,7 @@ import subprocess
 from queue import SimpleQueue
 
 from loguru import logger
-from oresat_libcanopend import NodeClient
+from oresat_canopend import NodeClient
 
 from ..board.gpio import Gpio
 from ..drivers.si41xx import Si41xx, Si41xxIfdiv

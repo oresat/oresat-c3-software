@@ -1,7 +1,7 @@
 from threading import Event, Thread
 
 from loguru import logger
-from oresat_libcanopend import NodeClient
+from oresat_canopend import NodeClient
 
 
 class Service:

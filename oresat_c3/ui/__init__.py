@@ -3,8 +3,8 @@ from threading import Thread
 from typing import Union
 
 from bottle import TEMPLATE_PATH, Bottle, request, template
-from oresat_libcanopend import DataType, NodeClient
-from oresat_libcanopend import __version__ as canopend_version
+from oresat_canopend import DataType, NodeClient
+from oresat_canopend import __version__ as canopend_version
 
 from ..__init__ import __version__
 from ..gen.c3_od import C3Entry

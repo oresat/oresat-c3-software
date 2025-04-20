@@ -4,7 +4,7 @@ import time
 from argparse import ArgumentParser
 
 from loguru import logger
-from oresat_libcanopend import ManagerNodeClient
+from oresat_canopend import ManagerNodeClient
 
 from . import __version__
 from .board.cpufreq import set_cpufreq_gov
@@ -22,9 +22,9 @@ from .ui import Ui
 
 
 def get_hw_version() -> str:
-    version = "0.0"
+    version = "v0.0"
     try:
-        with open("/sys/bus/i2c/devices/XXXX/eeprom", "rb") as f:
+        with open("/sys/bus/i2c/devices/0-0050/eeprom", "rb") as f:
             raw = f.read(28)
             version = raw[12:16].decode()
             version = f"v{version[:2]}.{version[2:]}"

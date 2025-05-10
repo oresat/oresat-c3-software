@@ -31,7 +31,7 @@
       <td>{{hw_version}}</td>
   </tbody>
   <tbody>
-      <td>OreSat CANopend</td>
-      <td>{{canopend_version}}</td>
+      <td>OreSat CANd</td>
+      <td>{{cand_version}}</td>
   </tbody>
 </table>

@@ -25,7 +25,7 @@ from cfdppy.user import (
     TransactionParams,
 )
 from loguru import logger
-from oresat_canopend import NodeClient
+from oresat_cand import NodeClient
 from spacepackets.cfdp import (
     ChecksumType,
     ConditionCode,

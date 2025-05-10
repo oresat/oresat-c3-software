@@ -4,7 +4,7 @@ import time
 from argparse import ArgumentParser
 
 from loguru import logger
-from oresat_canopend import ManagerNodeClient
+from oresat_cand import ManagerNodeClient
 
 from . import __version__
 from .board.cpufreq import set_cpufreq_gov

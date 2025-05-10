@@ -5,8 +5,8 @@ import shutil
 from argparse import ArgumentParser
 
 from oresat_configs import (
-    gen_canopend_manager_files,
-    gen_canopend_manager_od_config,
+    gen_cand_manager_files,
+    gen_cand_manager_od_config,
     gen_dbc,
     gen_kaitai,
     gen_rst_manager_files,
@@ -33,9 +33,9 @@ parser.add_argument(
 args = parser.parse_args()
 
 if args.gen == "code":
-    gen_canopend_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, GEN_DIR)
+    gen_cand_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, GEN_DIR)
 if args.gen == "config":
-    gen_canopend_manager_od_config(CARDS_CONFIG_PATH)
+    gen_cand_manager_od_config(CARDS_CONFIG_PATH)
 elif args.gen == "dbc":
     gen_dbc(CARDS_CONFIG_PATH)
 elif args.gen == "docs":

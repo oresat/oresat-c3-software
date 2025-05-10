@@ -2,7 +2,7 @@ import zlib
 from time import time
 
 from loguru import logger
-from oresat_canopend import NodeClient
+from oresat_cand import NodeClient
 
 from ..gen.c3_od import C3Entry, C3Status
 from ..gen.missions import Mission

@@ -22,7 +22,7 @@ dependencies = [
     "bottle",
     "bitstring",
     "cfdp-py==0.1.2",
-    "oresat-canopend",
+    "oresat-cand",
     "smbus2",
     "spacepackets",
 ]

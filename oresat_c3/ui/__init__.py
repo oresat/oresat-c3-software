@@ -3,8 +3,8 @@ from threading import Thread
 from typing import Union
 
 from bottle import TEMPLATE_PATH, Bottle, request, template
-from oresat_canopend import DataType, NodeClient
-from oresat_canopend import __version__ as canopend_version
+from oresat_cand import DataType, NodeClient
+from oresat_cand import __version__ as cand_version
 
 from ..__init__ import __version__
 from ..gen.c3_od import C3Entry
@@ -59,7 +59,7 @@ class Ui:
             version=__version__,
             routes=self.routes,
             hw_version=self.node.od_read(C3Entry.VERSIONS_HW_VERSION),
-            canopend_version=canopend_version,
+            cand_version=cand_version,
         )
 
     def get_entry(self, entry: Union[C3Entry, list[C3Entry]]):
@@ -74,7 +74,7 @@ class Ui:
 
     def get_status_data(self):
         data = self.get_entry(C3Entry.FLIGHT_MODE)
-        data["CANOPEND_STATUS"] = "CONNECTED" if self.node.is_connected else "DISCONNECTED"
+        data["CAND_STATUS"] = "CONNECTED" if self.node.is_connected else "DISCONNECTED"
         data["CAN_BUS_STATUS"] = self.node.bus_state.name
         return data
 

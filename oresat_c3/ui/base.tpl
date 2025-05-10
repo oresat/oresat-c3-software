@@ -31,8 +31,8 @@
     </style>
     <div id="headerGrid">
       <div id="headerLeft">
-        <b>CANopend: </b>
-        <text id="canopendStatus"></text>
+        <b>CANd: </b>
+        <text id="candStatus"></text>
         <br/>
         <b>CAN Bus: </b>
         <text id="canBusStatus"></text>
@@ -82,13 +82,13 @@
       const STATUS_URL = `http://${window.location.host}/data/status`;
 
       const flightModeCheckbox = document.getElementById("flightMode")
-      const canopendStatusText = document.getElementById("canopendStatus")
+      const candStatusText = document.getElementById("candStatus")
       const canBusStatusText = document.getElementById("canBusStatus")
 
       async function updateHeader() {
         const data = await getData(STATUS_URL);
         flightModeCheckbox.checked = data.FLIGHT_MODE;
-        canopendStatusText.innerHTML = data.CANOPEND_STATUS;
+        candStatusText.innerHTML = data.CAND_STATUS;
         canBusStatusText.innerHTML = data.CAN_BUS_STATUS;
       }
 

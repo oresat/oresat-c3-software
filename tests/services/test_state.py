@@ -1,7 +1,7 @@
 import unittest
 from time import time
 
-from oresat_canopend import NodeClient
+from oresat_cand import NodeClient
 
 from oresat_c3.gen.c3_od import C3Entry, C3Status, C3SystemReset
 from oresat_c3.services.state import StateService

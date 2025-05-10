@@ -4,8 +4,8 @@ from time import monotonic
 from typing import Optional, Union
 
 from loguru import logger
-from oresat_canopend import NodeClient
-from oresat_canopend import NodeState as CanopenNodeState
+from oresat_cand import NodeClient
+from oresat_cand import NodeState as CanopenNodeState
 
 from ..gen.c3_od import C3Entry, C3NodeStatus, C3OpdNodeStatus
 from ..gen.missions import Mission

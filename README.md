@@ -15,13 +15,13 @@ Linux-environment using Python and make to use existing Python libraries.
 This is not the only app on the C3, there are two other apps.
 
 - AX5043 App offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
-- CANopend offloads the CANopen stack. See the [oresat-canopend] repo.
+- CANd offloads the CANopen stack. See the [oresat-cand] repo.
 
 ```mermaid
 flowchart TD
     app@{shape: rounded, label: "C3 App"}
     ax5043@{shape: rounded, label: "AX5043 App"}
-    canopend@{shape: rounded, label: "CANopend"}
+    cand@{shape: rounded, label: "CANd"}
     cards@{shape: processes, label: "Other Cards"}
     uniclogs@{shape: processes, label: "UniClOGS Stations"}
 
@@ -30,11 +30,11 @@ flowchart TD
             app --> |EDL Downlink| ax5043
             ax5043 --> |EDL Uplink| app
             app --> |Beacon| ax5043
-            canopend --> |Data| app
-            app --> |Commands| canopend
+            cand --> |Data| app
+            app --> |Commands| cand
         end
 
-        canopend <==> |CANopen over CAN| cards
+        cand <==> |CANopen over CAN| cards
     end
 
     uniclogs -.-> |UHF| ax5043
@@ -50,13 +50,6 @@ Install dependencies
 pip install .
 ```
 
-Make a virtual CAN bus (skip if using a real CAN bus)
-
-```bash
-sudo ip link add dev vcan0 type vcan
-sudo ip link set vcan0 up
-```
-
 Generate code from configs
 
 ```bash
@@ -68,8 +61,6 @@ Run the C3 app
 ```bash
 python -m oresat_c3
 ```
-
-Can select the CAN bus to use (`vcan0`, `can0`, etc) with the `-b BUS` argument.
 
 Can mock hardware by using the `-m` or `--mock-hw` flag.
 
@@ -139,4 +130,4 @@ MOCK_HW="false" python -m unittest
 [Sphinx]: https://www.sphinx-doc.org/en/master/
 [Bottle]: https://bottlepy.org/docs/dev/
 [oresat-ax5043-driver]: https://github.com/oresat/oresat-ax5043-driver
-[oresat-canopend]: https://github.com/oresat/oresat-canopend
+[oresat-cand]: https://github.com/oresat/oresat-cand

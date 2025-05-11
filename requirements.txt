@@ -4,8 +4,8 @@ build
 cfdp-py==0.1.2
 dataclasses-json
 isort
-oresat-configs
-oresat-olaf>=3.4.0
+oresat-configs>=0.8.0
+oresat-olaf>=3.4.4
 pylama[all]
 pylama[toml]
 setuptools

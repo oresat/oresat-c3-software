@@ -3,7 +3,7 @@ Node manager service.
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from enum import IntEnum
 from time import monotonic
 from typing import Union
@@ -108,7 +108,18 @@ class NodeManagerService(Service):
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
         self.node_id_to_name = {info.node_id: name for name, info in cards.items()}
 
-        self._data = {name: Node(**asdict(info)) for name, info in cards.items()}
+        self._data = {
+            name: Node(
+                name,
+                info.nice_name,
+                info.node_id,
+                info.processor,
+                info.opd_address,
+                info.opd_always_on,
+                info.child,
+            )
+            for name, info in cards.items()
+        }
         self._data["c3"].status = NodeState.ON
         self._loops = -1
 

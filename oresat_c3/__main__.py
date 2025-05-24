@@ -2,6 +2,7 @@ import socket
 import sys
 import time
 from argparse import ArgumentParser
+from pathlib import Path
 
 from loguru import logger
 from oresat_cand import ManagerNodeClient
@@ -119,7 +120,8 @@ def main():
 
     set_system_time_to_rtc_time()
 
-    node = ManagerNodeClient(C3Entry)
+    od_config_path = Path(__file__).parent / "gen/od.csv"
+    node = ManagerNodeClient(C3Entry, od_config_path=od_config_path)
 
     mission = Mission[f"ORESAT{args.oresat}".replace(".", "_")]
     node.od_write(C3Entry.SATELLITE_ID, mission.id)

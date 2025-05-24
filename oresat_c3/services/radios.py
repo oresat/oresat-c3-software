@@ -3,7 +3,7 @@ import subprocess
 from queue import SimpleQueue
 
 from loguru import logger
-from oresat_cand import NodeClient
+from oresat_cand import ManagerNodeClient
 
 from ..board.gpio import Gpio
 from ..drivers.si41xx import Si41xx, Si41xxIfdiv
@@ -20,7 +20,7 @@ class RadiosService(Service):
     BUFFER_LEN = 1024
     TOT_CLEAR_DELAY_MS = 10
 
-    def __init__(self, node: NodeClient, mock_hw: bool = False):
+    def __init__(self, node: ManagerNodeClient, mock_hw: bool = False):
         super().__init__(node)
 
         self._mock_hw = mock_hw

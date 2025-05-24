@@ -8,15 +8,6 @@ from loguru import logger
 
 
 def get_rtc_time() -> float:
-    """
-    Get the RTC time.
-
-    Returns
-    -------
-    float:
-        The RTC time or -1.0 on error.
-    """
-
     rtc_time_path = "/sys/class/rtc/rtc0/since_epoch"
     if not os.path.exists(rtc_time_path):
         logger.error("RTC does not exist")
@@ -28,18 +19,7 @@ def get_rtc_time() -> float:
     return ts
 
 
-def set_rtc_time(ts: float):
-    """
-    Set the RTC time.
-
-    Note: All times older than January 1, 2000 are round upi to Januay 1, 2000 at midmight.
-
-    Parameters
-    -----------
-    float: ts
-        The timestamp to set the RTC to.
-    """
-
+def set_rtc_time(ts: float) -> None:
     rtc_path = "/dev/rtc"
     if not os.path.exists(rtc_path):
         logger.error("RTC does not exist")
@@ -48,7 +28,7 @@ def set_rtc_time(ts: float):
         logger.error("failed to set RTC time due to permission error")
         return
 
-    if ts < 946713600:  # Januay 1, 2000 midnight
+    if ts < 946713600:  # January 1, 2000 midnight
         values = (0, 0, 0, 1, 0, 100, 0, 0, 0)
     else:
         dt = datetime.fromtimestamp(ts, tz=timezone.utc)
@@ -59,22 +39,14 @@ def set_rtc_time(ts: float):
         ioctl(f, 0x4024700A, raw)  # magic number is the ioctl request code to set rtc time
 
 
-def set_rtc_time_to_system_time():
-    """
-    Set the RTC time to the system time.
-    """
-
+def set_rtc_time_to_system_time() -> None:
     if os.geteuid() != 0:
         logger.error("failed to set RTC time from system time due to permission error")
     else:
         set_rtc_time(time())
 
 
-def set_system_time_to_rtc_time():
-    """
-    Set the system time to the RTC time.
-    """
-
+def set_system_time_to_rtc_time() -> None:
     if os.geteuid() != 0:
         logger.error("failed to set system time from RTC time due to permission error")
     else:

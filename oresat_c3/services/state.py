@@ -3,7 +3,7 @@ import subprocess
 from time import monotonic, time
 
 from loguru import logger
-from oresat_cand import DataType, NodeClient
+from oresat_cand import DataType, ManagerNodeClient
 
 from ..drivers.fm24cl64b import Fm24cl64b
 from ..gen.c3_od import C3Entry, C3Status, C3SystemReset, C3UpdaterStatus
@@ -18,7 +18,7 @@ class StateService(Service):
     I2C_BUS_NUM = 2
     FRAM_I2C_ADDR = 0x50
 
-    def __init__(self, node: NodeClient, mock_hw: bool = False):
+    def __init__(self, node: ManagerNodeClient, mock_hw: bool = False):
         super().__init__(node)
 
         self._fram = Fm24cl64b(self.I2C_BUS_NUM, self.FRAM_I2C_ADDR, mock_hw)

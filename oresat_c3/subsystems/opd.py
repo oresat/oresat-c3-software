@@ -4,9 +4,10 @@ Everything todo with the OPD (OreSat Power Domain) functionality.
 Every card, other than the solar cards, has a MAX7310 that can be used to turn the card or off.
 """
 
-from enum import IntEnum
+from __future__ import annotations
+
+from enum import Enum
 from time import sleep
-from typing import Union
 
 from loguru import logger
 
@@ -19,7 +20,7 @@ class OpdError(Exception):
     """Error with :py:class:`Opd` or :py:class:`OpdNode`"""
 
 
-class OpdNodeState(IntEnum):
+class OpdNodeState(Enum):
     """OPD node states"""
 
     DISABLED = 0
@@ -412,7 +413,7 @@ class OpdOctavoNode(OpdNode):
         return r
 
 
-class OpdState(IntEnum):
+class OpdState(Enum):
     """OPD subsystem states."""
 
     DISABLED = 0x0
@@ -460,7 +461,7 @@ class Opd:
 
         self._nodes = {}  # type: ignore
         self._status = OpdState.DISABLED
-        self._uart_node: Union[str, None] = None
+        self._uart_node: str | None = None
         self._resets = 0
 
     def __getitem__(self, name: str) -> OpdNode:
@@ -576,7 +577,7 @@ class Opd:
             self._uart_node = None
 
     @property
-    def uart_node(self) -> Union[str, None]:
+    def uart_node(self) -> str | None:
         """str: The selected UART node name or an empty string for no node."""
         if (
             self._uart_node is not None
@@ -586,7 +587,7 @@ class Opd:
         return self._uart_node
 
     @uart_node.setter
-    def uart_node(self, name: Union[str, None]):
+    def uart_node(self, name: str | None):
         self._uart_disconnect()
         if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:
             return

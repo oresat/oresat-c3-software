@@ -6,12 +6,6 @@ The C3 card is the "flight" computer of OreSat. C3 stands for command,
 control, and communication. It handles all communications and controls
 the state of the satellite.
 
-**Note:** For OreSat0, the C3 card used STM32F4 and ChibiOS, for that project
-see the [oresat-firmware] repo and the `src/f4/app_control` directory.
-The C3 card was converted to Octavo A8 card to simplify the code base
-by swapping from heavily embedded system using ChibiOS to a general
-Linux-environment using Python and make to use existing Python libraries.
-
 This is not the only app on the C3, there are two other apps.
 
 - AX5043 App offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
@@ -125,7 +119,6 @@ MOCK_HW="false" python -m unittest
 - `I2C_BUS_NUM`: The I2C bus number used by the OPD and F-RAM.
 - `FRAM_ADDR`: The I2C address for the F-RAM chip. Must be in hex (e.g., `"0x50"`)
 
-[oresat-firmware]: https://github.com/oresat/oresat-firmware
 [Read the Docs]: https://readthedocs.org
 [Sphinx]: https://www.sphinx-doc.org/en/master/
 [Bottle]: https://bottlepy.org/docs/dev/

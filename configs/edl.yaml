@@ -1,0 +1,211 @@
+commands:
+  - id: 0x0
+    name: tx_control
+    description: enable / disable tx
+    request:
+      - name: enable
+        data_type: bool
+        description: true to enable tx or false to disable tx
+    response:
+      - name: status
+        data_type: bool
+        description: tx status
+
+  - id: 0x1
+    name: c3_soft_reset
+    description: soft reset the c3 (reboot c3 daemon)
+
+  - id: 0x2
+    name: c3_hard_reset
+    description: hard reset the c3 (reboot system)
+
+  - id: 0x3
+    name: c3_factory_reset
+    description: factory reset the c3 (clear FRAM, reset RTC, and reboot system)
+
+  - id: 0x4
+    name: co_node_enable
+    description: enable a CANopen node
+    request:
+      - name: node_id
+        data_type: uint8
+        description: node id of the CANopen node to enable / disable
+      - name: enable
+        data_type: bool
+        description: true to enable or false to disable
+    response:
+      - name: status
+        data_type: uint8
+        description: node status
+
+  - id: 0x5
+    name: co_node_status
+    description: get the status of a CANopen node
+    request:
+      - name: node_id
+        data_type: uint8
+        description: node id of node to get the status for
+    response:
+      - name: status
+        data_type: uint8
+        description: node status
+
+  - id: 0x6
+    name: co_sdo_write
+    description: write a value to a node's OD over the CAN bus using a CANopen SDO message
+    request:
+      - name: node_id
+        data_type: uint8
+        description: the id of The CANopen node to write to
+      - name: index
+        data_type: uint16
+        description: the OD index to write to
+      - name: subindex
+        data_type: uint8
+        description: the OD subindex to write to
+      - name: buffer
+        data_type: octet_str
+        description: sdo data buffer to write
+    response:
+      - name: abort_code
+        data_type: uint32
+        description: SDO error code (0 is no error)
+
+  - id: 0x7
+    name: co_sync
+    description: send a CANopen SYNC message on the CAN bus
+    response:
+      - name: sent
+        data_type: bool
+        description: the CANopen SYNC message was sent successfully
+
+  - id: 0x8
+    name: opd_sys_enable
+    description: enable the OPD subsystem
+    request:
+      - name: enable
+        data_type: bool
+        description: true to enable or false to disable
+    response:
+      - name: status
+        data_type: bool
+        description: OPD subsystem enable status
+
+  - id: 0x9
+    name: opd_scan
+    description: scan for all nodes on the OPD
+    response:
+      - name: nodes_found
+        data_type: uint8
+        description: the number of nodes found
+
+  - id: 0xA
+    name: opd_probe
+    description: probe for a node on the OPD
+    request:
+      - name: opd_addr
+        data_type: uint8
+        description: the id of the OPD node to probe for
+    response:
+      - name: found
+        data_type: bool
+        description: true if the node was found or false if not
+
+  - id: 0xB
+    name: opd_enable
+    description: enable / disable a node on the OPD
+    request:
+      - name: opd_addr
+        data_type: uint8
+        description: the id of the OPD node to enable / disable
+      - name: enable
+        data_type: bool
+        description: true to enable or false to disable
+    response:
+      - name: status
+        data_type: uint8
+        description: OPD node status
+
+  - id: 0xC
+    name: opd_reset
+    description: reset a node on the OPD
+    request:
+      - name: opd_addr
+        data_type: uint8
+        description: The id of the OPD node to reset
+    response:
+      - name: status
+        data_type: uint8
+        description: OPD node status
+
+  - id: 0xD
+    name: opd_status
+    description: get the status of a node on the OPD
+    request:
+      - name: opd_addr
+        data_type: uint8
+        description: the id of the OPD node to get the status of
+    response:
+     - name: status
+       data_type: uint8
+       description: OPD node status
+
+  - id: 0xE
+    name: rtc_set_time
+    description: set the RTC time
+    request:
+      - name: time
+        data_type: uint32
+        description: the Unix time to set the rtc to
+        unit: s
+
+  - id: 0xF
+    name: time_sync
+    description: >-
+      c3 will send OreSat's time sync TPDO over the CAN bus (all nodes that are powered on and care
+      about time will sync to it)
+    response:
+      - name: sent
+        data_type: bool
+        description: time sync was sent
+
+  - id: 0x10
+    name: beacon_ping
+    description: c3 will response with a beacon regardless of tx state
+
+  - id: 0x11
+    name: ping
+    description: a basic ping to the c3
+    request:
+      - name: value
+        data_type: uint32
+        description: a value to return
+    response:
+      - name: value
+        data_type: uint32
+        description: the parameter value
+
+  - id: 0x12
+    name: rx_test
+    description: empty command for c3 Rx testing
+
+  - id: 0x13
+    name: co_sdo_read
+    description: read a value from a node's OD over the CAN bus using a CANopen SDO message
+    request:
+      - name: node_id
+        data_type: uint8
+        description: the id of The CANopen node to read from
+      - name: index
+        data_type: uint16
+        description: the OD index to read from
+      - name: subindex
+        data_type: uint8
+        description: the OD subindex to read from
+    response:
+      - name: abort_code
+        data_type: uint32
+        description: SDO error code (0 is no error)
+      - name: buffer
+        data_type: octet_str
+        description: data buffer

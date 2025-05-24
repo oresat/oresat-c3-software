@@ -25,13 +25,8 @@ from cfdppy.user import (
     TransactionParams,
 )
 from loguru import logger
-from oresat_cand import NodeClient
-from spacepackets.cfdp import (
-    ChecksumType,
-    ConditionCode,
-    FaultHandlerCode,
-    TransmissionMode,
-)
+from oresat_cand import ManagerNodeClient
+from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
@@ -46,28 +41,21 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
-from ..gen.c3_od import C3Entry, C3SystemReset
+from ..gen.c3_od import C3Entry
+from ..gen.missions import Mission
 from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
-from ..protocols.edl_command import (
-    EdlCommandCode,
-    EdlCommandError,
-    EdlCommandRequest,
-    EdlCommandResponse,
-)
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
-from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from . import Service
+from ._edl_runner import EdlCommandRunner
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
 
 
 class EdlService(Service):
-    """'EDL Service"""
-
     def __init__(
         self,
-        node: NodeClient,
+        node: ManagerNodeClient,
         radios_service: RadiosService,
         node_mgr_service: NodeManagerService,
         beacon_service: BeaconService,
@@ -75,12 +63,14 @@ class EdlService(Service):
         super().__init__(node)
 
         self._radios_service = radios_service
-        self._node_mgr_service = node_mgr_service
-        self._beacon_service = beacon_service
+        self._edl_runner = EdlCommandRunner(node, node_mgr_service, beacon_service)
 
         self._file_receiver = EdlFileReciever()
 
         self._active_key_entry = C3Entry.EDL_CRYPTO_KEY_1
+
+        sat_id = node.od_read(C3Entry.SATELLITE_ID)
+        self.mission = Mission.from_id(sat_id)
 
     @property
     def _hmac_key(self) -> bytes:
@@ -102,7 +92,7 @@ class EdlService(Service):
         ]
         self._active_key_entry = key_entries[key_num]
 
-    def _upack_last_recv(self) -> Optional[EdlPacket]:
+    def _unpack_last_recv(self) -> Optional[EdlPacket]:
         try:
             message = self._radios_service.recv_queue.get_nowait()
         except Empty:
@@ -110,23 +100,25 @@ class EdlService(Service):
 
         try:
             packet = EdlPacket.unpack(
-                message, self._hmac_key, not self.node.od_read(C3Entry.FLIGHT_MODE)
+                message,
+                self.mission.edl_scid,
+                self._hmac_key,
+                not self.node.od_read(C3Entry.FLIGHT_MODE),
             )
         except EdlPacketError as e:
             logger.error(f"invalid EDL request packet: {e}")
             self._increase_count(C3Entry.EDL_REJECTED_COUNT)
             return None  # no responses to invalid packets
 
-        if self.node.od_read(C3Entry.FLIGHT_MODE) and packet.seq_num < self.node.od_read(
-            C3Entry.EDL_SEQUENCE_COUNT
-        ):
+        seq_count = self.node.od_read(C3Entry.EDL_SEQUENCE_COUNT)
+        if self.node.od_read(C3Entry.FLIGHT_MODE) and packet.seq_num < seq_count:
             logger.error(
-                f"invalid EDL request packet sequence number of {packet.seq_num}, should be > "
-                f"{self.node.od_read(C3Entry.EDL_SEQUENCE_COUNT)}"
+                f"invalid EDL request packet sequence number of {packet.seq_num}, "
+                f"should be > {seq_count}"
             )
             return None  # no responses to invalid packets
 
-        self.node.od_read(C3Entry.EDL_LAST_TIMESTAMP, int(time()))
+        self.node.od_write(C3Entry.EDL_LAST_TIMESTAMP, int(time()))
 
         if self.node.od_read(C3Entry.FLIGHT_MODE):
             self._increase_count(C3Entry.EDL_SEQUENCE_COUNT)
@@ -134,7 +126,7 @@ class EdlService(Service):
         return packet
 
     def on_loop(self):
-        req_packet = self._upack_last_recv()
+        req_packet = self._unpack_last_recv()
 
         if req_packet is None:
             if self._file_receiver.state == CfdpState.BUSY:
@@ -144,11 +136,11 @@ class EdlService(Service):
                 return
         elif req_packet.vcid == EdlVcid.C3_COMMAND:
             try:
-                res_payload = self._run_cmd(req_packet.payload)
+                res_payload = self._edl_runner.run(req_packet.payload)
                 if not res_payload.values:
                     return  # no response
-            except Exception as e:  # pylint: disable=W0718
-                logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
+            except Exception as e:
+                logger.error(f"EDL command {req_packet.payload.id.name} raised: {e}")
                 return
         elif req_packet.vcid == EdlVcid.FILE_TRANSFER:
             res_payload = self._file_receiver.loop(req_packet.payload)
@@ -163,152 +155,15 @@ class EdlService(Service):
         if not isinstance(res_payload, Iterable):
             res_payload = (res_payload,)
         for payload in res_payload:
+            seq_count = self.node.od_read(C3Entry.EDL_SEQUENCE_COUNT)
             try:
-                res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
+                res_packet = EdlPacket(self.mission.edl_scid, payload, seq_count, SRC_DEST_UNICLOGS)
                 res_message = res_packet.pack(self._hmac_key)
-            except (EdlCommandError, EdlPacketError, ValueError) as e:
+            except (EdlPacketError, ValueError) as e:
                 logger.exception(f"EDL response generation raised: {e}")
                 continue
 
             self._radios_service.send_edl_response(res_message)
-
-    def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
-        ret: Any = None
-
-        logger.info(f"EDL command request: {request.code.name}, args: {request.args}")
-
-        if request.code == EdlCommandCode.TX_CTRL:
-            if request.args[0] == 0:
-                logger.info("EDL disabling Tx")
-                self.node.od_write(C3Entry.TX_CONTROL_ENABLE, False)
-                self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
-                ret = False
-            else:
-                logger.info("EDL enabling Tx")
-                self.node.od_write(C3Entry.TX_CONTROL_ENABLE, True)
-                self.node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, int(time()))
-                ret = True
-        elif request.code == EdlCommandCode.C3_SOFT_RESET:
-            logger.info("EDL soft reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.SOFT_RESET)
-        elif request.code == EdlCommandCode.C3_HARD_RESET:
-            logger.info("EDL hard reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.HARD_RESET)
-        elif request.code == EdlCommandCode.C3_FACTORY_RESET:
-            logger.info("EDL factory reset")
-            self.node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.FACTORY_RESET)
-        elif request.code == EdlCommandCode.CO_NODE_ENABLE:
-            node_id = request.args[0]
-            name = self._node_mgr_service.node_id_to_name[node_id]
-            logger.info(f"EDL enabling CANopen node {name} (0x{node_id:02X})")
-        elif request.code == EdlCommandCode.CO_NODE_STATUS:
-            node_id = request.args[0]
-            name = self._node_mgr_service.node_id_to_name[node_id]
-            logger.info(f"EDL getting CANopen node {name} (0x{node_id:02X}) status")
-            ret = self.node.node_status[name]
-        elif request.code == EdlCommandCode.CO_SDO_WRITE:
-            node_id, index, subindex, _, data = request.args
-            name = self._node_mgr_service.node_id_to_name[node_id]
-            logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
-            try:
-                if node_id == 1:
-                    entry = C3Entry.find_entry(index, subindex)
-                    value = entry.decode(data)
-                    self.node.sdo_write(node_id, entry, value)
-                else:
-                    raise NotImplementedError()
-                ret = 0
-            except Exception as e:
-                logger.error(e)
-                ret = 1
-        elif request.code == EdlCommandCode.CO_SYNC:
-            logger.info("EDL sending CANopen SYNC message")
-            self.node.send_sync()
-        elif request.code == EdlCommandCode.OPD_SYSENABLE:
-            enable = request.args[0]
-            if enable:
-                logger.info("EDL enabling OPD subsystem")
-                self._node_mgr_service.opd.enable()
-            else:
-                logger.info("EDL disabling OPD subsystem")
-                self._node_mgr_service.opd.disable()
-            ret = self._node_mgr_service.opd.status.value
-        elif request.code == EdlCommandCode.OPD_SCAN:
-            logger.info("EDL scaning for all OPD nodes")
-            ret = self._node_mgr_service.opd.scan()
-        elif request.code == EdlCommandCode.OPD_PROBE:
-            opd_addr = request.args[0]
-            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
-            logger.info(f"EDL probing for OPD node {name} (0x{opd_addr:02X})")
-            ret = self._node_mgr_service.opd[name].probe()
-        elif request.code == EdlCommandCode.OPD_ENABLE:
-            opd_addr = request.args[0]
-            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
-            node = self._node_mgr_service.opd[name]
-            if request.args[1] == 0:
-                logger.info(f"EDL disabling OPD node {name} (0x{opd_addr:02X})")
-                ret = node.disable()
-            else:
-                logger.info(f"EDL enabling OPD node {name} (0x{opd_addr:02X})")
-                ret = node.enable()
-            ret = node.status.value
-        elif request.code == EdlCommandCode.OPD_RESET:
-            opd_addr = request.args[0]
-            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
-            logger.info(f"EDL resetting OPD node {name} (0x{opd_addr:02X})")
-            node = self._node_mgr_service.opd[name]
-            node.reset()
-            ret = node.status.value
-        elif request.code == EdlCommandCode.OPD_STATUS:
-            opd_addr = request.args[0]
-            name = self._node_mgr_service.opd_addr_to_name[opd_addr]
-            logger.info(f"EDL getting the status for OPD node {name} (0x{opd_addr:02X})")
-            ret = self._node_mgr_service.opd[name].status.value
-        elif request.code == EdlCommandCode.RTC_SET_TIME:
-            ts = request.args[0]
-            logger.info(f"EDL setting the RTC time to {ts}")
-            set_rtc_time(ts)
-            set_system_time_to_rtc_time()
-        elif request.code == EdlCommandCode.TIME_SYNC:
-            logger.info("EDL sending time sync TPDO")
-            self.node.send_tpdo(0)
-        elif request.code == EdlCommandCode.BEACON_PING:
-            logger.info("EDL beacon")
-            self._beacon_service.send()
-        elif request.code == EdlCommandCode.PING:
-            logger.info("EDL ping")
-            ret = request.args[0]
-        elif request.code == EdlCommandCode.RX_TEST:
-            logger.info("EDL Rx test")
-        elif request.code == EdlCommandCode.CO_SDO_READ:
-            node_id, index, subindex = request.args
-            name = self._node_mgr_service.node_id_to_name[node_id]
-            logger.info(f"EDL SDO read on CANopen node {name} (0x{node_id:02X})")
-            data = b""
-            ecode = 0
-            try:
-                if node_id == 1:
-                    entry = C3Entry.find_entry(index, subindex)
-                    value = self.node.sdo_read(node_id, entry)
-                    data = entry.encode(value)
-                else:
-                    raise NotImplementedError()
-            except canopen.sdo.exceptions.SdoAbortedError as e:
-                logger.error(e)
-                ecode = e.code
-            except Exception as e:
-                logger.error(e)
-                ecode = 0x06090011
-            ret = (ecode, len(data), data)
-
-        if ret is not None and not isinstance(ret, tuple):
-            ret = (ret,)  # make ret a tuple
-
-        response = EdlCommandResponse(request.code, ret)
-
-        logger.info(f"EDL command response: {response.code.name}, values: {response.values}")
-
-        return response
 
 
 class LogFaults(DefaultFaultHandlerBase):

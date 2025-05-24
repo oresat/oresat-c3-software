@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import json
 from dataclasses import asdict, dataclass, field
 from time import monotonic
-from typing import Optional, Union
 
 from loguru import logger
-from oresat_cand import NodeClient
+from oresat_cand import ManagerNodeClient
 from oresat_cand import NodeState as CanopenNodeState
 
 from ..gen.c3_od import C3Entry, C3NodeStatus, C3OpdNodeStatus
@@ -27,7 +28,7 @@ class NodeData(NodeDef):
     last_enable: float = 0.0
     status: C3NodeStatus = C3NodeStatus.NOT_FOUND
     last_hb: float = 0.0
-    hb_state: Optional[CanopenNodeState] = None
+    hb_state: CanopenNodeState | None = None
     emcys: list[Emcy] = field(default_factory=list)
 
 
@@ -44,7 +45,7 @@ class NodeManagerService(Service):
     _ADC_CURRENT_PIN = 2
     _I2C_BUS_NUM = 2
 
-    def __init__(self, node: NodeClient, mock_hw: bool = True):
+    def __init__(self, node: ManagerNodeClient, mock_hw: bool = True):
         super().__init__(node)
 
         self.opd = Opd(
@@ -108,8 +109,6 @@ class NodeManagerService(Service):
         self._data[name].emcys.append(emcy)
 
     def _check_co_nodes_state(self, name: str) -> C3NodeStatus:
-        """Get a CANopen node's state."""
-
         node = self._data[name]
         next_state = node.status
         last_hb = self._data[name].last_hb
@@ -147,8 +146,6 @@ class NodeManagerService(Service):
         return next_state
 
     def _get_nodes_state(self, name: str) -> C3NodeStatus:
-        """Determine a node's state."""
-
         # update status of data not on the OPD
         if self._data[name].opd_address == 0:
             if monotonic() > (self._data[name].last_hb + self._HB_TIMEOUT):
@@ -249,19 +246,7 @@ class NodeManagerService(Service):
             elif info.status in [C3NodeStatus.ON, C3NodeStatus.OFF]:
                 info.opd_resets = 0
 
-    def enable(self, name: Union[str, int], bootloader_mode: bool = False):
-        """
-        Enable a OreSat node.
-
-        Parameters
-        ----------
-        name: str | int
-            Name or node id of the card to enable
-        bootloader_mode: bool
-            Go into bootloader mode instead. Only for STM32 nodes on the OPD, flag will be ignored
-            otherwise.
-        """
-
+    def enable(self, name: Node | str | int, bootloader_mode: bool = False):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
@@ -289,16 +274,7 @@ class NodeManagerService(Service):
                 self.opd[node.child].enable()
         node.last_enable = monotonic()
 
-    def disable(self, name: Union[str, int]):
-        """
-        Disable a OreSat node.
-
-        Parameters
-        ----------
-        name: str | int
-            Name or node id of the card to enable
-        """
-
+    def disable(self, name: Node | str | int):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
@@ -308,7 +284,7 @@ class NodeManagerService(Service):
             logger.warning(f"cannot disable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if node.status in [NodeStatus.OFF, C3NodeStatus.DEAD]:
+        if node.status in [C3NodeStatus.OFF, C3NodeStatus.DEAD]:
             logger.debug(f"cannot disable node {name} as it is already disabled or dead")
             return
 
@@ -316,17 +292,14 @@ class NodeManagerService(Service):
             self.opd[node.child].disable()
         self.opd[name].disable()
 
-    def node_status(self, name: Union[str, int]) -> C3NodeStatus:
-        """Get the status of a OreSat node."""
+    def node_status(self, name: str | int) -> C3NodeStatus:
 
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
         return self._data[name].status
 
-    def _set_node_status(self, name: Union[str, int], state: int):
-        """Set the status of a OreSat node."""
-
+    def _set_node_status(self, name: str | int, state: int):
         if isinstance(name, int):
             name = self.opd_addr_to_name[name]
 
@@ -338,14 +311,11 @@ class NodeManagerService(Service):
             self.enable(name, True)
 
     def _get_status_json(self) -> str:
-        """SDO read callback to get the status of all data as a JSON."""
-
         data = []
         for name, info in self._data.items():
             data.append(
                 {
                     "name": name,
-                    "nice_name": info.nice_name,
                     "node_id": info.node_id,
                     "processor": info.processor,
                     "opd_addr": info.opd_address,
@@ -371,20 +341,9 @@ class NodeManagerService(Service):
             self.opd.enable()
 
     def _get_uart_node_select(self) -> int:
-        """SDO write callback to select a node to connect to via UART."""
-
         return 0 if self.opd.uart_node is None else self._data[self.opd.uart_node].opd_address
 
     def _set_uart_node_select(self, value: int):
-        """
-        SDO write callback to select a node to connect to via UART.
-
-        Parameters
-        ----------
-        value: int
-            The opd address of the node to connect to UART or 0 for no node.
-        """
-
         if value == 0:
             self.opd.uart_node = None
         elif value in self.opd_addr_to_name:

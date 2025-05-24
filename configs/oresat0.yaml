@@ -1,6 +1,8 @@
 name: oresat0
 nice_name: OreSat0
 id: 1
+edl:
+  spacecraft_id: 0x4F53  # aka "OS" in ASCII
 beacon:
   revision: 0
   ax25:

@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 
 from oresat_configs import (
     gen_cand_manager_files,
-    gen_cand_manager_od_config,
     gen_dbc,
     gen_kaitai,
     gen_rst_manager_files,
@@ -20,6 +19,7 @@ MISSION_CONFIGS_PATHS = [
     os.path.join(CONFIG_DIR_PATH, "oresat0_5.yaml"),
     os.path.join(CONFIG_DIR_PATH, "oresat1.yaml"),
 ]
+EDL_CONFIG_PATH = os.path.join(CONFIG_DIR_PATH, "edl.yaml")
 GEN_DIR = "oresat_c3/gen"
 DOCS_DIR = "docs/gen"
 
@@ -27,15 +27,13 @@ parser = ArgumentParser()
 parser.add_argument(
     "gen",
     nargs="?",
-    choices=["code", "dbc", "docs", "config", "xtce", "kaitai", "clean"],
+    choices=["code", "dbc", "docs", "xtce", "kaitai", "clean"],
     default="code",
 )
 args = parser.parse_args()
 
 if args.gen == "code":
-    gen_cand_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, GEN_DIR)
-if args.gen == "config":
-    gen_cand_manager_od_config(CARDS_CONFIG_PATH)
+    gen_cand_manager_files(CARDS_CONFIG_PATH, MISSION_CONFIGS_PATHS, EDL_CONFIG_PATH, GEN_DIR)
 elif args.gen == "dbc":
     gen_dbc(CARDS_CONFIG_PATH)
 elif args.gen == "docs":

@@ -1,11 +1,11 @@
 from threading import Event, Thread
 
 from loguru import logger
-from oresat_cand import NodeClient
+from oresat_cand import ManagerNodeClient
 
 
 class Service:
-    def __init__(self, node: NodeClient):
+    def __init__(self, node: ManagerNodeClient):
         self.node = node
         self._event = Event()
 
@@ -16,7 +16,7 @@ class Service:
         while not self._event.is_set():
             try:
                 self.on_loop()
-            except Exception as e:  # pylint: disable=W0718
+            except Exception as e:
                 logger.error(
                     f"{self.__class__.__name__} unexpected exception raised by on_loop {e}"
                 )
@@ -33,7 +33,7 @@ class Service:
     def stop(self):
         try:
             self.on_stop()
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:
             logger.error(f"{self.__class__.__name__} unexpected exception raised by on_stop: {e}")
 
     def sleep(self, timeout: float):

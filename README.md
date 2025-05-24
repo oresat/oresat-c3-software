@@ -8,13 +8,13 @@ the state of the satellite.
 
 This is not the only app on the C3, there are two other apps.
 
-- AX5043 App offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
+- AX5043 Driver offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
 - CANd offloads the CANopen stack. See the [oresat-cand] repo.
 
 ```mermaid
 flowchart TD
     app@{shape: rounded, label: "C3 App"}
-    ax5043@{shape: rounded, label: "AX5043 App"}
+    ax5043@{shape: rounded, label: "AX5043 Driver"}
     cand@{shape: rounded, label: "CANd"}
     cards@{shape: processes, label: "Other Cards"}
     uniclogs@{shape: processes, label: "UniClOGS Stations"}
@@ -25,6 +25,7 @@ flowchart TD
             ax5043 --> |EDL Uplink| app
             app --> |Beacon| ax5043
             cand --> |Data| app
+            app --> |Data| cand
             app --> |Commands| cand
         end
 

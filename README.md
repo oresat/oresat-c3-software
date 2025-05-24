@@ -9,7 +9,7 @@ the state of the satellite.
 This is not the only app on the C3, there are two other apps.
 
 - AX5043 Driver offloads control of ax5043 radios. See the [oresat-ax5043-driver] repo.
-- CANd offloads the CANopen stack. See the [oresat-cand] repo.
+- CANd offloads the CAN stack. See the [oresat-cand] repo.
 
 ```mermaid
 flowchart TD
@@ -29,7 +29,7 @@ flowchart TD
             app --> |Commands| cand
         end
 
-        cand <==> |CANopen over CAN| cards
+        cand <==> |CAN Messages| cards
     end
 
     uniclogs -.-> |UHF| ax5043
@@ -63,23 +63,6 @@ See other options with `-h` flag.
 
 A basic [Bottle]-based website for development and integration can be found at
 `http://localhost:8000` when the software is running.
-
-## Project Layout
-
-- `docs/`: Source of Read the Docs documentation.
-- `oresat_c3/`: Source code.
-  - `gen/`: Generated code not commited to git.
-  - `drivers/`: Fully stand-alone (doesn't import anything else from project)
-    Pythonic drivers used by project. All drivers can mock hardware it's for.
-  - `protocols/`: Anything dealing with packing or unpacking beacon and EDL
-    packets.
-  - `services/`: OLAF services, the "glue" between protocol, drivers, and/or
-    subsystems with the CANopen node with a dedicated thread.
-  - `subsystems/`: Anything dealing with the subsystems of the C3 other than the
-    CAN bus.
-  - `ui/`: The [Bottle]-based web ui used for development and integration
-    (not used in production).
-- `tests/`: Unit tests.
 
 ## Documentation
 

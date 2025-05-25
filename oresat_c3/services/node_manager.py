@@ -58,6 +58,7 @@ class NodeManagerService(Service):
     def __init__(self, node: ManagerNodeClient, mock_hw: bool = True):
         super().__init__(node)
 
+        self._uart_node = None
         self.opd = Opd(
             self._NOT_ENABLE_PIN, self._NOT_FAULT_PIN, self._ADC_CURRENT_PIN, mock=mock_hw
         )
@@ -311,7 +312,7 @@ class NodeManagerService(Service):
     @uart_node.setter
     def uart_node(self, card: Card | None):
         if self._uart_node is not None:
-            self.opd[self._uart_node].disable_uart()
+            self.opd[self._uart_node.opd_address].disable_uart()
         if card is not None:
-            self.opd[card].enable_uart()
+            self.opd[card.opd_address].enable_uart()
         self._uart_node = card

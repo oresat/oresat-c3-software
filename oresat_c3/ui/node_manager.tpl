@@ -154,10 +154,13 @@
 
     const status = data.opd_status;
     statusSpan.innerText = status;
+    const nodeDiv = document.getElementById("nodeMgrTableDiv");
     if ((status === "ENABLED") || (status === "FAULT")) {
       enableButton.innerText = "Disable System";
+      nodeDiv.style.display = "inline";
     } else {
       enableButton.innerText = "Enable System";
+      nodeDiv.style.display = "none";
     }
 
     const select = document.getElementById("uartNodeSelect");

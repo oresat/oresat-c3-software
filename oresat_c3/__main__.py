@@ -104,7 +104,7 @@ def main():
         "--oresat",
         choices=oresat_nums,
         default="0.5",
-        help="oresat mission number",
+        help="oresat mission number (default: %(default)s)",
     )
     parser.add_argument("-m", "--mock-hw", action="store_true", help="mock hardware")
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
@@ -122,6 +122,8 @@ def main():
 
     od_config_path = Path(__file__).parent / "gen/od.csv"
     node = ManagerNodeClient(C3Entry, od_config_path=od_config_path)
+
+    node.od_write(C3Entry.FLIGHT_MODE, False)
 
     mission = Mission[f"ORESAT{args.oresat}".replace(".", "_")]
     node.od_write(C3Entry.SATELLITE_ID, mission.id)

@@ -5,6 +5,7 @@ from loguru import logger
 from oresat_cand import ManagerNodeClient
 
 from ..gen.c3_od import C3Entry, C3SystemReset
+from ..gen.cards import Card
 from ..gen.edl_commands import (
     CoNodeEnableEdlRequest,
     CoNodeEnableEdlResponse,
@@ -34,7 +35,6 @@ from ..gen.edl_commands import (
     TxControlEdlRequest,
     TxControlEdlResponse,
 )
-from ..gen.cards import Card
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService

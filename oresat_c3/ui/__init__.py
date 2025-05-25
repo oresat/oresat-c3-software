@@ -3,11 +3,15 @@ from threading import Thread
 from typing import Union
 
 from bottle import TEMPLATE_PATH, Bottle, request, template
-from oresat_cand import DataType, NodeClient
+from loguru import logger
+from oresat_cand import DataType, ManagerNodeClient
 from oresat_cand import __version__ as cand_version
+
+from oresat_c3.subsystems.opd import OpdState
 
 from ..__init__ import __version__
 from ..gen.c3_od import C3Entry
+from ..gen.cards import Card
 from ..gen.missions import Mission
 from ..services.beacon import BeaconService
 from ..services.node_manager import NodeManagerService
@@ -16,7 +20,9 @@ TEMPLATE_PATH.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Ui:
-    def __init__(self, node: NodeClient, node_manager: NodeManagerService, beacon: BeaconService):
+    def __init__(
+        self, node: ManagerNodeClient, node_manager: NodeManagerService, beacon: BeaconService
+    ):
         self.node = node
         self.beacon = beacon
         self.node_manager = node_manager
@@ -82,6 +88,8 @@ class Ui:
         data = request.json
         entry = C3Entry.FLIGHT_MODE
         if entry.name in dict(data):
+            action = "enabled " if data[entry.name] else "disabled"
+            logger.warning(f"flight mode {action}")
             self.node.od_write(entry, data[entry.name])
 
     def template(self, path: str):
@@ -115,7 +123,7 @@ class Ui:
         data = request.json
         for e in self.KEY_ENTRIES:
             if e.name in data:
-                if e.data_type == DataType.BYTES:
+                if e.data_type == DataType.OCTET_STR:
                     self.node.od_write(e, parse_key_str(data[e.name]))
                 else:
                     self.node.od_write(e, data[e.name])
@@ -139,36 +147,42 @@ class Ui:
 
     def get_nm_data(self) -> dict:
         data = []
-        for card in self.mission.nodes:
+        for card in self.mission.cards:
             data.append(
                 {
                     "name": card.name,
                     "node_id": card.node_id,
                     "opd_addr": card.opd_address,
-                    "status": self.node_manager.node_status(card.name).name,
+                    "status": self.node_manager.status(card).name,
                     "processor": card.processor.name,
                 }
             )
-        uart_node = self.node.od_read(C3Entry.OPD_UART_NODE_SELECT, use_enum=False)
-        opd_status = self.node.od_read(C3Entry.OPD_STATUS).name
+        uart_node = self.node_manager.uart_node
+        uart_node_addr = uart_node.opd_address if uart_node is not None else 0
+        opd_status = self.node_manager.opd.status.name
         return {
             "opd_status": opd_status,
-            "opd_uart_node_select": uart_node,
+            "opd_uart_node_select": uart_node_addr,
             "nodes": data,
         }
 
     def put_nm_data(self):
-        data = dict(request.json)
+        data: dict = dict(request.json)
         if "opd_status" in data:
-            value = C3Entry.OPD_STATUS.enum[data["opd_status"]]
-            self.node.od_write(C3Entry.OPD_STATUS, value)
+            state = OpdState[data["opd_status"]]
+            if state == OpdState.ENABLED:
+                self.node_manager.opd.enable()
+            elif state == OpdState.DISABLED:
+                self.node_manager.opd.disable()
         if "opd_uart_node_select" in data:
-            self.node.od_write(C3Entry.OPD_UART_NODE_SELECT, data["opd_uart_node_select"])
+            uart_node_addr = data["opd_uart_node_select"]
+            card = Card.from_opd_address(uart_node_addr) if uart_node_addr != 0 else None
+            self.node_manager.uart_node = card
 
         if "node" in data and "state" in data:
+            card = Card.from_name(data["node"])
             state = data["state"].upper()
-            node = data["node"]
-            if state == ["ENABLE", "BOOTLOADER"]:
-                self.node_manager.enable(node, state == "BOOTLOADER")
+            if state in ["ENABLE", "BOOTLOADER"]:
+                self.node_manager.enable(card, state == "BOOTLOADER")
             elif state == "DISABLE":
-                self.node_manager.disable(node)
+                self.node_manager.disable(card)

@@ -3,7 +3,14 @@
 import unittest
 
 from oresat_c3.gen.cards import Card, CardProcessor
-from oresat_c3.subsystems.opd import Opd, OpdNode, OpdNodeState, OpdOctavoNode, OpdState, OpdStm32Node
+from oresat_c3.subsystems.opd import (
+    Opd,
+    OpdNode,
+    OpdNodeState,
+    OpdOctavoNode,
+    OpdState,
+    OpdStm32Node,
+)
 
 from .. import I2C_BUS_NUM
 
@@ -42,7 +49,6 @@ class TestOpd(unittest.TestCase):
                 self.assertIn(status, [OpdNodeState.ENABLED, OpdNodeState.NOT_FOUND])
             else:
                 self.assertIn(status, [OpdNodeState.DISABLED, OpdNodeState.NOT_FOUND])
-
 
         opd.enable()
         self.assertEqual(opd.status, OpdState.ENABLED)

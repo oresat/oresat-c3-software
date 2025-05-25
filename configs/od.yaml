@@ -30,7 +30,7 @@ objects:
     name: flight_mode
     data_type: bool
     description: card is in flight mode
-    access_type: rw
+    access_type: ro
     default: true
 
   - index: 0x3002
@@ -396,35 +396,35 @@ objects:
         name: crypto_key_0
         data_type: octet_str
         description: edl crypto key 0
-        access_type: wo
+        access_type: const
         str_length: 32
 
       - subindex: 0x2
         name: crypto_key_1
         data_type: octet_str
         description: edl crypto key 1
-        access_type: wo
+        access_type: const
         str_length: 32
 
       - subindex: 0x3
         name: crypto_key_2
         data_type: octet_str
         description: edl crypto key 2
-        access_type: wo
+        access_type: const
         str_length: 32
 
       - subindex: 0x4
         name: crypto_key_3
         data_type: octet_str
         description: edl crypto key 3
-        access_type: wo
+        access_type: const
         str_length: 32
 
       - subindex: 0x5
         name: active_crypto_key
         data_type: uint8
         description: selected edl crypto key
-        access_type: ro
+        access_type: const
         high_limit: 3
 
       - subindex: 0x6
@@ -484,7 +484,7 @@ objects:
           enabled: 1
           fault: 2
           dead: 3
-        access_type: rw
+        access_type: ro
 
       - subindex: 0x2
         name: has_fault
@@ -498,80 +498,6 @@ objects:
         description: opd system current draw
         access_type: ro
         unit: mA
-
-      - subindex: 0x4
-        name: scan
-        data_type: bool
-        description: scan for opd nodes
-        access_type: wo
-
-      - subindex: 0x5
-        name: reset
-        data_type: bool
-        description: reset the opd system
-        access_type: wo
-
-      - subindex: 0x6
-        name: reset_attempts
-        data_type: uint8
-        description: number of reset attempts for the opd system before it is considered dead
-        access_type: rw
-        default: 3
-
-      - subindex: 0x7
-        name: reset_delay
-        data_type: uint8
-        description: delay between opd system resets
-        access_type: rw
-        default: 10
-        unit: s
-
-      - subindex: 0x8
-        name: nodes_status_json
-        data_type: str
-        description: status of all node as a json string
-        access_type: ro
-        default: "{}"
-
-      - subindex: 0x9
-        name: node_select
-        data_type: uint8
-        description: select a opd node via its node id
-        access_type: rw
-
-      - subindex: 0xa
-        name: node_status
-        data_type: uint8
-        description: enable/disable selected node on write or get current state by read
-        value_descriptions:
-          disabled: 0x0
-          boot: 0x1
-          enabled: 0x2
-          fault: 0x3
-          not_found: 0x4
-          bootloader: 0x5
-          dead: 0xff
-        access_type: rw
-
-      - subindex: 0xb
-        name: node_reset
-        data_type: bool
-        description: reset the selected node
-        access_type: wo
-
-      - subindex: 0xc
-        name: node_reset_attempts
-        data_type: uint8
-        description: number of reset attempts for a opd node before it is considered dead
-        access_type: rw
-        default: 3
-
-      - subindex: 0xd
-        name: uart_node_select
-        data_type: uint8
-        description: select a node to connect to UART or 0 for no node
-        access_type: rw
-        default: 0
 
   - index: 0x400a
     name: beacon
@@ -698,70 +624,48 @@ objects:
     object_type: record
     subindexes:
       - subindex: 0x1
-        name: status_json
-        data_type: str
-        description: JSON with status of all nodes
+        name: total_cards
+        data_type: uint8
+        description: total number of OreSat cards
         access_type: ro
-        default: "[]"
 
       - subindex: 0x2
-        name: total_nodes
+        name: cards_off
         data_type: uint8
-        description: total number of OreSat nodes
+        description: number of OreSat cards in off state
         access_type: ro
 
       - subindex: 0x3
-        name: nodes_off
+        name: cards_booting
         data_type: uint8
-        description: number of OreSat nodes in off state
+        description: number of OreSat cards in boot state
         access_type: ro
 
       - subindex: 0x4
-        name: nodes_booting
+        name: cards_on
         data_type: uint8
-        description: number of OreSat nodes in boot state
+        description: number of OreSat cards in on state
         access_type: ro
 
       - subindex: 0x5
-        name: nodes_on
+        name: cards_with_errors
         data_type: uint8
-        description: number of OreSat nodes in on state
+        description: number of OreSat cards in error state
         access_type: ro
 
       - subindex: 0x6
-        name: nodes_with_errors
+        name: cards_not_found
         data_type: uint8
-        description: number of OreSat nodes in error state
+        description: number of OreSat cards in not_found state
         access_type: ro
 
       - subindex: 0x7
-        name: nodes_not_found
+        name: cards_dead
         data_type: uint8
-        description: number of OreSat nodes in not_found state
+        description: number of OreSat cards in dead state
         access_type: ro
 
-      - subindex: 0x8
-        name: nodes_dead
-        data_type: uint8
-        description: number of OreSat nodes in dead state
-        access_type: ro
-
-  - index: 0x400d
-    name: node_status
-    object_type: array
-    description: OreSat node status
-    generate_subindexes:
-      subindexes: 0x7F
-      name: node_id
-      data_type: uint8
-      access_type: ro
-      value_descriptions:
-        'off': 0
-        boot: 1
-        'on': 2
-        error: 3
-        not_found: 4
-        dead: 0xff
+  # 0x400d node states deperated
 
   - index: 0x400e
     name: adcs_manager
@@ -771,7 +675,7 @@ objects:
         name: mode
         data_type: uint8
         description: requested adcs mission mode to follow
-        access_type: rw
+        access_type: ro
         value_descriptions:
           none: 0
           standby: 1
@@ -802,7 +706,7 @@ objects:
         name: signals
         data_type: str
         description: json string of requested control signals
-        access_type: rw
+        access_type: ro
         default: "{}"
 
       - subindex: 0x4
@@ -841,17 +745,18 @@ tpdos:
     fields:
       - [opd, status]
       - [opd, has_fault]
+      - [opd, current]
     event_timer_ms: 5000
 
   - num: 5
     fields:
-      - [node_manager, total_nodes]
-      - [node_manager, nodes_off]
-      - [node_manager, nodes_booting]
-      - [node_manager, nodes_on]
-      - [node_manager, nodes_with_errors]
-      - [node_manager, nodes_not_found]
-      - [node_manager, nodes_dead]
+      - [node_manager, total_cards]
+      - [node_manager, cards_off]
+      - [node_manager, cards_booting]
+      - [node_manager, cards_on]
+      - [node_manager, cards_with_errors]
+      - [node_manager, cards_not_found]
+      - [node_manager, cards_dead]
     event_timer_ms: 5000
 
   - num: 6

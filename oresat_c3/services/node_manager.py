@@ -1,18 +1,28 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
+from enum import Enum, unique
 from time import monotonic
 
 from loguru import logger
-from oresat_cand import ManagerNodeClient
-from oresat_cand import NodeState as CanopenNodeState
+from oresat_cand import ManagerNodeClient, NodeState
 
-from ..gen.c3_od import C3Entry, C3NodeStatus, C3OpdNodeStatus
+from ..gen.c3_od import C3Entry
+from ..gen.cards import Card, CardProcessor
 from ..gen.missions import Mission
-from ..gen.nodes import NodeDef, NodeProcessor
-from ..subsystems.opd import Opd, OpdNode, OpdOctavoNode, OpdState, OpdStm32Node
+from ..subsystems.opd import Opd, OpdNode, OpdNodeState, OpdOctavoNode, OpdState, OpdStm32Node
 from . import Service
+
+
+@unique
+class CardState(Enum):
+    OFF = 0
+    BOOT = 1
+    ON = 2
+    ERROR = 3
+    NOT_FOUND = 4
+    DEAD = 255
 
 
 @dataclass
@@ -23,12 +33,12 @@ class Emcy:
 
 
 @dataclass
-class NodeData(NodeDef):
+class CardData:
     opd_resets: int = 0
     last_enable: float = 0.0
-    status: C3NodeStatus = C3NodeStatus.NOT_FOUND
+    status: CardState = CardState.NOT_FOUND
     last_hb: float = 0.0
-    hb_state: CanopenNodeState | None = None
+    hb_state: NodeState | None = None
     emcys: list[Emcy] = field(default_factory=list)
 
 
@@ -49,140 +59,120 @@ class NodeManagerService(Service):
         super().__init__(node)
 
         self.opd = Opd(
-            self._NOT_ENABLE_PIN,
-            self._NOT_FAULT_PIN,
-            self._ADC_CURRENT_PIN,
-            mock=mock_hw,
+            self._NOT_ENABLE_PIN, self._NOT_FAULT_PIN, self._ADC_CURRENT_PIN, mock=mock_hw
         )
 
         sat_id = self.node.od_read(C3Entry.SATELLITE_ID)
         self.mission = Mission.from_id(sat_id)
 
-        for card in self.mission.nodes:
+        for card in self.mission.cards:
             if card.opd_address == 0:
                 continue  # not an opd node
 
-            if card.processor == NodeProcessor.NONE:
-                node = OpdNode(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
-            elif card.processor == NodeProcessor.STM32:
-                node = OpdStm32Node(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
-            elif card.processor == NodeProcessor.OCTAVO:
-                node = OpdOctavoNode(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
+            if card.processor == CardProcessor.NONE:
+                opd_node = OpdNode(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
+            elif card.processor == CardProcessor.STM32:
+                opd_node = OpdStm32Node(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
+            elif card.processor == CardProcessor.OCTAVO:
+                opd_node = OpdOctavoNode(self._I2C_BUS_NUM, card.name, card.opd_address, mock_hw)
             else:
                 continue
 
-            self.opd[card.name] = node
+            self.opd[card.opd_address] = opd_node
 
-        self.opd_addr_to_name = {card.opd_address: card.name for card in self.mission.nodes}
-        self.node_id_to_name = {card.node_id: card.name for card in self.mission.nodes}
-
-        self._data = {card.name: NodeData(**asdict(card)) for card in self.mission.nodes}
+        self._data = {card: CardData() for card in self.mission.cards}
         self._loops = -1
 
-        self.node.od_write(C3Entry.NODE_MANAGER_TOTAL_NODES, len(list(self._data)))
-
         self.opd.enable()
-
-        self.node.add_write_callback(C3Entry.OPD_STATUS, self._set_opd_status)
-        self.node.add_write_callback(C3Entry.OPD_UART_NODE_SELECT, self._set_uart_node_select)
-
-        for name in self._data:
-            card = self._data[name]
-            if card.node_id == 0:
-                continue  # not a CANopen node
-            self.node.add_write_callback(
-                C3Entry[f"NODE_STATUS_NODE_ID_{card.node_id}".upper()],
-                lambda v, n=name: self._set_node_status(n, v),
-            )
 
         self.node.add_heartbeat_callback(self._hb_cb)
         self.node.add_emcy_callback(self._emcy_cb)
 
-    def _hb_cb(self, node_id: int, state: CanopenNodeState):
-        name = self.node_id_to_name[node_id]
-        self._data[name].hb_state = state
-        self._data[name].last_hb = monotonic()
+    def _hb_cb(self, node_id: int, state: NodeState):
+        card = Card.from_node_id(node_id)
+        self._data[card].hb_state = state
+        self._data[card].last_hb = monotonic()
 
     def _emcy_cb(self, node_id: int, code: int, info: int):
-        name = self.node_id_to_name[node_id]
+        card = Card.from_node_id(node_id)
         emcy = Emcy(code, info, monotonic())
-        self._data[name].emcys.append(emcy)
+        self._data[card].emcys.append(emcy)
 
-    def _check_co_nodes_state(self, name: str) -> C3NodeStatus:
-        node = self._data[name]
+    def _check_co_cards_state(self, card: Card) -> CardState:
+        node = self._data[card]
         next_state = node.status
-        last_hb = self._data[name].last_hb
+        last_hb = self._data[card].last_hb
 
-        if next_state == C3NodeStatus.DEAD:
+        if next_state == CardState.DEAD:
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
                 # if the node start sending heartbeats again (really only for flatsat)
-                next_state = C3NodeStatus.ON
+                next_state = CardState.ON
             return next_state
 
-        if node.processor == "stm32":
+        if card.processor == "stm32":
             timeout = self._STM32_BOOT_TIMEOUT
         else:
             timeout = self._OCTAVO_BOOT_TIMEOUT
 
-        if node.last_enable + timeout > monotonic():
+        if self._data[card].last_enable + timeout > monotonic():
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
-                next_state = C3NodeStatus.BOOT
+                next_state = CardState.BOOT
             else:
-                next_state = C3NodeStatus.ON
-        elif node.status == C3NodeStatus.ERROR:
-            next_state = C3NodeStatus.ERROR
+                next_state = CardState.ON
+        elif node.status == CardState.ERROR:
+            next_state = CardState.ERROR
         elif (
             self.node.od_read(C3Entry.FLIGHT_MODE)
             and self.node.bus_state == "NETWORK_UP"
             and monotonic() > (last_hb + self._RESET_TIMEOUT_S)
         ):
             logger.error(
-                f"CANopen node {name} has had no heartbeats in {self._RESET_TIMEOUT_S} seconds"
+                f"CANopen card {card.name} has had no heartbeats in {self._RESET_TIMEOUT_S} seconds"
             )
-            next_state = C3NodeStatus.ERROR
+            next_state = CardState.ERROR
         else:
-            next_state = C3NodeStatus.ON
+            next_state = CardState.ON
 
         return next_state
 
-    def _get_nodes_state(self, name: str) -> C3NodeStatus:
+    def _get_cards_state(self, card: Card) -> CardState:
         # update status of data not on the OPD
-        if self._data[name].opd_address == 0:
-            if monotonic() > (self._data[name].last_hb + self._HB_TIMEOUT):
-                next_state = C3NodeStatus.OFF
+        if card.opd_address == 0:
+            if monotonic() > (self._data[card].last_hb + self._HB_TIMEOUT):
+                next_state = CardState.OFF
             else:
-                next_state = C3NodeStatus.ON
+                next_state = CardState.ON
             return next_state
 
         # opd subsystem is off
         if self.opd.status == OpdState.DISABLED:
-            return C3NodeStatus.NOT_FOUND
+            return CardState.NOT_FOUND
 
-        prev_state = self._data[name].status
+        prev_state = self._data[card].status
 
         # default is last state
         next_state = prev_state
 
         # update status of data on the OPD
         if self.opd.status == OpdState.DEAD:
-            next_state = C3NodeStatus.DEAD
+            next_state = CardState.DEAD
         else:
-            status = self.opd[name].status
-            if self._data[name].opd_resets >= self._MAX_CO_RESETS:
-                next_state = C3NodeStatus.DEAD
-            elif status == C3OpdNodeStatus.FAULT:
-                next_state = C3NodeStatus.ERROR
-            elif status == C3OpdNodeStatus.NOT_FOUND:
-                next_state = C3NodeStatus.NOT_FOUND
-            elif status == C3OpdNodeStatus.ENABLED:
-                if self._data[name].processor == "stm32" and self.opd[name].in_bootloader_mode:
-                    next_state = C3NodeStatus.BOOTLOADER
-                elif self._data[name].node_id != 0:  # aka CANopen nodes
-                    next_state = self._check_co_nodes_state(name)
+            status = self.opd[card.opd_address].status
+            if self._data[card].opd_resets >= self._MAX_CO_RESETS:
+                next_state = CardState.DEAD
+            elif status == OpdNodeState.FAULT:
+                next_state = CardState.ERROR
+            elif status == OpdNodeState.NOT_FOUND:
+                next_state = CardState.NOT_FOUND
+            elif status == OpdNodeState.ENABLED:
+                if card.processor == "stm32" and self.opd[card.opd_address].in_bootloader_mode:
+                    next_state = CardState.BOOTLOADER
+                elif card.node_id != 0:  # aka CANopen cards
+                    next_state = self._check_co_cards_state(card)
                 else:
-                    next_state = C3NodeStatus.ON
-            elif status == C3OpdNodeStatus.DISABLED:
-                next_state = C3NodeStatus.OFF
+                    next_state = CardState.ON
+            elif status == OpdNodeState.DISABLED:
+                next_state = CardState.OFF
 
         return next_state
 
@@ -192,159 +182,136 @@ class NodeManagerService(Service):
         self._loops += 1
         self.sleep(1)
 
-        nodes_off = 0
-        nodes_booting = 0
-        nodes_on = 0
-        nodes_with_errors = 0
-        nodes_not_found = 0
-        nodes_dead = 0
-        for name, node in self._data.items():
-            last_state = node.status
-            state = self._get_nodes_state(name)
+        cards_off = 0
+        cards_booting = 0
+        cards_on = 0
+        cards_with_errors = 0
+        cards_not_found = 0
+        cards_dead = 0
+        for card, data in self._data.items():
+            last_state = data.status
+            state = self._get_cards_state(card)
             if self._loops != 0 and state != last_state:
-                logger.info(f"node {name} state change {last_state.name} -> {state.name}")
-            nodes_off += int(state == C3NodeStatus.OFF)
-            nodes_booting += int(state == C3NodeStatus.BOOT)
-            nodes_on += int(state == C3NodeStatus.ON)
-            nodes_with_errors += int(state == C3NodeStatus.ERROR)
-            nodes_not_found += int(state == C3NodeStatus.NOT_FOUND)
-            nodes_dead += int(state == C3NodeStatus.DEAD)
-            node.status = state
+                logger.info(f"card {card.name} state change {last_state.name} -> {state.name}")
+            cards_off += int(state == CardState.OFF)
+            cards_booting += int(state == CardState.BOOT)
+            cards_on += int(state == CardState.ON)
+            cards_with_errors += int(state == CardState.ERROR)
+            cards_not_found += int(state == CardState.NOT_FOUND)
+            cards_dead += int(state == CardState.DEAD)
+            data.status = state
 
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_OFF, nodes_off)
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_BOOTING, nodes_booting)
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_ON, nodes_on)
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_WITH_ERRORS, nodes_with_errors)
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_NOT_FOUND, nodes_not_found)
-        self.node.od_write(C3Entry.NODE_MANAGER_NODES_DEAD, nodes_dead)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_OFF, cards_off)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_BOOTING, cards_booting)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_ON, cards_on)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_WITH_ERRORS, cards_with_errors)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_NOT_FOUND, cards_not_found)
+        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_DEAD, cards_dead)
 
         if self.opd.status in [OpdState.DEAD, OpdState.DISABLED]:
             self._loops = -1
             return  # nothing to monitor
 
-        if nodes_not_found == len(self._data):
+        if cards_not_found == len(self._data):
             self._loops = 0
 
-        # reset nodes with errors and probe for nodes not found
-        for name, info in self._data.items():
-            if info.opd_address == 0:
+        # reset cards with errors and probe for cards not found
+        for card, data in self._data.items():
+            if card.opd_address == 0:
                 continue
 
-            if self._loops % 10 == 0 and self._data[name].status == C3NodeStatus.NOT_FOUND:
-                self.opd[name].probe(True)
+            if self._loops % 10 == 0 and self._data[card].status == CardState.NOT_FOUND:
+                self.opd[card.opd_address].probe(True)
 
-            if info.opd_always_on and info.status == C3NodeStatus.OFF:
-                self.enable(name)
+            if card.opd_always_on and data.status == CardState.OFF:
+                self.enable(card)
 
-            if info.status == C3NodeStatus.DEAD and self.opd[name].is_enabled:
-                self.opd[name].disable()  # make sure this is disabled
-            elif info.status == C3NodeStatus.ERROR:
-                logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
-                self.opd[name].reset(1)
-                self._data[name].last_enable = monotonic()
-                info.opd_resets += 1
-            elif info.status in [C3NodeStatus.ON, C3NodeStatus.OFF]:
-                info.opd_resets = 0
+            if data.status == CardState.DEAD and self.opd[card.opd_address].is_enabled:
+                self.opd[card.opd_address].disable()  # make sure this is disabled
+            elif data.status == CardState.ERROR:
+                logger.error(f"resetting card {card.name}, try {data.opd_resets + 1}")
+                self.opd[card.opd_address].reset(1)
+                self._data[card].last_enable = monotonic()
+                data.opd_resets += 1
+            elif data.status in [CardState.ON, CardState.OFF]:
+                data.opd_resets = 0
 
-    def enable(self, name: Node | str | int, bootloader_mode: bool = False):
-        if isinstance(name, int):
-            name = self.opd_addr_to_name[name]
-
-        node = self._data[name]
-        child_node = self._data[node.child] if node.child else None
-        if node.opd_address == 0:
-            logger.warning(f"cannot enable node {name} as it is not on the OPD")
+    def enable(self, card: Card, bootloader_mode: bool = False):
+        data = self._data[card]
+        if card.opd_address == 0:
+            logger.warning(f"cannot enable card {card.name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if node.status != C3NodeStatus.OFF:
-            logger.debug(f"cannot enable node {name} unless it is disabled")
+        if data.status != CardState.OFF:
+            logger.debug(f"cannot enable card {card.name} unless it is disabled")
             return
 
-        if node.status == C3NodeStatus.DEAD:
-            logger.error(f"cannot enable node {name} as it is DEAD")
+        if data.status == CardState.DEAD:
+            logger.error(f"cannot enable card {card.name} as it is DEAD")
             return
 
-        if node.processor == "stm32":
-            self.opd[name].enable(bootloader_mode)
-            if child_node:
-                self.opd[node.child].enable(bootloader_mode)
+        if card.processor == "stm32":
+            self.opd[card.opd_address].enable(bootloader_mode)
+            if card.child:
+                self.opd[card.child.opd_address].enable(bootloader_mode)
         else:
-            self.opd[name].enable()
-            if child_node:
-                self.opd[node.child].enable()
-        node.last_enable = monotonic()
+            self.opd[card.opd_address].enable()
+            if card.child:
+                self.opd[card.child.opd_address].enable()
+        data.last_enable = monotonic()
 
-    def disable(self, name: Node | str | int):
-        if isinstance(name, int):
-            name = self.opd_addr_to_name[name]
-
-        node = self._data[name]
-        child_node = self._data[node.child] if node.child else None
-        if node.opd_address == 0:
-            logger.warning(f"cannot disable node {name} as it is not on the OPD")
+    def disable(self, card: Card):
+        if card.opd_address == 0:
+            logger.warning(f"cannot disable card {card.name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
-        if node.status in [C3NodeStatus.OFF, C3NodeStatus.DEAD]:
-            logger.debug(f"cannot disable node {name} as it is already disabled or dead")
+        if self._data[card].status in [CardState.OFF, CardState.DEAD]:
+            logger.debug(f"cannot disable card {card.name} as it is already disabled or dead")
             return
 
-        if child_node:
-            self.opd[node.child].disable()
-        self.opd[name].disable()
+        if card.child:
+            self.opd[card.child.opd_address].disable()
+        self.opd[card.opd_address].disable()
 
-    def node_status(self, name: str | int) -> C3NodeStatus:
+    def status(self, card: Card) -> CardState:
+        return self._data[card].status
 
-        if isinstance(name, int):
-            name = self.opd_addr_to_name[name]
-
-        return self._data[name].status
-
-    def _set_node_status(self, name: str | int, state: int):
-        if isinstance(name, int):
-            name = self.opd_addr_to_name[name]
-
-        if state == C3NodeStatus.ON:
-            self.enable(name)
-        elif state == C3NodeStatus.OFF:
-            self.disable(name)
-        elif state == C3NodeStatus.BOOTLOADER:
-            self.enable(name, True)
-
-    def _get_status_json(self) -> str:
-        data = []
-        for name, info in self._data.items():
-            data.append(
+    @property
+    def status_json(self) -> str:
+        tmp = []
+        for card, data in self._data.items():
+            tmp.append(
                 {
-                    "name": name,
-                    "node_id": info.node_id,
-                    "processor": info.processor,
-                    "opd_addr": info.opd_address,
-                    "status": info.status.name,
+                    "name": card.name,
+                    "node_id": card.node_id,
+                    "processor": card.processor,
+                    "opd_addr": card.opd_address,
+                    "status": data.status.name,
                 }
             )
-        return json.dumps(data)
-
-    def _get_opd_status(self) -> int:
-        return self.opd.status.value
+        return json.dumps(tmp)
 
     def _set_opd_status(self, value: int):
         if value == 0:
             self.opd.disable()
-            for name, node in self._data.items():
-                if node.opd_address != 0 and node.status != C3NodeStatus.NOT_FOUND:
-                    logger.info(f"node {name} state change {node.status.name} -> NOT_FOUND")
-                    node.status = C3NodeStatus.NOT_FOUND
+            for card, data in self._data.items():
+                if card.opd_address != 0 and data.status != CardState.NOT_FOUND:
+                    logger.info(f"card {card.name} state change {data.status.name} -> NOT_FOUND")
+                    data.status = CardState.NOT_FOUND
         elif value == 1:
             if self.opd.status == OpdState.DISABLED:
-                for node in self._data.values():
-                    node.last_enable = monotonic()
+                for data in self._data.values():
+                    data.last_enable = monotonic()
             self.opd.enable()
 
-    def _get_uart_node_select(self) -> int:
-        return 0 if self.opd.uart_node is None else self._data[self.opd.uart_node].opd_address
+    @property
+    def uart_node(self) -> Card | None:
+        return self._uart_node
 
-    def _set_uart_node_select(self, value: int):
-        if value == 0:
-            self.opd.uart_node = None
-        elif value in self.opd_addr_to_name:
-            self.opd.uart_node = self.opd_addr_to_name[value]
+    @uart_node.setter
+    def uart_node(self, card: Card | None):
+        if self._uart_node is not None:
+            self.opd[self._uart_node].disable_uart()
+        if card is not None:
+            self.opd[card].enable_uart()
+        self._uart_node = card

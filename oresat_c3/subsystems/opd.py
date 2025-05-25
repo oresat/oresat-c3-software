@@ -6,7 +6,7 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, unique
 from time import sleep
 
 from loguru import logger
@@ -20,6 +20,7 @@ class OpdError(Exception):
     """Error with :py:class:`Opd` or :py:class:`OpdNode`"""
 
 
+@unique
 class OpdNodeState(Enum):
     """OPD node states"""
 
@@ -196,7 +197,7 @@ class OpdNode:
                 self._max7310.output_clear(self._CB_RESET_PIN)
 
                 if self._mock:
-                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
+                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)
 
                 if self.fault:
                     self._status = OpdNodeState.FAULT
@@ -459,16 +460,16 @@ class Opd:
         self._adc = Adc(current_pin, mock)
         self._not_enable_pin.high()  # make sure OPD disable initially
 
-        self._nodes = {}  # type: ignore
+        self._nodes = {}
         self._status = OpdState.DISABLED
-        self._uart_node: str | None = None
+        self._uart_node: int | None = None
         self._resets = 0
 
-    def __getitem__(self, name: str) -> OpdNode:
-        return self._nodes[name]
+    def __getitem__(self, address: int) -> OpdNode:
+        return self._nodes[address]
 
-    def __setitem__(self, name: str, node: OpdNode):
-        self._nodes[name] = node
+    def __setitem__(self, address: int, node: OpdNode):
+        self._nodes[address] = node
 
     def __iter__(self) -> OpdNode:
         yield from self._nodes.values()
@@ -577,8 +578,8 @@ class Opd:
             self._uart_node = None
 
     @property
-    def uart_node(self) -> str | None:
-        """str: The selected UART node name or an empty string for no node."""
+    def uart_node(self) -> int | None:
+        """int: The selected UART node address or an empty string for no node."""
         if (
             self._uart_node is not None
             and self._nodes[self._uart_node].status == OpdNodeState.NOT_FOUND
@@ -587,9 +588,9 @@ class Opd:
         return self._uart_node
 
     @uart_node.setter
-    def uart_node(self, name: str | None):
+    def uart_node(self, address: int | None):
         self._uart_disconnect()
-        if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:
+        if address is None or self._nodes[address].status == OpdNodeState.NOT_FOUND:
             return
-        self._nodes[name].enable_uart()
-        self._uart_node = name
+        self._nodes[address].enable_uart()
+        self._uart_node = address

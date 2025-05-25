@@ -1,7 +1,7 @@
+import logging
 from dataclasses import astuple
 from time import time
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient
 
 from ..gen.c3_od import C3Entry, C3SystemReset
@@ -38,6 +38,8 @@ from ..gen.edl_commands import (
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .card_manager import CardManagerService
+
+logger = logging.getLogger(__name__)
 
 
 class EdlCommandRunner:

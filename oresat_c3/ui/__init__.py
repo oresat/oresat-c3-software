@@ -1,9 +1,9 @@
+import logging
 import os
 from threading import Thread
 from typing import Union
 
 from bottle import TEMPLATE_PATH, Bottle, request, template
-from loguru import logger
 from oresat_cand import DataType, ManagerNodeClient
 from oresat_cand import __version__ as cand_version
 
@@ -15,6 +15,8 @@ from ..gen.cards import Card
 from ..gen.missions import Mission
 from ..services.beacon import BeaconService
 from ..services.card_manager import CardManagerService
+
+logger = logging.getLogger(__name__)
 
 TEMPLATE_PATH.append(os.path.dirname(os.path.abspath(__file__)))
 

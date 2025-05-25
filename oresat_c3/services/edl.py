@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
@@ -24,7 +25,6 @@ from cfdppy.user import (
     TransactionId,
     TransactionParams,
 )
-from loguru import logger
 from oresat_cand import ManagerNodeClient
 from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
@@ -50,6 +50,8 @@ from ._edl_runner import EdlCommandRunner
 from .beacon import BeaconService
 from .card_manager import CardManagerService
 from .radios import RadiosService
+
+logger = logging.getLogger(__name__)
 
 
 class EdlService(Service):

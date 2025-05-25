@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from enum import Enum, unique
 from time import monotonic
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient, NodeState
 
 from ..gen.c3_od import C3Entry
@@ -13,6 +13,8 @@ from ..gen.cards import Card, CardProcessor
 from ..gen.missions import Mission
 from ..subsystems.opd import Opd, OpdNode, OpdNodeState, OpdOctavoNode, OpdState, OpdStm32Node
 from . import Service
+
+logger = logging.getLogger(__name__)
 
 
 @unique

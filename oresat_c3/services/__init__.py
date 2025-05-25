@@ -1,7 +1,9 @@
+import logging
 from threading import Event, Thread
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient
+
+logger = logging.getLogger(__name__)
 
 
 class Service:

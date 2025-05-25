@@ -1,10 +1,9 @@
+import logging
 import socket
-import sys
 import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient
 
 from . import __version__
@@ -14,12 +13,16 @@ from .gen.c3_od import C3Entry, C3Status, C3SystemReset, C3UpdaterStatus
 from .gen.missions import Mission
 from .services import Service
 from .services.beacon import BeaconService
-from .services.edl import EdlService
 from .services.card_manager import CardManagerService
+from .services.edl import EdlService
 from .services.radios import RadiosService
 from .services.state import StateService
 from .subsystems.rtc import set_system_time_to_rtc_time
 from .ui import Ui
+
+logger = logging.getLogger(__name__)
+
+LOG_FMT = "%(levelname)-9s | %(name)s:%(funcName)s:%(lineno)s - %(message)s."
 
 
 def get_hw_version() -> str:
@@ -110,13 +113,10 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
     args = parser.parse_args()
 
+    level = logging.INFO
     if args.verbose:
-        level = "DEBUG"
-    else:
-        level = "INFO"
-
-    logger.remove()  # remove default logger
-    logger.add(sys.stdout, level=level, backtrace=True)
+        level = logging.DEBUG
+    logging.basicConfig(format=LOG_FMT, level=level)
 
     set_system_time_to_rtc_time()
 

@@ -6,14 +6,15 @@ Every card, other than the solar cards, has a MAX7310 that can be used to turn t
 
 from __future__ import annotations
 
+import logging
 from enum import Enum, unique
 from time import sleep
-
-from loguru import logger
 
 from ..board.adc import Adc
 from ..board.gpio import Gpio
 from ..drivers.max7310 import Max7310, Max7310Error
+
+logger = logging.getLogger(__name__)
 
 
 class OpdError(Exception):

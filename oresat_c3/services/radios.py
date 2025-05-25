@@ -1,14 +1,16 @@
+import logging
 import socket
 import subprocess
 from queue import SimpleQueue
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient
 
 from ..board.gpio import Gpio
 from ..drivers.si41xx import Si41xx, Si41xxIfdiv
 from ..gen.c3_od import C3Entry
 from . import Service
+
+logger = logging.getLogger(__name__)
 
 
 class RadiosService(Service):

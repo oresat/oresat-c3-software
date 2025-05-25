@@ -1,10 +1,11 @@
+import logging
 import os
 import struct
 from datetime import datetime, timezone
 from fcntl import ioctl
 from time import CLOCK_REALTIME, clock_settime, time
 
-from loguru import logger
+logger = logging.getLogger(__name__)
 
 
 def get_rtc_time() -> float:

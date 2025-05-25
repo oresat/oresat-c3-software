@@ -1,13 +1,15 @@
+import logging
 import zlib
 from time import time
 
-from loguru import logger
 from oresat_cand import ManagerNodeClient
 
 from ..gen.c3_od import C3Entry, C3Status
 from ..gen.missions import Mission
 from . import Service
 from .radios import RadiosService
+
+logger = logging.getLogger(__name__)
 
 AX25_HEADER_LEN = 16
 

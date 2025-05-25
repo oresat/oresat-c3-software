@@ -1,8 +1,8 @@
+import logging
 import os
 import subprocess
 from time import monotonic, time
 
-from loguru import logger
 from oresat_cand import DataType, ManagerNodeClient
 
 from ..drivers.fm24cl64b import Fm24cl64b
@@ -11,6 +11,8 @@ from ..gen.fram import FRAM_DEF
 from ..subsystems.antennas import Antennas
 from ..subsystems.rtc import set_rtc_time
 from . import Service
+
+logger = logging.getLogger(__name__)
 
 
 class StateService(Service):

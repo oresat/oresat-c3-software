@@ -22,6 +22,7 @@ class CardState(Enum):
     ON = 2
     ERROR = 3
     NOT_FOUND = 4
+    BOOTLOADER = 5
     DEAD = 255
 
 
@@ -42,7 +43,7 @@ class CardData:
     emcys: list[Emcy] = field(default_factory=list)
 
 
-class NodeManagerService(Service):
+class CardManagerService(Service):
     _MAX_CO_RESETS = 3
     _RESET_TIMEOUT_S = 5
     _STM32_BOOT_TIMEOUT = 10
@@ -58,7 +59,7 @@ class NodeManagerService(Service):
     def __init__(self, node: ManagerNodeClient, mock_hw: bool = True):
         super().__init__(node)
 
-        self._uart_node = None
+        self._uart_card = None
         self.opd = Opd(
             self._NOT_ENABLE_PIN, self._NOT_FAULT_PIN, self._ADC_CURRENT_PIN, mock=mock_hw
         )
@@ -100,13 +101,13 @@ class NodeManagerService(Service):
         self._data[card].emcys.append(emcy)
 
     def _check_co_cards_state(self, card: Card) -> CardState:
-        node = self._data[card]
-        next_state = node.status
+        data = self._data[card]
+        next_state = data.status
         last_hb = self._data[card].last_hb
 
         if next_state == CardState.DEAD:
             if monotonic() > last_hb + self._RESET_TIMEOUT_S:
-                # if the node start sending heartbeats again (really only for flatsat)
+                # if the card starts sending heartbeats again (really only for flatsat)
                 next_state = CardState.ON
             return next_state
 
@@ -120,7 +121,7 @@ class NodeManagerService(Service):
                 next_state = CardState.BOOT
             else:
                 next_state = CardState.ON
-        elif node.status == CardState.ERROR:
+        elif data.status == CardState.ERROR:
             next_state = CardState.ERROR
         elif (
             self.node.od_read(C3Entry.FLIGHT_MODE)
@@ -202,12 +203,12 @@ class NodeManagerService(Service):
             cards_dead += int(state == CardState.DEAD)
             data.status = state
 
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_OFF, cards_off)
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_BOOTING, cards_booting)
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_ON, cards_on)
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_WITH_ERRORS, cards_with_errors)
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_NOT_FOUND, cards_not_found)
-        self.node.od_write(C3Entry.NODE_MANAGER_CARDS_DEAD, cards_dead)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_OFF, cards_off)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_BOOTING, cards_booting)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_ON, cards_on)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_WITH_ERRORS, cards_with_errors)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_NOT_FOUND, cards_not_found)
+        self.node.od_write(C3Entry.CARD_MANAGER_CARDS_DEAD, cards_dead)
 
         if self.opd.status in [OpdState.DEAD, OpdState.DISABLED]:
             self._loops = -1
@@ -306,13 +307,13 @@ class NodeManagerService(Service):
             self.opd.enable()
 
     @property
-    def uart_node(self) -> Card | None:
-        return self._uart_node
+    def uart_card(self) -> Card | None:
+        return self._uart_card
 
-    @uart_node.setter
-    def uart_node(self, card: Card | None):
-        if self._uart_node is not None:
-            self.opd[self._uart_node.opd_address].disable_uart()
+    @uart_card.setter
+    def uart_card(self, card: Card | None):
+        if self._uart_card is not None:
+            self.opd[self._uart_card.opd_address].disable_uart()
         if card is not None:
             self.opd[card.opd_address].enable_uart()
-        self._uart_node = card
+        self._uart_card = card

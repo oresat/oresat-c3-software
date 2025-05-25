@@ -1,4 +1,4 @@
-% rebase('base.tpl', name='Node Manager')
+% rebase('base.tpl', name='Card Manager')
 <style>
   table {
     font-family: arial, sans-serif;
@@ -20,18 +20,18 @@
 <button id="enableSystemButton" onclick="enableSystem()">Disable System</button>
 <br />
 <br />
-<div id="nodeMgrTableDiv">
-  <b>UART Node:</b>
-  <select id="uartNodeSelect" onchange="uartSelect()">
+<div id="cardMgrTableDiv">
+  <b>UART Card:</b>
+  <select id="uartCardSelect" onchange="uartSelect()">
     <option value=0>NONE</option>
   </select>
   <br />
   <br />
-  <table id="nodeMgrTable">
+  <table id="cardMgrTable">
     <thead>
       <tr>
         <td>Card</td>
-        <td>Node Id</td>
+        <td>Card Id</td>
         <td>Status</td>
         <td>OPD Address</td>
         <td>Control</td>
@@ -49,22 +49,22 @@
   </table>
 </div>
 <script>
-  const NM_URL = `http://${window.location.host}/data/node-manager`;
+  const NM_URL = `http://${window.location.host}/data/card-manager`;
 
   async function buildTable() {
     const data = await getData(NM_URL);
 
-    let tbodyRef = document.getElementById("nodeMgrTable").getElementsByTagName("tbody")[0];
-    let uartNodeSelect = document.getElementById('uartNodeSelect');
-    for (const node of data.nodes) {
+    let tbodyRef = document.getElementById("cardMgrTable").getElementsByTagName("tbody")[0];
+    let uartCardSelect = document.getElementById('uartCardSelect');
+    for (const card of data.cards) {
       let newRow = tbodyRef.insertRow();
 
       let newCell = newRow.insertCell();
-      let newText = document.createTextNode(node.name);
+      let newText = document.createTextNode(card.name);
       newCell.appendChild(newText);
 
       let newCell4 = newRow.insertCell();
-      let upperHex = parseInt(node.node_id).toString(16).toUpperCase()
+      let upperHex = parseInt(card.node_id).toString(16).toUpperCase()
       if (upperHex !== "0") {
         upperHex = `0x${upperHex}`;
       } else  {
@@ -75,12 +75,12 @@
 
       let newCell2 = newRow.insertCell();
       let span = document.createElement("span");
-      span.id = `node${node.node_id}`;
-      span.innerText = node.status;
+      span.id = `card${card.node_id}`;
+      span.innerText = card.status;
       newCell2.appendChild(span);
 
       let newCell5 = newRow.insertCell();
-      upperHex = parseInt(node.opd_addr).toString(16).toUpperCase()
+      upperHex = parseInt(card.opd_addr).toString(16).toUpperCase()
       if (upperHex !== "0") {
         upperHex = `0x${upperHex}`;
       } else  {
@@ -90,9 +90,9 @@
       newCell5.appendChild(newText5);
 
       let newCell3 = newRow.insertCell();
-      if (node.opd_addr !== 0 && node.node_id !== 0) {
+      if (card.opd_addr !== 0 && card.node_id !== 0) {
         let select = document.createElement("select");
-        select.id = `node${node.node_id}Select`
+        select.id = `card${card.node_id}Select`
 
         let opt = document.createElement('option');
         opt.value = "DISABLE";
@@ -108,28 +108,28 @@
         opt.value = "BOOTLOADER";
         opt.innerHTML = "BOOTLOADER";
         select.appendChild(opt);
-        if (node.processor != "STM32") {
+        if (card.processor != "STM32") {
             opt.style.display = "none";
         }
 
         select.style.with = "auto";
         select.value = null;
-        select.onchange = function(){console.log(node); nodeOnSelect(node)};
+        select.onchange = function(){console.log(card); cardOnSelect(card)};
         newCell3.appendChild(select);
 
-        // add to UART nodes list
+        // add to UART cards list
         opt = document.createElement('option');
-        opt.value = node.opd_addr;
-        opt.innerHTML = node.name;
-        uartNodeSelect.appendChild(opt);
+        opt.value = card.opd_addr;
+        opt.innerHTML = card.name;
+        uartCardSelect.appendChild(opt);
       }
     }
   }
 
-  async function nodeOnSelect(node) {
-    const select = document.getElementById(`node${node.node_id}Select`);
+  async function cardOnSelect(card) {
+    const select = document.getElementById(`card${card.node_id}Select`);
     const data = {
-      "node": `${node.name}`,
+      "card": `${card.name}`,
       "state": select.value,
     };
     await putData(NM_URL, data);
@@ -140,7 +140,7 @@
       state = "BOOTLOADER";
     }
     select.value = null;
-    updateNode(node.node_id, state);
+    updateCard(card.node_id, state);
   }
 
   async function update() {
@@ -148,28 +148,28 @@
     const enableButton = document.getElementById("enableSystemButton");
 
     const data = await getData(NM_URL);
-    for (const node of data.nodes) {
-      updateNode(node.node_id, node.status);
+    for (const card of data.cards) {
+      updateCard(card.node_id, card.status);
     }
 
     const status = data.opd_status;
     statusSpan.innerText = status;
-    const nodeDiv = document.getElementById("nodeMgrTableDiv");
+    const cardDiv = document.getElementById("cardMgrTableDiv");
     if ((status === "ENABLED") || (status === "FAULT")) {
       enableButton.innerText = "Disable System";
-      nodeDiv.style.display = "inline";
+      cardDiv.style.display = "inline";
     } else {
       enableButton.innerText = "Enable System";
-      nodeDiv.style.display = "none";
+      cardDiv.style.display = "none";
     }
 
-    const select = document.getElementById("uartNodeSelect");
-    select.value = data.opd_uart_node_select;
+    const select = document.getElementById("uartCardSelect");
+    select.value = data.opd_uart_card_select;
   }
 
-  function updateNode(node, status) {
-    const span = document.getElementById(`node${node}`);
-    const button = document.getElementById(`node${node}Button`);
+  function updateCard(card, status) {
+    const span = document.getElementById(`card${card}`);
+    const button = document.getElementById(`card${card}Button`);
 
     span.innerText = status;
 
@@ -204,8 +204,8 @@
   }
 
   async function uartSelect() {
-    const select = document.getElementById("uartNodeSelect");
-    await putData(NM_URL, {"opd_uart_node_select": Number(select.value)});
+    const select = document.getElementById("uartCardSelect");
+    await putData(NM_URL, {"opd_uart_card_select": Number(select.value)});
   }
 
   buildTable();

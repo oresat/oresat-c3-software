@@ -544,7 +544,7 @@ objects:
         description: the last state of wakeup interval
 
   - index: 0x400c
-    name: node_manager
+    name: card_manager
     object_type: record
     subindexes:
       - subindex: 0x1
@@ -674,13 +674,13 @@ tpdos:
 
   - num: 5
     fields:
-      - [node_manager, total_cards]
-      - [node_manager, cards_off]
-      - [node_manager, cards_booting]
-      - [node_manager, cards_on]
-      - [node_manager, cards_with_errors]
-      - [node_manager, cards_not_found]
-      - [node_manager, cards_dead]
+      - [card_manager, total_cards]
+      - [card_manager, cards_off]
+      - [card_manager, cards_booting]
+      - [card_manager, cards_on]
+      - [card_manager, cards_with_errors]
+      - [card_manager, cards_not_found]
+      - [card_manager, cards_dead]
     event_timer_ms: 5000
 
   - num: 6

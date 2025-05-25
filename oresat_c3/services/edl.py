@@ -48,7 +48,7 @@ from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError,
 from . import Service
 from ._edl_runner import EdlCommandRunner
 from .beacon import BeaconService
-from .node_manager import NodeManagerService
+from .card_manager import CardManagerService
 from .radios import RadiosService
 
 
@@ -57,13 +57,13 @@ class EdlService(Service):
         self,
         node: ManagerNodeClient,
         radios_service: RadiosService,
-        node_mgr_service: NodeManagerService,
+        card_mgr_service: CardManagerService,
         beacon_service: BeaconService,
     ):
         super().__init__(node)
 
         self._radios_service = radios_service
-        self._edl_runner = EdlCommandRunner(node, node_mgr_service, beacon_service)
+        self._edl_runner = EdlCommandRunner(node, card_mgr_service, beacon_service)
 
         self._file_receiver = EdlFileReciever()
 

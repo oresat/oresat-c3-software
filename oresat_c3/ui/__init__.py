@@ -14,18 +14,18 @@ from ..gen.c3_od import C3Entry
 from ..gen.cards import Card
 from ..gen.missions import Mission
 from ..services.beacon import BeaconService
-from ..services.node_manager import NodeManagerService
+from ..services.card_manager import CardManagerService
 
 TEMPLATE_PATH.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 class Ui:
     def __init__(
-        self, node: ManagerNodeClient, node_manager: NodeManagerService, beacon: BeaconService
+        self, node: ManagerNodeClient, card_manager: CardManagerService, beacon: BeaconService
     ):
         self.node = node
         self.beacon = beacon
-        self.node_manager = node_manager
+        self.card_manager = card_manager
 
         sat_id = node.od_read(C3Entry.SATELLITE_ID)
         self.mission = Mission.from_id(sat_id)
@@ -35,8 +35,8 @@ class Ui:
 
         routes = [
             ("beacon", self.get_beacon_page, None, self.put_beacon_data),
+            ("card-manager", self.get_nm_page, self.get_nm_data, self.put_nm_data),
             ("keys", self.get_keys_page, self.get_keys_data, self.put_keys_data),
-            ("node-manager", self.get_nm_page, self.get_nm_data, self.put_nm_data),
             ("reset", self.get_reset_page, None, self.put_reset_data),
         ]
 
@@ -143,7 +143,7 @@ class Ui:
         self.node.od_write(entry, entry.enum[data["reset"]])
 
     def get_nm_page(self):
-        return self.template("./node_manager.tpl")
+        return self.template("./card_manager.tpl")
 
     def get_nm_data(self) -> dict:
         data = []
@@ -153,17 +153,17 @@ class Ui:
                     "name": card.name,
                     "node_id": card.node_id,
                     "opd_addr": card.opd_address,
-                    "status": self.node_manager.status(card).name,
+                    "status": self.card_manager.status(card).name,
                     "processor": card.processor.name,
                 }
             )
-        uart_node = self.node_manager.uart_node
-        uart_node_addr = uart_node.opd_address if uart_node is not None else 0
-        opd_status = self.node_manager.opd.status.name
+        uart_card = self.card_manager.uart_card
+        uart_card_addr = uart_card.opd_address if uart_card is not None else 0
+        opd_status = self.card_manager.opd.status.name
         return {
             "opd_status": opd_status,
-            "opd_uart_node_select": uart_node_addr,
-            "nodes": data,
+            "opd_uart_card_select": uart_card_addr,
+            "cards": data,
         }
 
     def put_nm_data(self):
@@ -171,18 +171,18 @@ class Ui:
         if "opd_status" in data:
             state = OpdState[data["opd_status"]]
             if state == OpdState.ENABLED:
-                self.node_manager.opd.enable()
+                self.card_manager.opd.enable()
             elif state == OpdState.DISABLED:
-                self.node_manager.opd.disable()
-        if "opd_uart_node_select" in data:
-            uart_node_addr = data["opd_uart_node_select"]
-            card = Card.from_opd_address(uart_node_addr) if uart_node_addr != 0 else None
-            self.node_manager.uart_node = card
+                self.card_manager.opd.disable()
+        if "opd_uart_card_select" in data:
+            uart_card_addr = data["opd_uart_card_select"]
+            card = Card.from_opd_address(uart_card_addr) if uart_card_addr != 0 else None
+            self.card_manager.uart_card = card
 
-        if "node" in data and "state" in data:
-            card = Card.from_name(data["node"])
+        if "card" in data and "state" in data:
+            card = Card.from_name(data["card"])
             state = data["state"].upper()
             if state in ["ENABLE", "BOOTLOADER"]:
-                self.node_manager.enable(card, state == "BOOTLOADER")
+                self.card_manager.enable(card, state == "BOOTLOADER")
             elif state == "DISABLE":
-                self.node_manager.disable(card)
+                self.card_manager.disable(card)

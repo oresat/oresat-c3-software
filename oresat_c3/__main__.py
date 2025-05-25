@@ -15,7 +15,7 @@ from .gen.missions import Mission
 from .services import Service
 from .services.beacon import BeaconService
 from .services.edl import EdlService
-from .services.node_manager import NodeManagerService
+from .services.card_manager import CardManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
 from .subsystems.rtc import set_system_time_to_rtc_time
@@ -136,21 +136,21 @@ def main():
     state_service = StateService(node, args.mock_hw)  # first to restore state from F-RAM
     radios_service = RadiosService(node, args.mock_hw)
     beacon_service = BeaconService(node, radios_service)
-    node_mgr_service = NodeManagerService(node, args.mock_hw)
-    edl_service = EdlService(node, radios_service, node_mgr_service, beacon_service)
+    card_mgr_service = CardManagerService(node, args.mock_hw)
+    edl_service = EdlService(node, radios_service, card_mgr_service, beacon_service)
 
     services = [
         state_service,
         radios_service,
         beacon_service,
         edl_service,
-        node_mgr_service,
+        card_mgr_service,
     ]
 
     for service in services:
         service.start()
 
-    ui = Ui(node, node_mgr_service, beacon_service)
+    ui = Ui(node, card_mgr_service, beacon_service)
     ui.start()
 
     try:

@@ -173,11 +173,6 @@ cards:
     node_id: 0x4C
     opd_address: 0x1B
 
-  - name: cfc_sensor
-    nice_name: CFC Sensor
-    opd_address: 0x1E
-    missions: [oresat0_5, oresat1]
-
   - name: cfc_processor
     nice_name: CFC Processor
     base: cfc
@@ -185,6 +180,11 @@ cards:
     node_id: 0x50
     opd_address: 0x1D
     child: cfc_sensor
+    missions: [oresat0_5, oresat1]
+
+  - name: cfc_sensor
+    nice_name: CFC Sensor
+    opd_address: 0x1E
     missions: [oresat0_5, oresat1]
 
   - name: diode_test

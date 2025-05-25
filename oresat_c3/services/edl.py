@@ -121,7 +121,7 @@ class EdlService(Service):
         self.node.od_write(C3Entry.EDL_LAST_TIMESTAMP, int(time()))
 
         if self.node.od_read(C3Entry.FLIGHT_MODE):
-            self._increase_count(C3Entry.EDL_SEQUENCE_COUNT)
+            self.node.od_write(C3Entry.EDL_SEQUENCE_COUNT, packet.seq_num)
 
         return packet
 
@@ -137,10 +137,10 @@ class EdlService(Service):
         elif req_packet.vcid == EdlVcid.C3_COMMAND:
             try:
                 res_payload = self._edl_runner.run(req_packet.payload)
-                if not res_payload.values:
+                if res_payload is None:
                     return  # no response
             except Exception as e:
-                logger.error(f"EDL command {req_packet.payload.id.name} raised: {e}")
+                logger.error(f"EDL command {req_packet.payload.id} raised: {e}")
                 return
         elif req_packet.vcid == EdlVcid.FILE_TRANSFER:
             res_payload = self._file_receiver.loop(req_packet.payload)

@@ -183,4 +183,4 @@ class EdlPacket:
 
         seq_num = int.from_bytes(frame.insert_zone or b"", "little")
 
-        return EdlPacket(payload, seq_num, frame.header.src_dest)
+        return EdlPacket(spacecraft_id, payload, seq_num, frame.header.src_dest)

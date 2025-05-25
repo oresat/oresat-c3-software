@@ -20,7 +20,6 @@ class BeaconService(Service):
         self.mission = Mission.from_id(sat_id)
 
         self._radios_service = radios_service
-        self.node.add_write_callback(C3Entry.BEACON_SEND_NOW, self._on_write_send_now)
 
     def on_loop(self):
         delay = self.node.od_read(C3Entry.BEACON_DELAY)

@@ -34,7 +34,7 @@ from ..gen.edl_commands import (
     TxControlEdlRequest,
     TxControlEdlResponse,
 )
-from ..gen.nodes import Node
+from ..gen.cards import Card
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
@@ -77,7 +77,7 @@ class EdlCommandRunner:
     def run(self, request: EdlCommandRequest) -> EdlCommandResponse:
         cmd_id = EdlCommandId(request.id)
 
-        args = astuple(request) if request else None
+        args = astuple(request.payload) if request.payload else None
         logger.info(f"EDL command request: {cmd_id.name}, args: {args}")
 
         cmd_cb = self._cmd_cbs.get(cmd_id, None)
@@ -87,19 +87,19 @@ class EdlCommandRunner:
         res_payload = cmd_cb() if request is None else cmd_cb(request.payload)
         response = EdlCommandResponse(request.id, res_payload)
 
-        values = astuple(response) if response else None
+        values = astuple(response.payload) if response.payload else None
         logger.info(f"EDL command response: {cmd_id.name}, values: {values}")
         return response
 
     def run_tx_control(self, request: TxControlEdlRequest) -> TxControlEdlResponse:
         if request.enable is True:
-            logger.info("EDL disabling Tx")
-            self._node.od_write(C3Entry.TX_CONTROL_ENABLE, False)
-            self._node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
-        else:
             logger.info("EDL enabling Tx")
-            self._node.od_write(C3Entry.TX_CONTROL_ENABLE, True)
+            self._node.od_write(C3Entry.TX_CONTROL_ENABLE, False)
             self._node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, int(time()))
+        else:
+            logger.info("EDL disabling Tx")
+            self._node.od_write(C3Entry.TX_CONTROL_ENABLE, True)
+            self._node.od_write(C3Entry.TX_CONTROL_LAST_ENABLE_TIMESTAMP, 0)
         return TxControlEdlResponse(request.enable)
 
     def run_soft_reset(self) -> None:
@@ -115,19 +115,19 @@ class EdlCommandRunner:
         self._node.od_write(C3Entry.SYSTEM_RESET, C3SystemReset.FACTORY_RESET)
 
     def run_node_enable(self, request: CoNodeEnableEdlRequest) -> CoNodeEnableEdlResponse:
-        node = Node.from_node_id(request.node_id)
-        logger.info(f"EDL enabling CANopen node {node.name} (0x{node.node_id:02X})")
-        self._node_mgr_service.enable(node, request.enable)
-        return CoNodeEnableEdlResponse(self._node_mgr_service.node_status(node).value)
+        card = Card.from_node_id(request.node_id)
+        logger.info(f"EDL enabling CANopen node {card.name} (0x{request.node_id:02X})")
+        self._node_mgr_service.enable(card, request.enable)
+        return CoNodeEnableEdlResponse(self._node_mgr_service.status(card).value)
 
     def run_node_status(self, request: CoNodeStatusEdlRequest) -> CoNodeStatusEdlResponse:
-        node = Node.from_node_id(request.node_id)
-        logger.info(f"EDL getting CANopen node {node.name} (0x{node.node_id:02X}) status")
-        return CoNodeStatusElResponse(self._node_mgr_service.node_status(node).value)
+        card = Card.from_node_id(request.node_id)
+        logger.info(f"EDL getting CANopen node {card.name} (0x{request.node_id:02X}) status")
+        return CoNodeStatusEdlResponse(self._node_mgr_service.status(card).value)
 
     def run_sdo_write(self, request: CoSdoWriteEdlRequest) -> CoSdoWriteEdlResponse:
-        node = Node.from_node_id(request.node_id)
-        logger.info(f"EDL SDO read on CANopen node {node} (0x{node.node_id:02X})")
+        name = "C3" if request.node_id == 1 else Card.from_node_id(request.node_id).name
+        logger.info(f"EDL SDO read on CANopen node {name} (0x{request.node_id:02X})")
         abort_code = 0
         try:
             if request.node_id == 1:
@@ -161,32 +161,34 @@ class EdlCommandRunner:
         return OpdScanEdlResponse(self._node_mgr_service.opd.scan())
 
     def run_opd_probe(self, request: OpdProbeEdlRequest) -> OpdProbeEdlResponse:
-        name = self._node_mgr_service.opd_addr_to_name[request.opd_addr]
-        logger.info(f"EDL probing for OPD node {name} (0x{request.opd_addr:02X})")
-        return OpdProbeEdlResponse(self._node_mgr_service.opd[name].probe())
+        card = Card.from_opd_address(request.opd_addr)
+        logger.info(f"EDL probing for OPD node {card.name} (0x{card.opd_address:02X})")
+        opd_node = self._node_mgr_service.opd[card.opd_address]
+        return OpdProbeEdlResponse(opd_node.probe())
 
     def run_opd_enable(self, request: OpdEnableEdlRequest) -> OpdEnableEdlResponse:
-        name = self._node_mgr_service.opd_addr_to_name[request.opd_addr]
-        node = self._node_mgr_service.opd[name]
+        card = Card.from_opd_address(request.opd_addr)
+        opd_node = self._node_mgr_service.opd[card.opd_address]
         if request.enable:
-            logger.info(f"EDL enabling OPD node {name} (0x{request.opd_addr:02X})")
-            node.enable()
+            logger.info(f"EDL enabling OPD node {card.name} (0x{card.opd_address:02X})")
+            opd_node.enable()
         else:
-            logger.info(f"EDL disabling OPD node {name} (0x{request.opd_addr:02X})")
-            node.disable()
-        return OpdEnableEdlResponse(node.status.value)
+            logger.info(f"EDL disabling OPD node {card.name} (0x{card.opd_address:02X})")
+            opd_node.disable()
+        return OpdEnableEdlResponse(opd_node.status.value)
 
     def run_opd_reset(self, request: OpdResetEdlRequest) -> OpdResetEdlResponse:
-        name = self._node_mgr_service.opd_addr_to_name[request.opd_addr]
-        logger.info(f"EDL resetting OPD node {name} (0x{request.opd_addr:02X})")
-        node = self._node_mgr_service.opd[name]
-        node.reset()
-        return OpdResetEdlResponse(node.status.value)
+        card = Card.from_opd_address(request.opd_addr)
+        logger.info(f"EDL resetting OPD node {card.name} (0x{card.opd_address:02X})")
+        opd_node = self._node_mgr_service.opd[card.opd_address]
+        opd_node.reset()
+        return OpdResetEdlResponse(opd_node.status.value)
 
     def run_opd_status(self, request: OpdStatusEdlRequest) -> OpdStatusEdlResponse:
-        name = self._node_mgr_service.opd_addr_to_name[request.opd_addr]
-        logger.info(f"EDL getting the status for OPD node {name} (0x{request.opd_addr:02X})")
-        return OpdStatusEdlResponse(self._node_mgr_service.opd[name].status.value)
+        card = Card.from_opd_address(request.opd_addr)
+        logger.info(f"EDL getting the status for OPD node {card.name} (0x{card.opd_address:02X})")
+        opd_node = self._node_mgr_service.opd[card.opd_address]
+        return OpdStatusEdlResponse(opd_node.status.value)
 
     def run_rtc_set_time(self, request: RtcSetTimeEdlRequest) -> None:
         logger.info(f"EDL setting the RTC time to {request.time}")
@@ -209,7 +211,7 @@ class EdlCommandRunner:
         logger.info("EDL Rx test")
 
     def run_sdo_read(self, request: CoSdoReadEdlRequest) -> CoSdoReadEdlResponse:
-        name = self._node_mgr_service.node_id_to_name[request.node_id]
+        name = "C3" if request.node_id == 1 else Card.from_node_id(request.node_id).name
         logger.info(f"EDL SDO read on CANopen node {name} (0x{request.node_id:02X})")
         raw = b""
         abort_code = 0

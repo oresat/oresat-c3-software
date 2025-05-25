@@ -38,7 +38,7 @@ from cfdppy.user import (
     TransactionId,
     TransactionParams,
 )
-from olaf import OreSatFile
+from oresat_configs import MissionConfig
 from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
 from spacepackets.cfdp.tlv import (
@@ -51,9 +51,9 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
-from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
-
 sys.path.insert(0, os.path.abspath(".."))
+
+from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
 
 
 class PrintFaults(DefaultFaultHandlerBase):
@@ -91,26 +91,26 @@ class PrintUser(CfdpUserBase):
         print(f"Indication: File Segment Recv. {params}")
 
     def report_indication(self, transaction_id: TransactionId, status_report: Any):
-        print("Indication: Report for {transaction_id}. {status_report}")
+        print(f"Indication: Report for {transaction_id}. {status_report}")
 
     def suspended_indication(self, transaction_id: TransactionId, cond_code: ConditionCode):
-        print("Indication: Suspended for {transaction_id}. {cond_code}")
+        print(f"Indication: Suspended for {transaction_id}. {cond_code}")
 
     def resumed_indication(self, transaction_id: TransactionId, progress: int):
-        print("Indication: Resumed for {transaction_id}. {progress}")
+        print(f"Indication: Resumed for {transaction_id}. {progress}")
 
     def fault_indication(
         self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
     ):
-        print("Indication: Fault for {transaction_id}. {cond_code}. {progress}")
+        print(f"Indication: Fault for {transaction_id}. {cond_code}. {progress}")
 
     def abandoned_indication(
         self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
     ):
-        print("Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
+        print(f"Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
 
     def eof_recv_indication(self, transaction_id: TransactionId):
-        print("Indication: EOF Recv for {transaction_id}")
+        print(f"Indication: EOF Recv for {transaction_id}")
 
 
 class Uplink(Thread):
@@ -120,9 +120,18 @@ class Uplink(Thread):
     the socket.
     """
 
-    def __init__(self, address, hmac_key, sequence_number, bad_connection, delay):
+    def __init__(
+        self,
+        scid: int,
+        address: tuple,
+        hmac_key: bytes,
+        sequence_number: int,
+        bad_connection: bool,
+        delay: int,
+    ):
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.queue = SimpleQueue()
+        self._scid = scid
         self._address = address
         self._hmac_key = hmac_key
         self._sequence_number = sequence_number
@@ -139,7 +148,7 @@ class Uplink(Thread):
                 print("---X DROPPED", payload)
                 continue  # simulate dropped packets
             print("--->", payload)
-            packet = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT)
+            packet = EdlPacket(self._scid, payload, self._sequence_number, SRC_DEST_ORESAT)
             message = packet.pack(self._hmac_key)
             uplink.send(message)
             print("Current sequence number:", self._sequence_number)
@@ -154,10 +163,11 @@ class Downlink(Thread):
     share the socket.
     """
 
-    def __init__(self, address, hmac_key, bad_connection):
+    def __init__(self, scid: int, address: tuple, hmac_key: bytes, bad_connection: bool):
         super().__init__(name=self.__class__.__name__, daemon=True)
         self.source_queue = SimpleQueue()
         self.dest_queue = SimpleQueue()
+        self._scid = scid
         self._address = address
         self._hmac_key = hmac_key
         self._bad_connection = bad_connection
@@ -168,7 +178,7 @@ class Downlink(Thread):
 
         while True:
             message = downlink.recv(4096)
-            packet = EdlPacket.unpack(message, self._hmac_key, True).payload
+            packet = EdlPacket.unpack(message, self._scid, self._hmac_key, True).payload
             if self._bad_connection and not random.randrange(5):
                 print("X--- DROPPED", packet)
                 continue  # simulate dropped packets
@@ -328,21 +338,29 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("file_path")
     parser.add_argument(
-        "-o", "--host", default="localhost", help="address to use, default is localhost"
+        "-o",
+        "--oresat",
+        default=0.5,
+        type=float,
+        choices=[0, 0.5, 1],
+        help="oresat mission number (default: %(default)s)",
+    )
+    parser.add_argument(
+        "-H", "--host", default="localhost", help="address to use (default: %(default)s)"
     )
     parser.add_argument(
         "-u",
         "--uplink-port",
         default=10025,
         type=int,
-        help="port to use for the uplink, default is 10025",
+        help="port to use for the uplink (default: %(default)s)",
     )
     parser.add_argument(
         "-d",
         "--downlink-port",
         default=10016,
         type=int,
-        help="port to use for the downlink, default is 10016",
+        help="port to use for the downlink (default: %(default)s)",
     )
     parser.add_argument(
         "-r",
@@ -355,21 +373,31 @@ def main():
         "-b", "--bad-connection", action="store_true", help="simulate a bad connection"
     )
     parser.add_argument(
-        "-l", "--loop-delay", type=int, default=50, help="upload loop delay in milliseconds"
+        "-l",
+        "--loop-delay",
+        type=int,
+        default=50,
+        help="upload loop delay in milliseconds (default: %(default)s)",
     )
     parser.add_argument(
         "-n",
         "--sequence-number",
         type=int,
         default=0,
-        help="edl sequence number, default 0",
+        help="edl sequence number (default: %(default)s)",
     )
-    parser.add_argument("-s", "--buffer-size", type=int, default=950, help="file data buffer size")
+    parser.add_argument(
+        "-s",
+        "--buffer-size",
+        type=int,
+        default=950,
+        help="file data buffer size (default: %(default)s)",
+    )
     parser.add_argument(
         "-m",
         "--hmac",
         default="",
-        help="edl hmac, must be 32 bytes, default all zero",
+        help="edl hmac, must be 32 bytes (default is all zeros)",
     )
     command = parser.add_mutually_exclusive_group()
     command.add_argument(
@@ -379,16 +407,7 @@ def main():
         help="Initiate a proxy put request instead of a normal one",
     )
     command.add_argument("-dr", "--directory", help="Request a directory listing, for example '.'")
-
     args = parser.parse_args()
-
-    file_path = args.file_path.split("/")[-1]
-    try:
-        OreSatFile(file_path)
-    except ValueError:
-        print("file name must be in card-name_key_unix-time.extension format")
-        print("example: c3_test_123.txt")
-        sys.exit(1)
 
     if args.random_data:
         with open(args.file_path, mode="xb") as f:
@@ -408,10 +427,15 @@ def main():
     downlink_host = args.host if args.host in ["localhost", "127.0.0.1"] else ""
     downlink_address = (downlink_host, args.downlink_port)
 
+    oresat_str = f"oresat{args.oresat}".replace(".", "_")
+    mission_config_path = Path(__file__).parent.parent / f"configs/{oresat_str}.yaml"
+    mission = MissionConfig.from_yaml(mission_config_path)
+    scid = mission.edl.spacecraft_id
+
     delay = args.loop_delay / 1000
-    up = Uplink(uplink_address, hmac_key, args.sequence_number, args.bad_connection, delay)
+    up = Uplink(scid, uplink_address, hmac_key, args.sequence_number, args.bad_connection, delay)
     up.start()
-    down = Downlink(downlink_address, hmac_key, args.bad_connection)
+    down = Downlink(scid, downlink_address, hmac_key, args.bad_connection)
     down.start()
 
     SOURCE_ID = ByteFieldU8(0)

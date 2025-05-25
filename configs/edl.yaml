@@ -64,7 +64,7 @@ commands:
         data_type: uint8
         description: the OD subindex to write to
       - name: buffer
-        data_type: octet_str
+        data_type: bytes
         description: sdo data buffer to write
     response:
       - name: abort_code
@@ -205,5 +205,5 @@ commands:
         data_type: uint32
         description: SDO error code (0 is no error)
       - name: buffer
-        data_type: octet_str
+        data_type: bytes
         description: data buffer

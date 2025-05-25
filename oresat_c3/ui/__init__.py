@@ -123,7 +123,7 @@ class Ui:
         data = request.json
         for e in self.KEY_ENTRIES:
             if e.name in data:
-                if e.data_type == DataType.OCTET_STR:
+                if e.data_type == DataType.BYTES:
                     self.node.od_write(e, parse_key_str(data[e.name]))
                 else:
                     self.node.od_write(e, data[e.name])

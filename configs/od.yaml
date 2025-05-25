@@ -394,28 +394,28 @@ objects:
     subindexes:
       - subindex: 0x1
         name: crypto_key_0
-        data_type: octet_str
+        data_type: bytes
         description: edl crypto key 0
         access_type: const
         str_length: 32
 
       - subindex: 0x2
         name: crypto_key_1
-        data_type: octet_str
+        data_type: bytes
         description: edl crypto key 1
         access_type: const
         str_length: 32
 
       - subindex: 0x3
         name: crypto_key_2
-        data_type: octet_str
+        data_type: bytes
         description: edl crypto key 2
         access_type: const
         str_length: 32
 
       - subindex: 0x4
         name: crypto_key_3
-        data_type: octet_str
+        data_type: bytes
         description: edl crypto key 3
         access_type: const
         str_length: 32

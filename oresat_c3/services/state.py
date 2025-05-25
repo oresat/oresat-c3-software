@@ -199,7 +199,7 @@ class StateService(Service):
 
         offset = 0
         for entry in FRAM_DEF:
-            if entry.data_type == DataType.OCTET_STR:
+            if entry.data_type == DataType.BYTES:
                 raw = self.node.od_read(entry, use_enum=False)
                 raw_len = len(entry.default)
             else:
@@ -213,7 +213,7 @@ class StateService(Service):
     def restore_state(self):
         offset = 0
         for entry in FRAM_DEF:
-            if entry.data_type == DataType.OCTET_STR:
+            if entry.data_type == DataType.BYTES:
                 size = len(entry.default)
                 raw = self._fram.read(offset, size)
                 self.node.od_write(entry, raw)

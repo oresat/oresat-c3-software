@@ -504,34 +504,6 @@ objects:
     object_type: record
     subindexes:
       - subindex: 0x1
-        name: revision
-        data_type: uint8
-        description: the beacon revision number
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0x2
-        name: src_callsign
-        data_type: str
-        description: the ax.25 header source callsign
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0x3
-        name: dest_callsign
-        data_type: str
-        description: the ax.25 header destination callsign
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0x4
-        name: start_chars
-        data_type: str
-        description: the aprs start characters
-        access_type: const
-        default: "{{z"
-
-      - subindex: 0x5
         name: delay
         data_type: uint32
         description: delay between beacons or 0 to disable
@@ -539,59 +511,11 @@ objects:
         default: 30
         unit: s
 
-      - subindex: 0x6
-        name: send_now
-        data_type: bool
-        description: send a beacon now
-        access_type: wo
-
-      - subindex: 0x7
+      - subindex: 0x2
         name: last_timestamp
-        data_type: uint64
-        description: scet timestamp of last beacon
+        data_type: uint32
+        description: timestamp of last beacon
         access_type: ro
-
-      - subindex: 0x8
-        name: src_ssid
-        data_type: uint8
-        description: the ax.25 header source ssid
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0x9
-        name: dest_ssid
-        data_type: uint8
-        description: the ax.25 header destination ssid
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0xa
-        name: control
-        data_type: uint8
-        description: the ax.25 header control field
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0xb
-        name: pid
-        data_type: uint8
-        description: the ax.25 header pid (protocol identifier) field
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0xc
-        name: command
-        data_type: bool
-        description: the ax.25 header destination c-bit value
-        access_type: const
-        # default set via beacon.yaml file
-
-      - subindex: 0xd
-        name: response
-        data_type: bool
-        description: the ax.25 header source c-bit value
-        access_type: const
-        # default set via beacon.yaml file
 
   - index: 0x400b
     name: rtc

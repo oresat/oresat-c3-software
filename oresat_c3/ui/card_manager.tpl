@@ -31,7 +31,7 @@
     <thead>
       <tr>
         <td>Card</td>
-        <td>Card Id</td>
+        <td>Node Id</td>
         <td>Status</td>
         <td>OPD Address</td>
         <td>Control</td>

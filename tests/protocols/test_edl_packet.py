@@ -53,7 +53,7 @@ class TestEdlPacket(unittest.TestCase):
 
         # Modifying FECF so that it is invalid
         edl_message_req = bytearray(edl_message_req)
-        edl_message_req = edl_message_req[:-2] + b"\xFF\xFF"
+        edl_message_req = edl_message_req[:-2] + b"\xff\xff"
         edl_message_req = bytes(edl_message_req)
 
         # Checking if EdlPacketError exception is raised for the invalid FECF

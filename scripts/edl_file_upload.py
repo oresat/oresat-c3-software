@@ -142,6 +142,7 @@ class Uplink(Thread):
             packet = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT)
             message = packet.pack(self._hmac_key)
             uplink.send(message)
+            print("Current sequence number:", self._sequence_number)
             self._sequence_number += 1
             time.sleep(self._delay)
 

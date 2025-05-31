@@ -31,7 +31,7 @@ objects:
     data_type: bool
     description: card is in flight mode
     access_type: ro
-    default: false
+    default: true
 
   - index: 0x3002
     name: versions

@@ -2,7 +2,7 @@ import logging
 from dataclasses import astuple
 from time import time
 
-from oresat_cand import ManagerNodeClient
+from oresat_cand import ManagerNodeClient, SdoAbortCandError
 
 from ..gen.c3_od import C3Entry, C3SystemReset
 from ..gen.cards import Card
@@ -40,6 +40,8 @@ from .beacon import BeaconService
 from .card_manager import CardManagerService
 
 logger = logging.getLogger(__name__)
+
+GENRERIC_SDO_ABORT_CODE = 0x06090011
 
 
 class EdlCommandRunner:
@@ -128,8 +130,7 @@ class EdlCommandRunner:
         return CoNodeStatusEdlResponse(self._card_mgr_service.status(card).value)
 
     def run_sdo_write(self, request: CoSdoWriteEdlRequest) -> CoSdoWriteEdlResponse:
-        name = "C3" if request.node_id == 1 else Card.from_node_id(request.node_id).name
-        logger.info(f"EDL SDO read on CANopen node {name} (0x{request.node_id:02X})")
+        logger.info(f"EDL SDO read on CANopen node (0x{request.node_id:02X})")
         abort_code = 0
         try:
             if request.node_id == 1:
@@ -140,9 +141,12 @@ class EdlCommandRunner:
                 self._node.sdo_write_raw(
                     request.node_id, request.index, request.subindex, request.buffer
                 )
+        except SdoAbortCandError as e:
+            logger.error(f"EDL sdo write failed with 0x{e.code:X}")
+            abort_code = e.code
         except Exception as e:
             logger.error(e)
-            abort_code = 0x06090011
+            abort_code = GENRERIC_SDO_ABORT_CODE
         return CoSdoWriteEdlResponse(abort_code)
 
     def run_sync(self) -> None:
@@ -213,8 +217,7 @@ class EdlCommandRunner:
         logger.info("EDL Rx test")
 
     def run_sdo_read(self, request: CoSdoReadEdlRequest) -> CoSdoReadEdlResponse:
-        name = "C3" if request.node_id == 1 else Card.from_node_id(request.node_id).name
-        logger.info(f"EDL SDO read on CANopen node {name} (0x{request.node_id:02X})")
+        logger.info(f"EDL SDO read on CANopen node (0x{request.node_id:02X})")
         raw = b""
         abort_code = 0
         try:
@@ -224,7 +227,10 @@ class EdlCommandRunner:
                 raw = entry.encode(value)
             else:
                 raw = self._node.sdo_read_raw(request.node_id, request.index, request.subindex)
+        except SdoAbortCandError as e:
+            logger.error(f"EDL sdo read failed with 0x{e.code:X}")
+            abort_code = e.code
         except Exception as e:
             logger.error(e)
-            abort_code = 0x06090011
+            abort_code = GENRERIC_SDO_ABORT_CODE
         return CoSdoReadEdlResponse(abort_code, raw)

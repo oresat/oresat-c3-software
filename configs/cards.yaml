@@ -1,6 +1,6 @@
 configs:
   - name: software
-    od_source: https://raw.githubusercontent.com/oresat/oresat-canopend/refs/heads/master/od.yaml
+    od_source: https://raw.githubusercontent.com/oresat/oresat-cand/refs/heads/master/od.yaml
 
   - name: firmware
     od_source: https://raw.githubusercontent.com/oresat/oresat-zephyr/refs/heads/new-configs/common/od.yaml
@@ -15,16 +15,16 @@ configs:
     od_source: od.yaml
 
   - name: cfc
-    od_source: https://raw.githubusercontent.com/oresat/oresat-cfc-software/refs/heads/canopend/od.yaml
+    od_source: https://raw.githubusercontent.com/oresat/oresat-cfc-software/refs/heads/cand/od.yaml
 
   - name: diode_test
     od_source: https://raw.githubusercontent.com/oresat/oresat-zephyr/refs/heads/new-configs/apps/diode_test/od.yaml
 
   - name: dxwifi
-    od_source: https://raw.githubusercontent.com/oresat/oresat-dxwifi-software/refs/heads/canopend/od.yaml
+    od_source: https://raw.githubusercontent.com/oresat/oresat-dxwifi-software/refs/heads/cand/od.yaml
 
   - name: gps
-    od_source: https://raw.githubusercontent.com/oresat/oresat-gps-software/refs/heads/canopend/od.yaml
+    od_source: https://raw.githubusercontent.com/oresat/oresat-gps-software/refs/heads/cand/od.yaml
 
   - name: reaction_wheel
     od_source: https://raw.githubusercontent.com/oresat/oresat-zephyr/refs/heads/new-configs/apps/reaction_wheel/od.yaml
@@ -33,7 +33,7 @@ configs:
     od_source: https://raw.githubusercontent.com/oresat/oresat-zephyr/refs/heads/new-configs/apps/solar/od.yaml
 
   - name: star_tracker
-    od_source: https://raw.githubusercontent.com/oresat/oresat-star-tracker-software/refs/heads/canopend/od.yaml
+    od_source: https://raw.githubusercontent.com/oresat/oresat-star-tracker-software/refs/heads/cand/od.yaml
 
 cards:
   - name: battery_1

@@ -5,8 +5,8 @@ cfdp-py==0.1.2
 dataclasses-json
 git+https://github.com/oresat/oresat-adcs-software.git@max-dev
 isort
-oresat-configs>=0.8.0
-oresat-olaf>=3.6.4
+oresat-configs
+oresat-olaf==3.6.4
 pylama[all]
 pylama[toml]
 setuptools

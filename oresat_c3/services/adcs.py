@@ -9,7 +9,7 @@ from enum import Enum, IntEnum, unique
 
 import canopen
 from olaf import NodeStop, Service, logger
-from oresat_configs import NodeId
+# from oresat_configs import NodeId
 
 
 @unique

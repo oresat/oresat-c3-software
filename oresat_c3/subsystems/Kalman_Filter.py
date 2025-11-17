@@ -12,7 +12,8 @@ class Multiplicative_Extended_Kalman_Filter():
         self.sigma_gyro = sigma_gyro 
         self.sigma_bias = sigma_bias
         
-        self.q = None # estimated quaternion. Must be updated to initial measured quaternion in flight software
+        self.q = None # estimated quaternion. Must be updated to initial measured quaternion in flight software.
+        self.omega = None # estimated current body rate.
         self.last_omega = None # last gyro measurement to perform prediction using body rates of last update step omega_{k-1}. Must be updated to initial measured rate in flight software
         self.b = np.zeros(3) # estimated gyro bias (3x1)
         

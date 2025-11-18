@@ -27,7 +27,7 @@ class ADCS_FlightSoftware(Service):
         self.tracking_target = None # used for tracking mode to set static target with GPS coordinates
         
         self.G = config["G"] # wheel orientation matrix
-        self.G_transpose = self.G.T # transpose of wheel orientation matrix
+        self.G_transpose = self.G.T # save repeated calculations each iteration
         self.G_pinv = -np.linalg.pinv(self.G) # pseudo inverse matrix for torque calculations. NEGATE OR NOT????
         self.q_90_rot = self.axis_angle_to_quaternion([0,1,0], -90) # translate star tracker targets to +z side of satellite
         self.q_180_rot = self.axis_angle_to_quaternion([0,1,0], -180) # translate CFC targets to +z side/viewpoint of satellite
@@ -110,7 +110,7 @@ class ADCS_FlightSoftware(Service):
             # feed forward term for stored angular momentum
             alpha_d_B = (omega_desired - self.omega_desired_prev) / self.updateTime # desired acceleration in body frame
             self.omega_desired_prev = omega_desired.copy() # update previous target rate
-            H_wheels = self.rwInertia * wheelSpeeds @ self.G.T # calculate stored wheel momentum in body frame
+            H_wheels = self.rwInertia * wheelSpeeds @ self.G_transpose # calculate stored wheel momentum in body frame
             tau_ff = self.satInertia @ alpha_d_B + np.cross(omega, self.satInertia @ omega + H_wheels) # total feed-forward torque accounting for gyroscopic coupling
         
             omega = omega-omega_desired # set biased omega after using true value to calculate feed forward term

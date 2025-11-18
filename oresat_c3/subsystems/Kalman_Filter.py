@@ -47,7 +47,8 @@ class Multiplicative_Extended_Kalman_Filter():
             self.correction(q_measured)
         
         self.last_time = current_time # update last time a prediction was performed
-        return self.q, (self.last_omega-self.b) # return filtered attitude estimate and bias-correct rate measurement
+        # return self.q, (self.last_omega-self.b) # return filtered attitude estimate and bias-correct rate measurement
+        self.omega = self.last_omega-self.b # save estimated body rates for controller access later
     
     def prediction(self, dt, omega): # predict next state based on IMU input. Also known as the propagation or estimation step.
         omega = omega - self.b # correct omega with estimated gyro bias

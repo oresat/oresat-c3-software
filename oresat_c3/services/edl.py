@@ -1,5 +1,6 @@
 """'EDL Service"""
 
+from cfdppy.request import PutRequest
 from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
@@ -11,17 +12,17 @@ import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
 from cfdppy.exceptions import (
     FsmNotCalledAfterPacketInsertion,
-    NoRemoteEntityCfgFound,
+    NoRemoteEntityConfigFound,
     SourceFileDoesNotExist,
     UnretrievedPdusToBeSent,
 )
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
-    IndicationCfg,
-    LocalEntityCfg,
-    RemoteEntityCfg,
-    RemoteEntityCfgTable,
+    IndicationConfig,
+    LocalEntityConfig,
+    RemoteEntityConfig,
+    RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
 from cfdppy.user import (
@@ -29,9 +30,9 @@ from cfdppy.user import (
     FileSegmentRecvdParams,
     MetadataRecvParams,
     TransactionFinishedParams,
-    TransactionId,
     TransactionParams,
 )
+from spacepackets.cfdp import TransactionId
 from olaf import MasterNode, NodeStop, Service, logger
 from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus
@@ -49,7 +50,7 @@ from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
-from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
+from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -408,15 +409,15 @@ class EdlFileReciever(CfdpUserBase):
             ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
         )
 
-        localcfg = LocalEntityCfg(
+        localcfg = LocalEntityConfig(
             local_entity_id=DEST_ID,
-            indication_cfg=IndicationCfg(),
+            indication_cfg=IndicationConfig(),
             default_fault_handlers=fault_handler,
         )
 
-        remote_entities = RemoteEntityCfgTable(
+        remote_entities = RemoteEntityConfigTable(
             [
-                RemoteEntityCfg(
+                RemoteEntityConfig(
                     entity_id=SOURCE_ID,
                     max_file_segment_len=None,
                     # FIXME this value should come from EdlPacket but EdlPacket does not define it.
@@ -437,7 +438,7 @@ class EdlFileReciever(CfdpUserBase):
             remote_cfg_table=remote_entities,
             check_timer_provider=DefaultCheckTimer(),
         )
-        self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
+        # self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.source = VfsSourceHandler(
             cfg=localcfg,
@@ -446,9 +447,9 @@ class EdlFileReciever(CfdpUserBase):
             check_timer_provider=DefaultCheckTimer(),
             seq_num_provider=SeqCountProvider(16),
         )
-        self.source._crc_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
+        # self.source._crc_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
-        self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
+        self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue[PutRequest]()
         self.active_requests: dict[TransactionId, TransactionId] = {}
 
     @property
@@ -467,6 +468,67 @@ class EdlFileReciever(CfdpUserBase):
             return CfdpState.BUSY
         return CfdpState.IDLE
 
+    # def loop(self, pdu: AbstractFileDirectiveBase):
+    #     """The state machine driver for a CFDP dest, expected to be run by the service loop"""
+
+    #     # DestHandler is driven by either a new pdu to process or timers expiring and
+    #     # SourceHandler is additionally driven by Put requests.
+    #     # Timers only expire when .state_machine() is called, and .state_machine() must
+    #     # be called after all the packets have been drained, or after inserting a new
+    #     # pdu.
+    #     if pdu:
+    #         logger.info(f"<--- {pdu}")
+
+    #         if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
+    #             try:
+    #                 self.dest.insert_packet(pdu)
+    #             except Exception:
+    #                 # Usually this exception means the library is being used wrong, so we have
+    #                 # to be careful here. However there is a bug in the presence of dropped packets
+    #                 # where dest._params.last_inserted_packet does not get cleared.
+    #                 logger.exception("dest.state_machine() didn't properly clear inserted packet")
+    #                 self.dest.reset()
+    #         else:
+    #             try:
+    #                 self.source.insert_packet(pdu)
+    #             except Exception:
+    #                 logger.exception("source.state_machine() didn't properly clear inserted packet")
+    #                 self.source.reset()
+
+    #     if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
+    #         try:
+    #             request = self.scheduled_requests.get_nowait()
+    #         except Empty:
+    #             pass
+    #         else:
+    #             try:
+    #                 self.source.put_request(request)
+    #             except (SourceFileDoesNotExist, NoRemoteEntityCfgFound):
+    #                 # Note that NoRemoteEntityCfgFound indicates that the MIB is missing info on
+    #                 # the requested proxy transfer destination. CFDP doesn't seem to have a
+    #                 # standard set of errors that cover this condition, and the least worst option
+    #                 # resulted in an identical message to missing_file. Not super great, so if
+    #                 # there's a better idea of how to handle this, please change.
+    #                 self.scheduled_requests.put(self.missing_file_response(request))
+
+    #     try:
+    #         self.dest.state_machine()
+    #         self.source.state_machine()
+    #     except Exception:
+    #         logger.exception("state_machine failed to update")
+    #         self.dest.reset()
+    #         self.source.reset()
+
+    #     pdus = []
+    #     while self.dest.packets_ready:
+    #         pdus.append(self.dest.get_next_packet().pdu)
+    #     while self.source.packets_ready:
+    #         pdus.append(self.source.get_next_packet().pdu)
+
+    #     for out in pdus:
+    #         logger.info(f"---> {out}")
+    #     return pdus or None
+
     def loop(self, pdu: AbstractFileDirectiveBase):
         """The state machine driver for a CFDP dest, expected to be run by the service loop"""
 
@@ -475,23 +537,34 @@ class EdlFileReciever(CfdpUserBase):
         # Timers only expire when .state_machine() is called, and .state_machine() must
         # be called after all the packets have been drained, or after inserting a new
         # pdu.
+        dest_needs_tick = True
+        source_needs_tick = True
+
         if pdu:
             logger.info(f"<--- {pdu}")
 
             if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
                 try:
-                    self.dest.insert_packet(pdu)
+                    # New API: pass the PDU directly via state_machine(packet=...)
+                    self.dest.state_machine(packet=pdu)
+                    dest_needs_tick = False
                 except Exception:
                     # Usually this exception means the library is being used wrong, so we have
                     # to be careful here. However there is a bug in the presence of dropped packets
                     # where dest._params.last_inserted_packet does not get cleared.
-                    logger.exception("dest.state_machine() didn't properly clear inserted packet")
+                    logger.exception(
+                        "dest.state_machine(packet=...) failed, resetting dest handler"
+                    )
                     self.dest.reset()
             else:
                 try:
-                    self.source.insert_packet(pdu)
+                    # New API: pass the PDU directly via state_machine(packet=...)
+                    self.source.state_machine(packet=pdu)
+                    source_needs_tick = False
                 except Exception:
-                    logger.exception("source.state_machine() didn't properly clear inserted packet")
+                    logger.exception(
+                        "source.state_machine(packet=...) failed, resetting source handler"
+                    )
                     self.source.reset()
 
         if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
@@ -502,7 +575,7 @@ class EdlFileReciever(CfdpUserBase):
             else:
                 try:
                     self.source.put_request(request)
-                except (SourceFileDoesNotExist, NoRemoteEntityCfgFound):
+                except (SourceFileDoesNotExist, NoRemoteEntityConfigFound):
                     # Note that NoRemoteEntityCfgFound indicates that the MIB is missing info on
                     # the requested proxy transfer destination. CFDP doesn't seem to have a
                     # standard set of errors that cover this condition, and the least worst option
@@ -511,8 +584,11 @@ class EdlFileReciever(CfdpUserBase):
                     self.scheduled_requests.put(self.missing_file_response(request))
 
         try:
-            self.dest.state_machine()
-            self.source.state_machine()
+            # New API: if a packet was already processed, do not run an additional tick in this loop
+            if dest_needs_tick:
+                self.dest.state_machine()
+            if source_needs_tick:
+                self.source.state_machine()
         except Exception:
             logger.exception("state_machine failed to update")
             self.dest.reset()
@@ -527,6 +603,7 @@ class EdlFileReciever(CfdpUserBase):
         for out in pdus:
             logger.info(f"---> {out}")
         return pdus or None
+
 
     def unimplemented(self, _source, _tid, _reserved_message) -> PutRequest:
         """Default method for responding to unimplemented requests"""

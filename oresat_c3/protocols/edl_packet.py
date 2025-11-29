@@ -10,7 +10,11 @@ from typing import Union
 
 from spacepackets.cfdp.pdu import PduFactory
 from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
-from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
+# from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
+from spacepackets.uslp.defs import (
+    UslpInvalidRawPacketOrFrameLenError as UslpInvalidRawPacketOrFrameLen,
+)  # type: ignore
+
 from spacepackets.uslp.frame import (  # type: ignore
     FrameType,
     TfdzConstructionRules,
@@ -59,6 +63,7 @@ class EdlPacket:
     """
     An EDL (Engineering Data Link) packet.
 
+
     Only packs and unpacks the packet (does not process/run it).
     """
 
@@ -76,7 +81,7 @@ class EdlPacket:
         has_fecf=True,
         truncated_frame_len=0,
         insert_zone_len=SEQ_NUM_LEN,
-        fecf_len=FECF_LEN,
+        # fecf_len=FECF_LEN,
     )
 
     def __init__(

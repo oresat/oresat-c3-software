@@ -7,7 +7,11 @@ from typing import BinaryIO, Optional
 
 from cfdppy.filestore import FilestoreResult, VirtualFilestore
 from olaf import OreSatFile, OreSatFileCache
-
+from spacepackets.cfdp import ChecksumType  # only for type hints
+# from .cfdp import VfsCrcHelper
+from spacepackets.cfdp import NULL_CHECKSUM_U32
+from spacepackets.cfdp.defs import ChecksumType
+import struct
 
 class CacheStore(VirtualFilestore, OreSatFileCache):
     """Extends an OreSatFileCache with the CFDP filestore interface"""
@@ -153,3 +157,66 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
             for line in os.walk(self._dir) if recursive else os.listdir(self._dir):
                 f.write(f"{line}\n")
             return FilestoreResult.SUCCESS
+
+    # New methods required by cfdp-py 0.6.x VirtualFilestore
+
+    def file_size(self, file: Path) -> int:
+        """Return size of a file in bytes.
+
+        Implements VirtualFilestore.file_size() using the existing stat() helper.
+        """
+        stat = self.stat(file)
+        return stat.st_size
+
+    def calculate_checksum(
+        self,
+        checksum_type: ChecksumType,
+        file_path: Path,
+        size_to_verify: int,
+        segment_len: int = 4096,
+    ) -> bytes:
+        """Calculate checksum for a file using VFS operations only.
+
+        This is the replacement for the old VfsCrcHelper. It uses read_data()
+        on this filestore instead of touching the OS filesystem directly.
+        """
+        if checksum_type == ChecksumType.NULL_CHECKSUM:
+            return NULL_CHECKSUM_U32
+
+        if not self.file_exists(file_path):
+            raise FileNotFoundError(file_path)
+
+        # Determine how many bytes we actually verify
+        full_size = self.file_size(file_path)
+        if size_to_verify is None or size_to_verify <= 0:
+            file_sz = full_size
+        else:
+            file_sz = min(size_to_verify, full_size)
+
+        if file_sz < 0:
+            raise ValueError("size_to_verify must not be negative")
+
+        if checksum_type == ChecksumType.MODULAR:
+            # This is basically your old VfsCrcHelper.calc_modular_checksum,
+            # adapted to use this filestore's read_data().
+            checksum = 0
+            offset = 0
+            remaining = file_sz
+
+            # Process in 4-byte chunks (as in your old implementation)
+            while remaining > 0:
+                to_read = min(4, remaining)
+                data = self.read_data(file_path, offset, to_read)
+                if not data:
+                    break
+                offset += to_read
+                remaining -= to_read
+                checksum += int.from_bytes(data.ljust(4, b"\0"), byteorder="big", signed=False)
+
+            checksum %= 2**32
+            return struct.pack("!I", checksum)
+
+        # For now, only MODULAR and NULL_CHECKSUM are supported.
+        # If your config uses CRC_32 etc., this will need to be extended.
+        raise NotImplementedError(f"Checksum type {checksum_type!r} is not implemented")
+

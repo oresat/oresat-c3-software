@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Generator, Union
 
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest

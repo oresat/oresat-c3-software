@@ -18,16 +18,16 @@ from threading import Lock, Thread
 from typing import Any
 
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import NoRemoteEntityCfgFound
+from cfdppy.exceptions import NoRemoteEntityConfigFound
 from cfdppy.handler.dest import DestHandler
 from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
-    IndicationCfg,
-    LocalEntityCfg,
-    RemoteEntityCfg,
-    RemoteEntityCfgTable,
+    IndicationConfig,
+    LocalEntityConfig,
+    RemoteEntityConfig,
+    RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
 from cfdppy.user import (
@@ -35,9 +35,9 @@ from cfdppy.user import (
     FileSegmentRecvdParams,
     MetadataRecvParams,
     TransactionFinishedParams,
-    TransactionId,
     TransactionParams,
 )
+from spacepackets.cfdp import TransactionId
 from olaf import OreSatFile
 from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
@@ -213,8 +213,10 @@ class Source(Thread):
         while packet := self.downlink.get():
             with self.lock:
                 try:
-                    self.src.insert_packet(packet)
-                except NoRemoteEntityCfgFound as e:
+                    # self.src.insert_packet(packet)
+                     # New API: feed packet directly to the state machine
+                    self.src.state_machine(packet=packet)
+                except NoRemoteEntityConfigFound as e:
                     print(e)
                     traceback.print_exc()
                 self.src.state_machine()
@@ -260,18 +262,33 @@ class Dest(Thread):
             check_timer_provider=CountdownProvider(),
         )
 
+    # def run(self):
+    #     while True:
+    #         try:
+    #             packet = self.downlink.get_nowait()
+    #             self.dest.insert_packet(packet)
+    #         except Empty:
+    #             time.sleep(0.1)
+    #         self.dest.state_machine()
+    #         while self.dest.packets_ready:
+    #             pdu = self.dest.get_next_packet().pdu
+    #             self.uplink.put(pdu)
+
     def run(self):
         while True:
             try:
                 packet = self.downlink.get_nowait()
-                self.dest.insert_packet(packet)
             except Empty:
+                # No packet – just tick timers
+                self.dest.state_machine()
                 time.sleep(0.1)
-            self.dest.state_machine()
+            else:
+                # Got a packet – process it with the new API
+                self.dest.state_machine(packet=packet)
+
             while self.dest.packets_ready:
                 pdu = self.dest.get_next_packet().pdu
                 self.uplink.put(pdu)
-
 
 def put_request(dest: ByteFieldU8, file_path: str) -> PutRequest:
     """Creates a simple PutRequest for the file in file_path"""
@@ -417,15 +434,15 @@ def main():
     SOURCE_ID = ByteFieldU8(0)
     DEST_ID = ByteFieldU8(1)
 
-    localcfg = LocalEntityCfg(
+    localcfg = LocalEntityConfig(
         local_entity_id=SOURCE_ID,
-        indication_cfg=IndicationCfg(),
+        indication_cfg=IndicationConfig(),
         default_fault_handlers=PrintFaults(),
     )
 
-    remote_entities = RemoteEntityCfgTable(
+    remote_entities = RemoteEntityConfigTable(
         [
-            RemoteEntityCfg(
+            RemoteEntityConfig(
                 entity_id=DEST_ID,
                 max_file_segment_len=None,
                 max_packet_len=args.buffer_size,

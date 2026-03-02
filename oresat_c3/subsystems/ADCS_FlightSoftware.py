@@ -11,6 +11,7 @@ import numpy as np
 import Quaternions as quat
 from skyfield.api import load
 from skyfield.framelib import itrs
+from datetime import timedelta, datetime, timezone
 
 # Custom GNC/ADCS functions
 from ADCS_Discrete_State_Space_Calculator import get_gain_matrix
@@ -25,7 +26,8 @@ class ADCS_FlightSoftware(Service):
         
         config = None # TEMPORARY PLACE HOLDER TO GET RID OF LINTING ERRORS
         
-        self.mission_mode = None # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
+        self.control_mode = None # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
+        self.guidance_mode = None # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
         self.pointing_reference = None # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC" 
         self.q_target = None # target quaternion for controller error calculations
         self.tracking_target = None # used for tracking mode to set static target with GPS coordinates
@@ -41,14 +43,14 @@ class ADCS_FlightSoftware(Service):
         self.omega_target = omega_target_rpm * 2*np.pi/60 # convert to [rad/s]
         
         # Controller gains        
-        max_input = 0.00001 # QUALITATIVE value for max torque used by LQR tuning ONLY
-        LQR_max_error = 0.01
-        LQR_max_rate = 0.002
+        max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
+        LQR_max_error = 1
+        LQR_max_rate = 0.2
         self.K_RW = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # calculate reaction wheel LQR gain matrix
         
-        max_input_mag = 0.3 # QUALITATIVE value for max torque used by LQR tuning ONLY
-        LQR_max_error_mag = 0.05
-        LQR_max_rate_mag = 0.00003
+        max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
+        LQR_max_error_mag = 0.5
+        LQR_max_rate_mag = 0.0003
         self.K_MAG = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error_mag, LQR_max_rate_mag, max_input_mag)
         
         # Controller gains
@@ -66,108 +68,139 @@ class ADCS_FlightSoftware(Service):
         self.thermal_spin_rpm = 1.0 # thermal spin rate about the z-axis (body frame)
         self.omega_desired_prev = np.zeros(3) # for feed forward term
         
+        self.last_sensor_time = {"star_tracker":0, "IMU":0, "magnetometer":0, "GPS":0} # save last update time for all sensors
+        
     def on_start(self):
         # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
-        if (self.mission_mode == "POINTING") or (self.mission_mode == "THERMAL_REORIENT") or (self.mission_mode == "TRACKING"):
-            omega = self.node.od['adcs']['IMU']
-            q = self.node.od['adcs']['star_tracker']
-            init_time = self.node.od['adcs']['gps_timestamp']
-            self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
-
+        if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
+            self.initialize_filter()
+    
+    def initialize_filter(self): # initializes/resets extended kalman filter
+        omega = self.node.od['adcs']['IMU']
+        q = self.node.od['adcs']['star_tracker']
+        init_time = self.node.od['adcs']['IMU_time']
+        self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
+    
     def on_loop(self, currentTimeNanos):
-        # omega = self.node.od['adcs']['omega'] # Get gyro data. Omega required for all controllers. Maybe move this? How will data transfer checks work? How will I know if a piece of data is available?
-        # t_omega = self.node.od['adcs']['t_omega'] # Get gyro read time
+        '''
+        primary control loop
+        '''
         
-        if (self.mission_mode == "POINTING") or (self.mission_mode == "TRACKING") or (self.mission_mode == "THERMAL_REORIENT"):
-            wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
+        '''
+        Dynamic guidance functions for target tracking, nadir-pointing, and
+        minimum & maximum drag orientation. This is separate from the control
+        portion of the code, and just defines the target which is fed into the 
+        control algorithms
+        '''
+        
+        if self.guidance_mode in (
+            "TRACKING",
+            "NADIR",
+            "MAX_DRAG",
+            "MIN_DRAG",
+        ):
+            
+            r_ECEF, v_ECEF = self.get_sensor_data(['GPS']) # get ECEF position and velocity vectors
+            dt = self.last_sensor_time['GPS_time'] # get current ephemeris time from last GPS update
+            t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
+            ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
+            nadir_vector_ECEF = -r_ECEF / np.linalg.norm(r_ECEF) # used to get correct facing for star tracker. Nadir vector is opposite of vector from earth.
 
-            if star_tracker_available:
-                q_star_tracker = self.node.od['star_tracker'] # GET STAR TRACKER
-                q_star_tracker = quat.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format, if
-                q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker)
+            if self.guidance_mode == "TARGET": # Tracking a static target on the surface of the earth via GPS coordinates        
+                target_vector = self.ECEF_target - r_ECEF # calculate target vector in ECEF cartesian coordinates
+                target_vector = target_vector/np.linalg.norm(target_vector) # normalize to unit vector
+                new_target = guid.target_tracking_quat(target_vector, nadir_vector_ECEF, ECI_2_ECEF) # create orientation quaternion from cartesian target
+            elif self.guidance_mode == "NADIR": # Continually face +z nadir (+x as close to ram as possible)
+                new_target = guid.nadir_quat(nadir_vector_ECEF, v_ECEF, ECI_2_ECEF) # create orientation quaternion from cartesian target
+            elif self.guidance_mode == "MAX_DRAG" or self.guidance_mode == "MIN_DRAG":
+                new_target = guid.ram_quaternion(self.guidance_mode, v_ECEF, nadir_vector_ECEF, ECI_2_ECEF) # calculate ram-facing orientation for either +z or +x axis based on min or max drag
+            else:
+                print(f"Unknown guidance mode: {self.guidance_mode}")
+            
+            q_last = self.q_target # save for tracking rate calculations
+            self.update_target(new_target) # update FSW target
+            self.target_history.append(self.q_target)
+            
+        if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
+            # get sensor data and modify for consumption by control algorithms
+            wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
+            q_star_tracker, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
+            if q_star_tracker is not None:
+                q_star_tracker = quat.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format
+                q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None
-            if gyro_available:
-                omega = None
-            else:
-                omega = self.node.od['adcs']['IMU']
             
             q, omega = self.EKF.update(currentTimeNanos*1e-9, omega, q_st_rotated) # update filter with applicable data
-            q, omega = self.EKF.q, self.EKF.omega # get current state estimates from kalman filter
-            
-            q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
-            q_error = quat.hemi(q_error) # only apply hemisphere check once after determining error quaternion to maintain associativity across hermisphere boundaries
-            
-            desired_torque = quat.quaternion_controller(q_error, omega) # compute desired 3-axis torque from controller
-            wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
-            # COMMAND REACTION WHEELS
-            
-            if (self.mission_mode == "THERMAL_REORIENT") and (self.error_angle(q_error) <= 0.1) and (np.all(np.abs(omega) < 1e-6)):
-                # ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS!
-                self.mission_mode = "THERMAL_SPINUP"
-        
-        elif self.mission_mode == "TRACKING": # separate from POINTING mode as tracking requires use of feedforward terms
-            wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
-            
-            # if star_tracker_available:
-            #     q_star_tracker = None # GET STAR TRACKER
-            #     q_star_tracker = self.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format, if
-            #     q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker)
-            # else:
-            #     q_st_rotated = None
-            # if not gyro_available:
-            #     omega = None
-            # q, omega = self.EKF.update(currentTimeNanos*1e-9, omega, q_st_rotated) # update filter with applicable data
-            
-            q, omega = self.EKF.q, self.EKF.omega # get current state estimates from kalman filter
             
             q_last = self.q_target # save last target for feed-forward terms
             self.update_tracking_quat() # update target orientation based on current orientation and fixed target
-            
+
             q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
-            q_error = quat.hemi(q_error) # only apply hemisphere check once after determining error quaternion to maintain associativity across hermisphere boundaries
-        
+            q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
+            
+            '''
+            The following section includes feed-forward terms for target tracking
+            to avoid overdamping and to account for gyroscopic effects 
+            '''
+            
             # feed forward term for angular rate bias
             rotation_quat = quat.quat_error(q_last, self.q_target) # flipped order because of frame conventions for proper signage (body -> target)
             rot_axis = quat.quat_to_axis(rotation_quat)
             rot_angle = quat.error_angle(rotation_quat) * np.pi/180
             omega_desired = rot_axis*(rot_angle/self.updateTime) # set rotation rate for tracking maneuver
             
-            # feed forward term for stored angular momentum
+            # feed forward term to account for stored angular momentum
             alpha_d_B = (omega_desired - self.omega_desired_prev) / self.updateTime # desired acceleration in body frame
             self.omega_desired_prev = omega_desired.copy() # update previous target rate
-            H_wheels = self.rwInertia * wheelSpeeds @ self.G_transpose # calculate stored wheel momentum in body frame
+            H_wheels = self.rwInertia * np.asarray(wheelSpeeds[:4]) @ self.G.T # calculate stored wheel momentum in body frame (resulting in a 3x1 vector of angular momentum axis elements in body frame)
             tau_ff = self.satInertia @ alpha_d_B + np.cross(omega, self.satInertia @ omega + H_wheels) # total feed-forward torque accounting for gyroscopic coupling
         
             omega = omega-omega_desired # set biased omega after using true value to calculate feed forward term
             
-            desired_torque = self.quaternion_controller(q_error, omega) # compute desired 3-axis torque from controller
-            desired_torque = desired_torque+tau_ff
-            wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
+            '''
+            Send torque commands reaction wheels
+            '''
             
-            # COMMAND REACTION WHEELS
+            desired_torque = quat.quaternion_controller(q_error, omega) # compute desired 3-axis torque from controller
+            desired_torque = desired_torque+tau_ff # add feedforward terms
+            wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
+            # COMMAND REACTION WHEELS HERE
+            
+            if (self.control_mode == "THERMAL_REORIENT") and (self.error_angle(q_error) <= 0.1) and (np.all(np.abs(omega) < 1e-6)):
+                # ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS! Must wait for wheels to turn off, but they should be at zero already by the end of the maneuver. If not, there is a problem.
+                self.control_mode = "THERMAL_SPINUP" # change mission mode to spin-up with magnetorquers
         
-        elif ((self.mission_mode == "DETUMBLE") or (self.mission_mode == "THERMAL_DETUMBLE")): # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
+            '''
+            The following sections contain all magnetorquer control algorithms
+            '''
+        
+        elif ((self.control_mode == "DETUMBLE") or (self.control_mode == "THERMAL_DETUMBLE")): # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
             omega = self.node.od['adcs']['omega'] # get gyro data
-            B = omega = self.node.od['adcs']['magnetometer'] # get magnetometer data
+            B = self.node.od['adcs']['magnetometer'] # get magnetometer data
             desired_torque = self.detumble_gain/(np.linalg.norm(B)**2)*np.cross(omega, B) # detumble controller as defined by Markley & Crassidis
             # COMMAND MAGNETORQUERS 
             
-            if ((self.mission_mode == "THERMAL_DETUMBLE") and (np.all(np.abs(omega) < 1e-4))): # if using 3-step passive thermal-spin controller, check for 
-                self.mission_mode = "THERMAL_REORIENT"
-                # INITIALIZE FILTER WITH STAR TRACKER AND IMU DATA
-                # self.EKF.q = q # initialize filter
-                # self.EKF.last_omega = omega
+            if ((self.control_mode == "THERMAL_DETUMBLE") and (np.all(np.abs(omega) < 1e-4))): # if using 3-step passive thermal-spin controller, check for 
+                self.control_mode = "THERMAL_REORIENT"
+                self.initialize_filter() # reset filter as it hasn't been used since reaction wheels last 
         
-        elif self.mission_mode == "THERMAL_SPINUP": # spin up about satellite's z-axis using magnetorquer
+        elif self.control_mode == "THERMAL_SPINUP": # spin up about satellite's z-axis using magnetorquer
             omega = self.node.od['adcs']['omega'] # get gyro data
+            B = self.node.od['adcs']['magnetometer'] # get magnetometer data
             if (omega[2] < self.thermal_spin_rpm*2*np.pi/60): # while satellite is spinning slower than set rate about the z axis, spin up
-                B = omega = self.node.od['adcs']['magnetometer'] # get magnetometer data
                 tau_des = [0,0,1] # spin about the z axis
                 desired_torque = np.cross(B, tau_des) / (B @ B)
                 # COMMAND MAGNETORQUERS
-                
-            # Should we add exit clause? How would we shut down adcs with a flag?
+        
+        elif self.control_mode == "MTB_POINTING":
+            tau_des = self.mag_LQR_controller(q_error, omega) # desired 3-axis torque in body frame
+            bm = self.b_mat(B)
+            k = 1e-8
+            m_cmd = np.linalg.inv(bm.T @ bm + k*np.eye(3))@bm.T@tau_des
+            # COMMAND MAGNETORQUERS 
+
+            # Should we add exit clause? How would we shut down adcs with a flag???
         
         else:
             print("Unknown mission mode!")
@@ -197,3 +230,21 @@ class ADCS_FlightSoftware(Service):
             [-bz,   0,  bx],
             [by, -bx,   0]
         ])
+    
+    def get_sensor_data(self, sensor_list):
+        '''
+        Dynamic function to get data from list of sensor names, and store last
+        sensor update time for Kalman filter usage
+        '''
+        
+        return_list = []
+        for sensor in sensor_list:
+            sensor_time = self.node.od[sensor + '_time']
+            if sensor_time > self.last_sensor_time[sensor]: # if data is newer than last update, append to return list
+                return_list.append(self.node.od['adcs'][sensor]) # append sensor data to return list
+                self.last_sensor_time[sensor] = sensor_time # update last sensor time
+            else:
+                return_list.append(None) # else list sensor as None to indicate no new data
+        
+        return return_list # reutrn list of sensor data (or None if sensor hasn't updated this loop)
+            

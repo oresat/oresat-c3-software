@@ -1,26 +1,20 @@
 """'
 ADCS controller service
 """
-
-import socket
-from queue import SimpleQueue
-
-from olaf import Gpio, Service, logger
+from olaf import Service
 
 import numpy as np
-import Quaternions as quat
+from ..subsystems.adcs import quaternion as quat
 from skyfield.api import load
 from skyfield.framelib import itrs
-from datetime import timedelta, datetime, timezone
 
 # Custom GNC/ADCS functions
-from ADCS_Discrete_State_Space_Calculator import get_gain_matrix
-from Kalman_Filter import Multiplicative_Extended_Kalman_Filter
-import Quaternions as quat
-import Guidance_Functions as guid
+from ..subsystems.adcs.discrete_state_space import get_gain_matrix
+from ..subsystems.adcs.kalman_filter import Multiplicative_Extended_Kalman_Filter
+from ..subsystems.adcs import guidance_functions as guid
 
 
-class ADCS_FlightSoftware(Service):
+class ADCSManager(Service):
     def __init__(self, mock_hw: bool = False):
         super().__init__()
         

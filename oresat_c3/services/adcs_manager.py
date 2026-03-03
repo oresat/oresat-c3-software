@@ -200,11 +200,11 @@ class ADCSManager(Service):
             print("Unknown control mode!")
     
     def update_target(self, target_quat): # UPDATE THIS FUNCTION TO USE POINTING REFERENCE AS AN ARGUMENT???
-        if self.pointing == "ST":
+        if self.pointing_reference == "ST":
             self.q_target = quat.quat_mult(self.q_90_rot, target_quat) # define target in body coordinates
-        elif self.pointing == "SC":
+        elif self.pointing_reference == "SC":
             self.q_target = target_quat # target does not require rotation
-        elif self.pointing == "CFC":
+        elif self.pointing_reference == "CFC":
             self.q_target = quat.quat_mult(self.q_180_rot, target_quat) # define target in body coordinates
         else:
             print("UNKNOWN POINTING REFERENCE")

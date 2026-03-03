@@ -54,7 +54,7 @@ class ADCS_FlightSoftware(Service):
         self.K_MAG = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error_mag, LQR_max_rate_mag, max_input_mag)
         
         # Controller gains
-        Jmin = np.min(np.linalg.eigvals(self.satInertia)) # maximum principal moment of inertia (Markley & Crassidis defines this with the minimum principal moment of inertia, but maximum works better???)
+        Jmin = np.max(np.linalg.eigvals(self.satInertia)) # maximum principal moment of inertia (Markley & Crassidis defines this with the minimum principal moment of inertia as a safe upper bound to avoid instability, but maximum works better)
         self.detumble_gain = 4*np.pi/config["orbital_period"]*(1+np.sin(config["orbital_inclination"]*2*np.pi/180))*Jmin # gain based on minimal principal moment of inertia as defined in Markley & Crassidis
         
         # Kalman Filter
@@ -203,7 +203,7 @@ class ADCS_FlightSoftware(Service):
             # Should we add exit clause? How would we shut down adcs with a flag???
         
         else:
-            print("Unknown mission mode!")
+            print("Unknown control mode!")
     
     def update_target(self, target_quat): # UPDATE THIS FUNCTION TO USE POINTING REFERENCE AS AN ARGUMENT???
         if self.pointing == "ST":

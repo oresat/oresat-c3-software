@@ -123,10 +123,9 @@ class ADCSManager(Service):
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
             # get sensor data and modify for consumption by control algorithms
             wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
-            ra_dec_roll_star_tracker, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
-            if ra_dec_roll_star_tracker is not None:
-                ra, dec, roll = ra_dec_roll_star_tracker # unpack boresight pointing parameterization
-                q_star_tracker = self.ra_dec_roll_conversion(ra, dec, roll) # convert to quaternion
+            star_tracker_output, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
+            if star_tracker_output[0] == 1: # if attitude_known flag is 1 (true), data is valid
+                q_star_tracker = star_tracker_output[1] # unpack scalar first quaternion from message
                 q_star_tracker = quat.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
@@ -248,27 +247,3 @@ class ADCSManager(Service):
                 return_list.append(None) # else list sensor as None to indicate no new data
         
         return return_list # reutrn list of sensor data (or None if sensor hasn't updated this loop)
-            
-    def ra_dec_roll_conversion(self, ra, dec, roll):
-        # pointing vector
-        z = np.array([
-            np.cos(dec)*np.cos(ra),
-            np.cos(dec)*np.sin(ra),
-            np.sin(dec)
-        ])
-    
-        x0 = np.array([-np.sin(ra), np.cos(ra), 0.0])
-    
-        y = np.cross(z, x0)
-        y /= np.linalg.norm(y)
-    
-        x = np.cross(y, z)
-    
-        # apply roll
-        x_p = x*np.cos(roll) + y*np.sin(roll)
-        y_p = -x*np.sin(roll) + y*np.cos(roll)
-        
-        # rows = body axes expressed in inertial => C_{B<-N}
-        C_BN = np.vstack((x_p, y_p, z)) # notice the use of np.vstack instead of np.column_stack. This avoids the use of transpose function, and creates correct rotation direction
-        
-        return quat.quat_from_dcm_scalar_last(C_BN)

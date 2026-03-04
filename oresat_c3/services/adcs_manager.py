@@ -24,13 +24,16 @@ class ADCSManager(Service):
         self.guidance_mode = None # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
         self.pointing_reference = None # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC" 
         self.q_target = None # target quaternion for controller error calculations
-        self.tracking_target = None # used for tracking mode to set static target with GPS coordinates
+        self.ECEF_target = None # used for tracking mode to set static ground target with GPS coordinates in ECEF
+        self.updateTime = None # controller interval (seconds)
+        self.rwInertia = None # # reaction wheel inertia (scalar)
+        self.satInertia = None # satellite inertia tensor (matrix)
         
         self.G = config["G"] # wheel orientation matrix
         self.G_transpose = self.G.T # save repeated calculations each iteration
         self.G_pinv = -np.linalg.pinv(self.G) # pseudo inverse matrix for torque calculations. NEGATE OR NOT????
-        self.q_90_rot = self.axis_angle_to_quaternion([0,1,0], -90) # translate star tracker targets to +z side of satellite by rotating by 90 degrees CW about the y axis
-        self.q_180_rot = self.axis_angle_to_quaternion([1,0,0], -180) # translate CFC targets to +z side/viewpoint of satellite. Chose rotation about x axis for this one so that satellite +x facing doesn't change in guidance functions
+        self.q_90_rot = quat.axis_angle_to_quaternion([0,1,0], -90) # translate star tracker targets to +z side of satellite by rotating by 90 degrees CW about the y axis
+        self.q_180_rot = quat.axis_angle_to_quaternion([1,0,0], -180) # translate CFC targets to +z side/viewpoint of satellite. Chose rotation about x axis for this one so that satellite +x facing doesn't change in guidance functions
         
         self.q_target = np.array([0,0,0,1]) # attribute initialization, set to real value in sim main
         omega_target_rpm = np.array([0.0, 0.0, 0.0]) # [RPM]
@@ -75,6 +78,9 @@ class ADCSManager(Service):
         init_time = self.node.od['adcs']['IMU_time']
         self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
     
+    def update_ECEF_target(self, target_lat, target_lon, target_height):
+        self.ECEF_target = guid.GPS_to_ECEF(target_lat, target_lon, target_height) # convert GPS coordinates to ECEF coordinates
+        
     def on_loop(self, currentTimeNanos):
         '''
         primary control loop
@@ -113,13 +119,14 @@ class ADCSManager(Service):
             
             q_last = self.q_target # save for tracking rate calculations
             self.update_target(new_target) # update FSW target
-            self.target_history.append(self.q_target)
             
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
             # get sensor data and modify for consumption by control algorithms
             wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
-            q_star_tracker, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
-            if q_star_tracker is not None:
+            ra_dec_roll_star_tracker, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
+            if ra_dec_roll_star_tracker is not None:
+                ra, dec, roll = ra_dec_roll_star_tracker # unpack boresight pointing parameterization
+                q_star_tracker = self.ra_dec_roll_conversion(ra, dec, roll) # convert to quaternion
                 q_star_tracker = quat.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
@@ -242,3 +249,26 @@ class ADCSManager(Service):
         
         return return_list # reutrn list of sensor data (or None if sensor hasn't updated this loop)
             
+    def ra_dec_roll_conversion(self, ra, dec, roll):
+        # pointing vector
+        z = np.array([
+            np.cos(dec)*np.cos(ra),
+            np.cos(dec)*np.sin(ra),
+            np.sin(dec)
+        ])
+    
+        x0 = np.array([-np.sin(ra), np.cos(ra), 0.0])
+    
+        y = np.cross(z, x0)
+        y /= np.linalg.norm(y)
+    
+        x = np.cross(y, z)
+    
+        # apply roll
+        x_p = x*np.cos(roll) + y*np.sin(roll)
+        y_p = -x*np.sin(roll) + y*np.cos(roll)
+        
+        # rows = body axes expressed in inertial => C_{B<-N}
+        C_BN = np.vstack((x_p, y_p, z)) # notice the use of np.vstack instead of np.column_stack. This avoids the use of transpose function, and creates correct rotation direction
+        
+        return quat.quat_from_dcm_scalar_last(C_BN)

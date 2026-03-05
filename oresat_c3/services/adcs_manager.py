@@ -125,8 +125,7 @@ class ADCSManager(Service):
             wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
             star_tracker_output, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
             if star_tracker_output[0] == 1: # if attitude_known flag is 1 (true), data is valid
-                q_star_tracker = star_tracker_output[1] # unpack scalar first quaternion from message
-                q_star_tracker = quat.to_scalar_last(q_star_tracker) # convert star tracker to scalar-last format
+                q_star_tracker = star_tracker_output[1] # unpack scalar last quaternion array from message
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None

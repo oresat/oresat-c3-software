@@ -1,6 +1,8 @@
 """'
 ADCS controller service
 """
+from typing import Optional, Tuple, Callable
+
 from olaf import Service
 
 import numpy as np
@@ -64,8 +66,10 @@ class ADCSManager(Service):
         self.maxTorque = 0.001 # maximum torque output of reaction wheel [Nm]
         self.thermal_spin_rpm = 1.0 # thermal spin rate about the z-axis (body frame)
         self.omega_desired_prev = np.zeros(3) # for feed forward term
-        
-        self.last_sensor_time = {"star_tracker":0, "IMU":0, "magnetometer":0, "GPS":0} # save last update time for all sensors
+
+        # star_tracker_1, adcs [gyroscope, accelerometer, magnetometer], gps
+        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "magnetometer":0, "gps":0} # save last update time for all sensors
+        self.__sensor_data_map: dict[str, Callable] = {"star_tracker": self.get_star_tracker_data, "imu": self.get_imu_data, "magnetometer": self.get_mag_data, "gps": self.get_gps_data}
         
     def on_start(self):
         # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
@@ -101,6 +105,7 @@ class ADCSManager(Service):
         ):
             
             r_ECEF, v_ECEF = self.get_sensor_data(['GPS']) # get ECEF position and velocity vectors
+            # FIXME: time is milliseconds since midnight (gps epoch) -> convert to datetime
             dt = self.last_sensor_time['GPS_time'] # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
             ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
@@ -229,7 +234,57 @@ class ADCSManager(Service):
             [-bz,   0,  bx],
             [by, -bx,   0]
         ])
-    
+
+    def get_star_tracker_data(self):
+        time_since: int = self.node.od["star_tracker_1"]["orientation_time_since_midnight"].value
+        if self.last_sensor_time["star_tracker"] == time_since:
+            return None
+        a: int = self.node.od["star_tracker_1"]["orientation_right_ascension"].value
+        b: int = self.node.od["star_tracker_1"]["orientation_declination"].value
+        c: int = self.node.od["star_tracker_1"]["orientation_roll"].value
+        # TODO: convert to scalar-last quaternion
+        return [a, b, c]
+
+    def get_gps_data(self) -> Optional[Tuple[list, list]]:
+        time_since = self.node.od["gps"]["skytraq_time_since_midnight"].value
+        if self.last_sensor_time["gps"] == time_since:
+            return None
+        self.last_sensor_time["gps"] = time_since
+        ecef_x = self.node.od["gps"]["skytraq_ecef_x"].value
+        ecef_y = self.node.od["gps"]["skytraq_ecef_y"].value
+        ecef_z = self.node.od["gps"]["skytraq_ecef_z"].value
+        ecef_vx = self.node.od["gps"]["skytraq_ecef_vx"].value
+        ecef_vy = self.node.od["gps"]["skytraq_ecef_vy"].value
+        ecef_vz = self.node.od["gps"]["skytraq_ecef_vz"].value
+        return [ecef_x, ecef_y, ecef_z], [ecef_vx, ecef_vy, ecef_vz]
+
+    def get_imu_data(self) -> Optional[list]:
+        # TODO: time checking
+        pitch_rate: int = self.node.od["adcs"]["gyroscope_pitch_rate"].value
+        yaw_rate: int = self.node.od["adcs"]["gyroscope_yaw_rate"].value
+        roll_rate: int = self.node.od["adcs"]["gyroscope_roll_rate"].value
+        return [pitch_rate, yaw_rate, roll_rate]
+
+    def get_mag_data(self) -> Optional[np.typing.NDArray[np.float32]]:
+        # TODO: time checking
+        # TODO: check format of data: OD shows int16, unit: Gauss
+
+        # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)
+        # for now the solution is to average their readings
+        field_vectors: list = []
+        for direction in ("pos", "min"):
+            for num in range(2):
+                vec = []
+                for dim in ("x", "y", "z"):
+                    vec.append(
+                        self.node.od["adcs"][
+                            f"{direction}_z_magnetometer_{num}_{dim}"
+                        ].value
+                    )
+                field_vectors.append(np.array(vec))
+
+        return sum(np.array(field_vectors)) / len(field_vectors)
+
     def get_sensor_data(self, sensor_list):
         '''
         Dynamic function to get data from list of sensor names, and store last

@@ -105,7 +105,7 @@ class ADCSManager(Service):
         ):
             
             r_ECEF, v_ECEF = self.get_sensor_data(['GPS']) # get ECEF position and velocity vectors
-            # FIXME: time is milliseconds since midnight (gps epoch) -> convert to datetime
+            # FIXME: time is milliseconds since midnight -> convert to datetime
             dt = self.last_sensor_time['GPS_time'] # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
             ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
@@ -236,6 +236,7 @@ class ADCSManager(Service):
         ])
 
     def get_star_tracker_data(self):
+        # FIXME: race condition: read entire record into local variable
         time_since: int = self.node.od["star_tracker_1"]["orientation_time_since_midnight"].value
         if self.last_sensor_time["star_tracker"] == time_since:
             return None
@@ -266,7 +267,6 @@ class ADCSManager(Service):
         return [pitch_rate, yaw_rate, roll_rate]
 
     def get_mag_data(self) -> Optional[np.typing.NDArray[np.float32]]:
-        # TODO: time checking
         # TODO: check format of data: OD shows int16, unit: Gauss
 
         # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)
@@ -286,18 +286,12 @@ class ADCSManager(Service):
         return sum(np.array(field_vectors)) / len(field_vectors)
 
     def get_sensor_data(self, sensor_list):
-        '''
-        Dynamic function to get data from list of sensor names, and store last
+        """Dynamic function to get data from list of sensor names, and store last
         sensor update time for Kalman filter usage
-        '''
+        """
         
         return_list = []
         for sensor in sensor_list:
-            sensor_time = self.node.od[sensor + '_time']
-            if sensor_time > self.last_sensor_time[sensor]: # if data is newer than last update, append to return list
-                return_list.append(self.node.od['adcs'][sensor]) # append sensor data to return list
-                self.last_sensor_time[sensor] = sensor_time # update last sensor time
-            else:
-                return_list.append(None) # else list sensor as None to indicate no new data
+            return_list.append(self.__sensor_data_map[sensor]())
         
-        return return_list # reutrn list of sensor data (or None if sensor hasn't updated this loop)
+        return return_list

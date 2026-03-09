@@ -1,8 +1,11 @@
 """'
 ADCS controller service
 """
-from typing import Optional, Tuple, Callable
+import copy
+import time
+from typing import Optional, Tuple, Callable, Any, TypedDict
 
+from canopen.objectdictionary import ODRecord
 from olaf import Service
 
 import numpy as np
@@ -15,8 +18,13 @@ from ..subsystems.adcs.discrete_state_space import get_gain_matrix
 from ..subsystems.adcs.kalman_filter import Multiplicative_Extended_Kalman_Filter
 from ..subsystems.adcs import guidance_functions as guid
 
+class TimestampedData(TypedDict):
+    timestamp: int
+    data: Any
+
 
 class ADCSManager(Service):
+
     def __init__(self, mock_hw: bool = False):
         super().__init__()
 
@@ -41,7 +49,7 @@ class ADCSManager(Service):
         omega_target_rpm = np.array([0.0, 0.0, 0.0]) # [RPM]
         self.omega_target = omega_target_rpm * 2*np.pi/60 # convert to [rad/s]
 
-        # Controller gains        
+        # Controller gains
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
@@ -68,17 +76,67 @@ class ADCSManager(Service):
         self.omega_desired_prev = np.zeros(3) # for feed forward term
 
         # star_tracker_1, adcs [gyroscope, accelerometer, magnetometer], gps
-        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "magnetometer":0, "gps":0} # save last update time for all sensors
+        self._tpdo_mapped_callbacks = {
+            "star_tracker_1": {
+                "cb": self._on_star_tracker_data,
+                "idx": (
+                    "orientation_time_since_midnight",
+                    "orientation_right_ascension", "orientation_declination", "orientation_roll"
+                )
+            },
+            "gps": {
+                "cb": self._on_gps_data,
+                "idx": (
+                    "skytraq_ecef_x", "skytraq_ecef_y", "skytraq_ecef_z",
+                    "skytraq_ecef_vx", "skytraq_ecef_vy", "skytraq_ecef_vz"
+                )
+            },
+            "imu": {
+                "cb": self._on_imu_data,
+                "idx": (
+                    "gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"
+                )
+            }
+        }
+        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "gps":0} # save last update time for all sensors
+        self._sensor_data: dict[str, TimestampedData] = {
+            "star_tracker": {
+                "timestamp": 0,
+                "data": {
+                    "attitude_known": 0,
+                    "orientation": []
+                }
+            },
+            "imu": {
+                "timestamp": 0,
+                "data": [] # pitch, roll, yaw
+            },
+            "gps": {
+                "timestamp": 0,
+                "data": {
+                    "position": [],
+                    "velocity": []
+                } # position and veloc vectors
+            }
+        }
+        self._new_sensor_data: dict[str, TimestampedData] = copy.deepcopy(self._sensor_data)
         self.__sensor_data_map: dict[str, Callable] = {"star_tracker": self._on_star_tracker_data,
-                                                       "imu": self.get_imu_data,
+                                                       "imu": self._on_imu_data,
                                                        "magnetometer": self.get_mag_data,
-                                                       "gps": self.get_gps_data}
+                                                       "gps": self._on_gps_data}
 
     def on_start(self):
         # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
             self.initialize_filter()
-    
+        # add SDO callbacks, which are also called for relevant PDOs
+        for k, v in self._tpdo_mapped_callbacks.items():
+            for subindex in v["idx"]:
+                self.node.add_sdo_callbacks(
+                    k, subindex, None,
+                    lambda value: v["cb"](subindex, value)
+                )
+
     def initialize_filter(self): # initializes/resets extended kalman filter
         omega = self.node.od['adcs']['IMU']
         q = self.node.od['adcs']['star_tracker']
@@ -187,7 +245,7 @@ class ADCSManager(Service):
             omega = self.node.od['adcs']['omega'] # get gyro data
             B = self.node.od['adcs']['magnetometer'] # get magnetometer data
             desired_torque = self.detumble_gain/(np.linalg.norm(B)**2)*np.cross(omega, B) # detumble controller as defined by Markley & Crassidis
-            # COMMAND MAGNETORQUERS 
+            # COMMAND MAGNETORQUERS
 
             if (self.control_mode == "THERMAL_DETUMBLE") and (np.all(np.abs(omega) < 1e-4)): # if using 3-step passive thermal-spin controller, check for
                 self.control_mode = "THERMAL_REORIENT"
@@ -206,7 +264,7 @@ class ADCSManager(Service):
             bm = self.b_mat(B)
             k = 1e-8
             m_cmd = np.linalg.inv(bm.T @ bm + k*np.eye(3))@bm.T@tau_des
-            # COMMAND MAGNETORQUERS 
+            # COMMAND MAGNETORQUERS
 
             # Should we add exit clause? How would we shut down adcs with a flag???
 
@@ -239,37 +297,51 @@ class ADCSManager(Service):
             [by, -bx,   0]
         ])
 
-    def get_star_tracker_data(self):
-        # FIXME: race condition: read entire record into local variable
-        time_since: int = self.node.od["star_tracker_1"]["orientation_time_since_midnight"].value
-        if self.last_sensor_time["star_tracker"] == time_since:
-            return None
-        a: int = self.node.od["star_tracker_1"]["orientation_right_ascension"].value
-        b: int = self.node.od["star_tracker_1"]["orientation_declination"].value
-        c: int = self.node.od["star_tracker_1"]["orientation_roll"].value
+    def _on_star_tracker_data(self, subindex: str, value):
         # TODO: convert to scalar-last quaternion
-        return [a, b, c]
+        if subindex == "orientation_time_since_midnight":
+            # set or create new entry
+            self._new_sensor_data["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(3))
+        elif subindex == "orientation_right_ascension":
+            self._new_sensor_data["star_tracker"]["data"][0] = value
+        elif subindex == "orientation_declination":
+            self._new_sensor_data["star_tracker"]["data"][1] = value
+        elif subindex == "orientation_roll":
+            self._new_sensor_data["star_tracker"]["data"][2] = value
+            # all data should have been received
+            self._sensor_data["star_tracker"] = self._new_sensor_data["star_tracker"]
 
-    def get_gps_data(self) -> Optional[Tuple[list, list]]:
-        time_since = self.node.od["gps"]["skytraq_time_since_midnight"].value
-        if self.last_sensor_time["gps"] == time_since:
-            return None
-        self.last_sensor_time["gps"] = time_since
-        ecef_x = self.node.od["gps"]["skytraq_ecef_x"].value
-        ecef_y = self.node.od["gps"]["skytraq_ecef_y"].value
-        ecef_z = self.node.od["gps"]["skytraq_ecef_z"].value
-        ecef_vx = self.node.od["gps"]["skytraq_ecef_vx"].value
-        ecef_vy = self.node.od["gps"]["skytraq_ecef_vy"].value
-        ecef_vz = self.node.od["gps"]["skytraq_ecef_vz"].value
-        return [ecef_x, ecef_y, ecef_z], [ecef_vx, ecef_vy, ecef_vz]
+    def _on_gps_data(self, subindex: str, value) -> Optional[Tuple[list, list]]:
+        if subindex == "skytraq_time_since_midnight":
+            # set or create new entry
+            self._new_sensor_data["gps"] = TimestampedData(timestamp=value, data={
+                "position": [0,0,0],
+                "velocity": [0,0,0],
+            })
+        elif subindex == "skytraq_ecef_x":
+            self._new_sensor_data["gps"]["data"]["position"][0] = value
+        elif subindex == "skytraq_ecef_y":
+            self._new_sensor_data["gps"]["data"]["position"][1] = value
+        elif subindex == "skytraq_ecef_z":
+            self._new_sensor_data["gps"]["data"]["position"][2] = value
+        elif subindex == "skytraq_ecef_vx":
+            self._new_sensor_data["gps"]["data"]["velocity"][0] = value
+        elif subindex == "skytraq_ecef_vy":
+            self._new_sensor_data["gps"]["data"]["velocity"][1] = value
+        elif subindex == "skytraq_ecef_vz":
+            self._new_sensor_data["gps"]["data"]["velocity"][2] = value
+            # expect vz is last to arrive
+            self._sensor_data["gps"] = self._new_sensor_data["gps"]
 
-    def get_imu_data(self) -> Optional[list]:
-        # FIXME: the timestamp should be fetched from the IMU
-        time_since = time.time_ns() // 1_000_000
-        pitch_rate: int = self.node.od["adcs"]["gyroscope_pitch_rate"].value
-        yaw_rate: int = self.node.od["adcs"]["gyroscope_yaw_rate"].value
-        roll_rate: int = self.node.od["adcs"]["gyroscope_roll_rate"].value
-        return [pitch_rate, yaw_rate, roll_rate]
+    def _on_imu_data(self, subindex: str, value) -> Optional[list]:
+        # FIXME: the timestamp should be sent from the IMU
+        if subindex == "gyroscope_pitch_rate":
+            time_since = time.time_ns() // 1_000_000 # UNIX TIME! TODO: convert to time since midnight
+            self._new_sensor_data["imu"] = TimestampedData(timestamp=time_since, data=[value, 0, 0])
+        elif subindex == "gyroscope_yaw_rate":
+            self._new_sensor_data["imu"]["data"][1] = value
+        elif subindex == "gyroscope_roll_rate":
+            self._new_sensor_data["imu"]["data"][2] = value
 
     def get_mag_data(self) -> Optional[np.typing.NDArray[np.float32]]:
         # TODO: check format of data: OD shows int16, unit: Gauss
@@ -277,12 +349,13 @@ class ADCSManager(Service):
         # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)
         # for now the solution is to average their readings
         field_vectors: list = []
+        adcs_record: ODRecord = self.node.od["adcs"]
         for direction in ("pos", "min"):
             for num in range(2):
                 vec = []
                 for dim in ("x", "y", "z"):
                     vec.append(
-                        self.node.od["adcs"][
+                        adcs_record[
                             f"{direction}_z_magnetometer_{num}_{dim}"
                         ].value
                     )

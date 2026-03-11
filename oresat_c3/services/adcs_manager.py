@@ -2,7 +2,7 @@
 ADCS controller service
 """
 import copy
-import time
+from datetime import datetime
 from typing import Optional, Tuple, Callable, Any, TypedDict
 
 from canopen.objectdictionary import ODRecord
@@ -75,7 +75,6 @@ class ADCSManager(Service):
         self.thermal_spin_rpm = 1.0 # thermal spin rate about the z-axis (body frame)
         self.omega_desired_prev = np.zeros(3) # for feed forward term
 
-        # star_tracker_1, adcs [gyroscope, accelerometer, magnetometer], gps
         self._tpdo_mapped_callbacks = {
             "star_tracker_1": {
                 "cb": self._on_star_tracker_data,
@@ -98,7 +97,7 @@ class ADCSManager(Service):
                 )
             }
         }
-        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "gps":0} # save last update time for all sensors
+        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "gps":0}
         self._sensor_data: dict[str, TimestampedData] = {
             "star_tracker": {
                 "timestamp": 0,
@@ -116,10 +115,10 @@ class ADCSManager(Service):
                 "data": {
                     "position": [],
                     "velocity": []
-                } # position and veloc vectors
+                }
             }
         }
-        self._new_sensor_data: dict[str, TimestampedData] = copy.deepcopy(self._sensor_data)
+        self._sensor_data_buffer: dict[str, TimestampedData] = copy.deepcopy(self._sensor_data)
         self.__sensor_data_map: dict[str, Callable] = {"star_tracker": self._on_star_tracker_data,
                                                        "imu": self._on_imu_data,
                                                        "magnetometer": self.get_mag_data,
@@ -165,7 +164,7 @@ class ADCSManager(Service):
             "MIN_DRAG",
         ):
 
-            r_ECEF, v_ECEF = self.get_sensor_data(['GPS']) # get ECEF position and velocity vectors
+            r_ECEF, v_ECEF = self.get_sensor_data(["gps"])[0]["data"].values() # get ECEF position and velocity vectors
             # FIXME: time is milliseconds since midnight -> convert to datetime
             dt = self.last_sensor_time['GPS_time'] # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
@@ -301,47 +300,49 @@ class ADCSManager(Service):
         # TODO: convert to scalar-last quaternion
         if subindex == "orientation_time_since_midnight":
             # set or create new entry
-            self._new_sensor_data["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(3))
+            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(3))
         elif subindex == "orientation_right_ascension":
-            self._new_sensor_data["star_tracker"]["data"][0] = value
+            self._sensor_data_buffer["star_tracker"]["data"][0] = value
         elif subindex == "orientation_declination":
-            self._new_sensor_data["star_tracker"]["data"][1] = value
+            self._sensor_data_buffer["star_tracker"]["data"][1] = value
         elif subindex == "orientation_roll":
-            self._new_sensor_data["star_tracker"]["data"][2] = value
+            self._sensor_data_buffer["star_tracker"]["data"][2] = value
             # all data should have been received
-            self._sensor_data["star_tracker"] = self._new_sensor_data["star_tracker"]
+            self._sensor_data["star_tracker"] = self._sensor_data_buffer["star_tracker"]
 
     def _on_gps_data(self, subindex: str, value) -> Optional[Tuple[list, list]]:
         if subindex == "skytraq_time_since_midnight":
             # set or create new entry
-            self._new_sensor_data["gps"] = TimestampedData(timestamp=value, data={
+            self._sensor_data_buffer["gps"] = TimestampedData(timestamp=value, data={
                 "position": [0,0,0],
                 "velocity": [0,0,0],
             })
         elif subindex == "skytraq_ecef_x":
-            self._new_sensor_data["gps"]["data"]["position"][0] = value
+            self._sensor_data_buffer["gps"]["data"]["position"][0] = value
         elif subindex == "skytraq_ecef_y":
-            self._new_sensor_data["gps"]["data"]["position"][1] = value
+            self._sensor_data_buffer["gps"]["data"]["position"][1] = value
         elif subindex == "skytraq_ecef_z":
-            self._new_sensor_data["gps"]["data"]["position"][2] = value
+            self._sensor_data_buffer["gps"]["data"]["position"][2] = value
         elif subindex == "skytraq_ecef_vx":
-            self._new_sensor_data["gps"]["data"]["velocity"][0] = value
+            self._sensor_data_buffer["gps"]["data"]["velocity"][0] = value
         elif subindex == "skytraq_ecef_vy":
-            self._new_sensor_data["gps"]["data"]["velocity"][1] = value
+            self._sensor_data_buffer["gps"]["data"]["velocity"][1] = value
         elif subindex == "skytraq_ecef_vz":
-            self._new_sensor_data["gps"]["data"]["velocity"][2] = value
+            self._sensor_data_buffer["gps"]["data"]["velocity"][2] = value
             # expect vz is last to arrive
-            self._sensor_data["gps"] = self._new_sensor_data["gps"]
+            self._sensor_data["gps"] = self._sensor_data_buffer["gps"]
 
     def _on_imu_data(self, subindex: str, value) -> Optional[list]:
         # FIXME: the timestamp should be sent from the IMU
         if subindex == "gyroscope_pitch_rate":
-            time_since = time.time_ns() // 1_000_000 # UNIX TIME! TODO: convert to time since midnight
-            self._new_sensor_data["imu"] = TimestampedData(timestamp=time_since, data=[value, 0, 0])
+            dt = datetime.today()
+            ms_since_midnight = (((((dt.hour * 60) + dt.minute) * 60) + dt.second) * 1000) + (dt.microsecond // 1000)
+            self._sensor_data_buffer["imu"] = TimestampedData(timestamp=ms_since_midnight, data=[value, 0, 0])
         elif subindex == "gyroscope_yaw_rate":
-            self._new_sensor_data["imu"]["data"][1] = value
+            self._sensor_data_buffer["imu"]["data"][1] = value
         elif subindex == "gyroscope_roll_rate":
-            self._new_sensor_data["imu"]["data"][2] = value
+            self._sensor_data_buffer["imu"]["data"][2] = value
+            self._sensor_data["imu"] = self._sensor_data_buffer["imu"]
 
     def get_mag_data(self) -> Optional[np.typing.NDArray[np.float32]]:
         # TODO: check format of data: OD shows int16, unit: Gauss
@@ -352,7 +353,7 @@ class ADCSManager(Service):
         adcs_record: ODRecord = self.node.od["adcs"]
         for direction in ("pos", "min"):
             for num in range(2):
-                vec = []
+                vec: list[float] = []
                 for dim in ("x", "y", "z"):
                     vec.append(
                         adcs_record[
@@ -363,7 +364,7 @@ class ADCSManager(Service):
 
         return sum(np.array(field_vectors)) / len(field_vectors)
 
-    def get_sensor_data(self, sensor_list) -> Optional[list]:
+    def get_sensor_data(self, sensor_list) -> list[Optional[TimestampedData]]:
         """Get data from list of sensor names
 
         Parameters
@@ -373,13 +374,18 @@ class ADCSManager(Service):
 
         Returns
         -------
-        list
+        list[Optional[TimestampedData]]
             A list of sensor data, in the same order as sensor_list, or
             None if no new data is available.
         """
 
         return_list = []
         for sensor in sensor_list:
-            return_list.append(self.__sensor_data_map[sensor]())
+            data = self._sensor_data[sensor]
+            if data["timestamp"] == self.last_sensor_time[sensor]:
+                return_list.append(None)
+            else:
+                self.last_sensor_time[sensor] = data["timestamp"]
+                return_list.append(self._sensor_data[sensor])
 
         return return_list

@@ -1,5 +1,5 @@
 import numpy as np
-import quaternion as quat
+from . import quaternion as quat
 from Basilisk.utilities import macros
 from skyfield.framelib import itrs
 

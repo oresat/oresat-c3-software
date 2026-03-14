@@ -3,7 +3,7 @@ ADCS controller service
 """
 import copy
 from datetime import datetime
-from typing import Optional, Tuple, Callable, Any, TypedDict
+from typing import Optional, Tuple, Any, TypedDict
 
 from canopen.objectdictionary import ODRecord
 from olaf import Service
@@ -119,10 +119,6 @@ class ADCSManager(Service):
             }
         }
         self._sensor_data_buffer: dict[str, TimestampedData] = copy.deepcopy(self._sensor_data)
-        self.__sensor_data_map: dict[str, Callable] = {"star_tracker": self._on_star_tracker_data,
-                                                       "imu": self._on_imu_data,
-                                                       "magnetometer": self.get_mag_data,
-                                                       "gps": self._on_gps_data}
 
     def on_start(self):
         # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
@@ -189,9 +185,10 @@ class ADCSManager(Service):
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
             # get sensor data and modify for consumption by control algorithms
             wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
-            star_tracker_output, omega = self.get_sensor_data(['star_tracker', 'IMU']) # get sensor data for star tracker and IMU
-            if star_tracker_output[0] == 1: # if attitude_known flag is 1 (true), data is valid
-                q_star_tracker = star_tracker_output[1] # unpack scalar last quaternion array from message
+            star_tracker_output: dict[str, Any] = self.get_sensor_data(["star_tracker"])[0]["data"]
+            omega = self.get_sensor_data(["imu"])[0]["data"] # get sensor data for star tracker and IMU
+            if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
+                q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None
@@ -241,8 +238,8 @@ class ADCSManager(Service):
             '''
 
         elif (self.control_mode == "DETUMBLE") or (self.control_mode == "THERMAL_DETUMBLE"): # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
-            omega = self.node.od['adcs']['omega'] # get gyro data
-            B = self.node.od['adcs']['magnetometer'] # get magnetometer data
+            omega = self._sensor_data["imu"]["data"]
+            B = self.get_magnetometer_data()
             desired_torque = self.detumble_gain/(np.linalg.norm(B)**2)*np.cross(omega, B) # detumble controller as defined by Markley & Crassidis
             # COMMAND MAGNETORQUERS
 
@@ -251,8 +248,8 @@ class ADCSManager(Service):
                 self.initialize_filter() # reset filter as it hasn't been used since reaction wheels last
 
         elif self.control_mode == "THERMAL_SPINUP": # spin up about satellite's z-axis using magnetorquer
-            omega = self.node.od['adcs']['omega'] # get gyro data
-            B = self.node.od['adcs']['magnetometer'] # get magnetometer data
+            omega = self._sensor_data["imu"]["data"]
+            B = self.get_magnetometer_data()
             if omega[2] < self.thermal_spin_rpm*2*np.pi/60: # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0,0,1] # spin about the z axis
                 desired_torque = np.cross(B, tau_des) / (B @ B)
@@ -344,7 +341,7 @@ class ADCSManager(Service):
             self._sensor_data_buffer["imu"]["data"][2] = value
             self._sensor_data["imu"] = self._sensor_data_buffer["imu"]
 
-    def get_mag_data(self) -> Optional[np.typing.NDArray[np.float32]]:
+    def get_magnetometer_data(self) -> np.typing.NDArray[np.float32]:
         # TODO: check format of data: OD shows int16, unit: Gauss
 
         # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)

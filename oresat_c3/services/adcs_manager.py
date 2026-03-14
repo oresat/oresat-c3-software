@@ -13,6 +13,7 @@ from ..subsystems.adcs import quaternion as quat
 from skyfield.api import load
 from skyfield.framelib import itrs
 
+from ..subsystems.adcs.config import ADCSConfig
 # Custom GNC/ADCS functions
 from ..subsystems.adcs.discrete_state_space import get_gain_matrix
 from ..subsystems.adcs.kalman_filter import Multiplicative_Extended_Kalman_Filter
@@ -25,21 +26,18 @@ class TimestampedData(TypedDict):
 
 class ADCSManager(Service):
 
-    def __init__(self, mock_hw: bool = False):
+    def __init__(self, config: ADCSConfig, mock_hw: bool = False):
         super().__init__()
 
-        config = None # TEMPORARY PLACE HOLDER TO GET RID OF LINTING ERRORS
+        self.control_mode = config["control_mode"] # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
+        self.guidance_mode = config["guidance_mode"] # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
+        self.pointing_reference = config["pointing_reference"] # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC"
+        self.ECEF_target = guid.GPS_to_ECEF(config["target_lat"], config["target_lon"], config["target_height"], ) # used for tracking mode to set static ground target with GPS coordinates in ECEF
+        self.updateTime = config["update_time"] # controller interval (seconds)
+        self.rw_inertia = config["rw_inertia"] # # reaction wheel inertia (scalar)
+        self.sat_inertia = config["sat_inertia"] # satellite inertia tensor (matrix)
 
-        self.control_mode = None # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
-        self.guidance_mode = None # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
-        self.pointing_reference = None # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC"
-        self.q_target = None # target quaternion for controller error calculations
-        self.ECEF_target = None # used for tracking mode to set static ground target with GPS coordinates in ECEF
-        self.updateTime = None # controller interval (seconds)
-        self.rwInertia = None # # reaction wheel inertia (scalar)
-        self.satInertia = None # satellite inertia tensor (matrix)
-
-        self.G = config["G"] # wheel orientation matrix
+        self.G = config["g"] # wheel orientation matrix
         self.G_transpose = self.G.T # save repeated calculations each iteration
         self.G_pinv = -np.linalg.pinv(self.G) # pseudo inverse matrix for torque calculations. NEGATE OR NOT????
         self.q_90_rot = quat.axis_angle_to_quaternion([0,1,0], -90) # translate star tracker targets to +z side of satellite by rotating by 90 degrees CW about the y axis
@@ -53,19 +51,25 @@ class ADCSManager(Service):
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
-        self.K_RW = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # calculate reaction wheel LQR gain matrix
+        self.K_RW = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # calculate reaction wheel LQR gain matrix
 
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
         LQR_max_rate_mag = 0.0003
-        self.K_MAG = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error_mag, LQR_max_rate_mag, max_input_mag)
+        self.K_MAG = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error_mag, LQR_max_rate_mag, max_input_mag)
 
         # Controller gains
-        Jmin = np.max(np.linalg.eigvals(self.satInertia)) # maximum principal moment of inertia (Markley & Crassidis defines this with the minimum principal moment of inertia as a safe upper bound to avoid instability, but maximum works better)
+        Jmin = np.max(np.linalg.eigvals(self.sat_inertia)) # maximum principal moment of inertia (Markley & Crassidis defines this with the minimum principal moment of inertia as a safe upper bound to avoid instability, but maximum works better)
         self.detumble_gain = 4*np.pi/config["orbital_period"]*(1+np.sin(config["orbital_inclination"]*2*np.pi/180))*Jmin # gain based on minimal principal moment of inertia as defined in Markley & Crassidis
 
         # Kalman Filter
-        self.EKF = Multiplicative_Extended_Kalman_Filter(config["P_ST_0"], config["sigma_ST"], config["P_b0"], config["sigma_gyro"], config["sigma_bias"])
+        self.EKF = Multiplicative_Extended_Kalman_Filter(
+            config["star_tracker_uncertainty"],
+            config["star_tracker_noise"],
+            config["gyro_uncertainty"],
+            config["gyro_noise"],
+            config["gyro_bias_drift"]
+        )
 
         self.skyfield_timescale = load.timescale()
         self.skyfield_EOP = itrs # Earth Orientation Parameters  UPDATE THIS TO POINT TO ACTUAL FILE || IMPORTANT TO UPDATE, SENSITIVE TO ERRORS OVER TIME
@@ -133,9 +137,9 @@ class ADCSManager(Service):
                 )
 
     def initialize_filter(self): # initializes/resets extended kalman filter
-        omega = self.node.od['adcs']['IMU']
-        q = self.node.od['adcs']['star_tracker']
-        init_time = self.node.od['adcs']['IMU_time']
+        omega = self._sensor_data["imu"]["data"]
+        q = self._sensor_data["star_tracker"]["data"]["orientation"]
+        init_time = self.node.od['adcs']['IMU_time'] # TODO: what unit?
         self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
 
     def update_ECEF_target(self, target_lat, target_lon, target_height):
@@ -215,8 +219,8 @@ class ADCSManager(Service):
             # feed forward term to account for stored angular momentum
             alpha_d_B = (omega_desired - self.omega_desired_prev) / self.updateTime # desired acceleration in body frame
             self.omega_desired_prev = omega_desired.copy() # update previous target rate
-            H_wheels = self.rwInertia * np.asarray(wheelSpeeds[:4]) @ self.G.T # calculate stored wheel momentum in body frame (resulting in a 3x1 vector of angular momentum axis elements in body frame)
-            tau_ff = self.satInertia @ alpha_d_B + np.cross(omega, self.satInertia @ omega + H_wheels) # total feed-forward torque accounting for gyroscopic coupling
+            H_wheels = self.rw_inertia * np.asarray(wheelSpeeds[:4]) @ self.G.T # calculate stored wheel momentum in body frame (resulting in a 3x1 vector of angular momentum axis elements in body frame)
+            tau_ff = self.sat_inertia @ alpha_d_B + np.cross(omega, self.sat_inertia @ omega + H_wheels) # total feed-forward torque accounting for gyroscopic coupling
 
             omega = omega-omega_desired # set biased omega after using true value to calculate feed forward term
 
@@ -228,6 +232,7 @@ class ADCSManager(Service):
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE
+            self.node.sdo_write("rw_1", "")
 
             if (self.control_mode == "THERMAL_REORIENT") and (quat.error_angle(q_error) <= 0.1) and (np.all(np.abs(omega) < 1e-6)):
                 # ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS! Must wait for wheels to turn off, but they should be at zero already by the end of the maneuver. If not, there is a problem.

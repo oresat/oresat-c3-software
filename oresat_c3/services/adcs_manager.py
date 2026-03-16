@@ -49,21 +49,17 @@ class ADCSManager(Service):
 
         # Controller gains
         
-        self.use_integrator = config["use_integrator"]
+        self.use_variable_gain = config["use_variable_gain"]
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
         self.K_RW = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input)
-        if self.use_integrator:
-            integrator_gain = 1
-            K = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input, self.use_integrator, integrator_gain)
-            self.K_RW_int = K[:, :6] # extract "PD" portion of gain matrix
-            self.K_integrator = K[:, 6:] # extract integrator term
-            
-            self.state_integral = np.zeros(3) # error integral
-            self.rf = np.zeros(3) # filtered reference for slow ramp of integral term when dealing with step inputs
-            omega_f = 1 # filter rate
-            self.a_filter = np.exp(-omega_f*self.updateTime)
+        if self.use_variable_gain:
+            self.gain_mode = 0 # start with "low" gain
+            max_input = 0.01 # QUALITATIVE value for max torque used by LQR tuning ONLY
+            LQR_max_error = .05
+            LQR_max_rate = 0.2
+            self.K_RW_fine = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # define a fine pointing controller with aggressive error gains
         
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
@@ -237,7 +233,7 @@ class ADCSManager(Service):
             Send torque commands reaction wheels
             '''
 
-            desired_torque = self.RW_LQR_controller(q_error, omega) # compute desired 3-axis torque from controller
+            desired_torque = self.RW_controller(q_error, omega, currentTimeSecs) # compute desired 3-axis torque from controller
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE
@@ -303,9 +299,25 @@ class ADCSManager(Service):
         else:
             print("UNKNOWN POINTING REFERENCE")
 
-    def RW_LQR_controller(self, q_error, omega):
-        x = np.concatenate((q_error[:3], omega)) # assemble state vector
-        return -self.K_RW @ x # invert sign for control
+    def RW_controller(self, q_error, omega, currentTimeSecs):
+        x = np.concatenate((q_error[:3], omega)) # assemble state vector            
+
+        if self.use_variable_gain and (quat.error_angle(q_error) < 1): # LQR controller with integral term
+            transient_time = 30 # seconds
+            if self.gain_mode == 0:
+                self.transient_start = currentTimeSecs
+                self.gain_mode = 1 # switch to transient mode
+                return - self.K_RW @ x # firt step of transient mode returns the same as standard controller
+            elif self.gain_mode == 1:
+                if (self.transient_start >= self.transient_start+transient_time):
+                    self.gain_mode = 2 # switch to full fine-pointing mode
+                gain_switch_time = currentTimeSecs - self.transient_start
+                return (-self.K_RW_fine @ x)*gain_switch_time/transient_time - (self.K_RW @ x)*(1-gain_switch_time/transient_time) # transient mode
+            else:
+                return -self.K_RW_fine @ x # - self.K_integrator @ self.state_integral
+        else:
+            self.gain_mode = 0 # standard gains
+            return -self.K_RW @ x # invert sign for control
 
     def mag_LQR_controller(self, q_error, omega):
         x = np.concatenate((q_error[:3], omega)) # assemble state vector

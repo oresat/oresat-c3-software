@@ -19,6 +19,7 @@ from olaf import (
 )
 
 from oresat_c3.services.adcs_manager import ADCSManager
+from oresat_c3.services.rw_test import ReactionWheelTest
 from oresat_c3.subsystems.adcs.config import build_config
 from . import C3State, __version__
 from .protocols.cachestore import CacheStore
@@ -152,6 +153,10 @@ def main():
     )
     adcs_config = build_config()
     adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
+    edl_service = EdlService(app.node, radios_service, node_mgr_service, beacon_service)
+    rw_test = ReactionWheelTest(mock_hw)
+    # adcs_config = build_config()
+    # adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
 
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)
@@ -160,8 +165,8 @@ def main():
     app.add_service(channel_router_service)
     app.add_service(edl_service)
     app.add_service(node_mgr_service)
-    app.add_service(node_flasher_service)
-    app.add_service(adcs_mgr_service)
+    app.add_service(rw_test)
+    # app.add_service(adcs_mgr_service)
 
     for file_name in os.listdir(f"{path}/templates"):
         rest_api.add_template(f"{path}/templates/{file_name}")

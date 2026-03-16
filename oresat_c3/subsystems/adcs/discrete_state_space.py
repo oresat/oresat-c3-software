@@ -104,7 +104,7 @@ if __name__ == "__main__":
                   [Jzx, Jzy, Jzz]])
     
     useInt = False
-    K = get_RW_gain_matrix(J, 0.1, 0.1, 0.05, useInt)
+    K = get_gain_matrix(J, 0.1, 0.1, 0.05, useInt)
     if useInt:
         print("LQR gain matrix K_int:", K)
     else:

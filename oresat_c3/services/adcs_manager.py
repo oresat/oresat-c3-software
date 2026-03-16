@@ -31,7 +31,7 @@ class ADCSManager(Service):
 
         self.control_mode = config["control_mode"] # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
         self.guidance_mode = config["guidance_mode"] # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
-        self.pointing_reference = config["pointing_reference"] # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC"
+        self.pointing_reference = config["pointing_reference"] # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC". SENTINEL will only ever use "SC" for the high-gain antenna
         self.ECEF_target = guid.GPS_to_ECEF(config["target_lat"], config["target_lon"], config["target_height"], ) # used for tracking mode to set static ground target with GPS coordinates in ECEF
         self.updateTime = config["update_time"] # controller interval (seconds)
         self.rw_inertia = config["rw_inertia"] # # reaction wheel inertia (scalar)
@@ -48,11 +48,23 @@ class ADCSManager(Service):
         self.omega_target = omega_target_rpm * 2*np.pi/60 # convert to [rad/s]
 
         # Controller gains
+        
+        self.use_integrator = config["use_integrator"]
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
-        self.K_RW = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # calculate reaction wheel LQR gain matrix
-
+        self.K_RW = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input)
+        if self.use_integrator:
+            integrator_gain = 1
+            K = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input, self.use_integrator, integrator_gain)
+            self.K_RW_int = K[:, :6] # extract "PD" portion of gain matrix
+            self.K_integrator = K[:, 6:] # extract integrator term
+            
+            self.state_integral = np.zeros(3) # error integral
+            self.rf = np.zeros(3) # filtered reference for slow ramp of integral term when dealing with step inputs
+            omega_f = 1 # filter rate
+            self.a_filter = np.exp(-omega_f*self.updateTime)
+        
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
         LQR_max_rate_mag = 0.0003
@@ -158,10 +170,10 @@ class ADCSManager(Service):
         '''
 
         if self.guidance_mode in (
-            "TRACKING",
+            "TRACKING", # track static target on Earth's surface
             "NADIR",
-            "MAX_DRAG",
-            "MIN_DRAG",
+            "MAX_DRAG", # Orient satellite with largest face ram-pointing (+x)
+            "MIN_DRAG", # Orient satellite with smallest face ram-pointing (+z)
         ):
 
             r_ECEF, v_ECEF = self.get_sensor_data(["gps"])[0]["data"].values() # get ECEF position and velocity vectors
@@ -199,8 +211,6 @@ class ADCSManager(Service):
             q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
 
             q_last = self.q_target # save last target for feed-forward terms
-            self.update_tracking_quat() # update target orientation based on current orientation and fixed target
-
             q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
             q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
 
@@ -227,7 +237,7 @@ class ADCSManager(Service):
             Send torque commands reaction wheels
             '''
 
-            desired_torque = quat.quaternion_controller(q_error, omega) # compute desired 3-axis torque from controller
+            desired_torque = self.RW_LQR_controller(q_error, omega) # compute desired 3-axis torque from controller
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE
@@ -260,6 +270,18 @@ class ADCSManager(Service):
                 # COMMAND MAGNETORQUERS
 
         elif self.control_mode == "MTB_POINTING":
+            omega = self._sensor_data["imu"]["data"]
+            B = self.get_magnetometer_data()
+            if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
+                q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
+                q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
+            else:
+                q_st_rotated = None
+
+            q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
+            q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
+            q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
+            
             tau_des = self.mag_LQR_controller(q_error, omega) # desired 3-axis torque in body frame
             bm = self.b_mat(B)
             k = 1e-8

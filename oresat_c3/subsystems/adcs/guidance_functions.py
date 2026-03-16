@@ -3,17 +3,19 @@ from . import quaternion as quat
 from Basilisk.utilities import macros
 from skyfield.framelib import itrs
 
+D2R = np.pi / 180.0
+
 def GPS_to_ECEF(lat, lon, height):
     # constants used for GPS-to-ECEF conversion
     a = 6378137.0 # WGS-84 constant: a = semi-major axis
     e2 = 0.0066943799901413165 # WGS-84 constant: e^2 = flattening
     
-    sin_lat = np.sin(lat * macros.D2R)
-    cos_lat = np.cos(lat * macros.D2R)
+    sin_lat = np.sin(lat * D2R)
+    cos_lat = np.cos(lat * D2R)
     
     N = a/np.sqrt(1-e2*sin_lat**2) # lattitude must be signed for WGS-84
-    x = (N+height)*cos_lat*np.cos(lon * macros.D2R)
-    y = (N+height)*cos_lat*np.sin(lon * macros.D2R)
+    x = (N+height)*cos_lat*np.cos(lon * D2R)
+    y = (N+height)*cos_lat*np.sin(lon * D2R)
     z = (N*(1-e2)+height)*sin_lat
 
     return np.asarray([x, y, z])

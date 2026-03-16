@@ -9,6 +9,7 @@ from canopen.objectdictionary import ODRecord
 from olaf import Service
 
 import numpy as np
+from time import time
 from ..subsystems.adcs import quaternion as quat
 from skyfield.api import load
 from skyfield.framelib import itrs
@@ -233,7 +234,7 @@ class ADCSManager(Service):
             Send torque commands reaction wheels
             '''
 
-            desired_torque = self.RW_controller(q_error, omega, currentTimeSecs) # compute desired 3-axis torque from controller
+            desired_torque = self.RW_controller(q_error, omega, time()) # compute desired 3-axis torque from controller. Pass in time for variable gain controller
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE

@@ -2,7 +2,7 @@
 ADCS controller service
 """
 import copy
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Tuple, Any, TypedDict
 
 from canopen.objectdictionary import ODRecord
@@ -145,7 +145,7 @@ class ADCSManager(Service):
     def update_ECEF_target(self, target_lat, target_lon, target_height):
         self.ECEF_target = guid.GPS_to_ECEF(target_lat, target_lon, target_height) # convert GPS coordinates to ECEF coordinates
 
-    def on_loop(self, currentTimeNanos):
+    def on_loop(self):
         '''
         primary control loop
         '''
@@ -165,8 +165,7 @@ class ADCSManager(Service):
         ):
 
             r_ECEF, v_ECEF = self.get_sensor_data(["gps"])[0]["data"].values() # get ECEF position and velocity vectors
-            # FIXME: time is milliseconds since midnight -> convert to datetime
-            dt = self.last_sensor_time['GPS_time'] # get current ephemeris time from last GPS update
+            dt: datetime = datetime.now(timezone.utc) # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
             ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
             nadir_vector_ECEF = -r_ECEF / np.linalg.norm(r_ECEF) # used to get correct facing for star tracker. Nadir vector is opposite of vector from earth.
@@ -197,7 +196,7 @@ class ADCSManager(Service):
             else:
                 q_st_rotated = None
 
-            q, omega = self.EKF.update(currentTimeNanos*1e-9, omega, q_st_rotated) # update filter with applicable data
+            q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
 
             q_last = self.q_target # save last target for feed-forward terms
             self.update_tracking_quat() # update target orientation based on current orientation and fixed target

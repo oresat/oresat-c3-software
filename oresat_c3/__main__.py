@@ -19,9 +19,7 @@ from olaf import (
     set_cpufreq_gov,
 )
 
-from oresat_c3.services.adcs_manager import ADCSManager
 from oresat_c3.services.rw_test import ReactionWheelTest
-from oresat_c3.subsystems.adcs.config import build_config
 from . import C3State, __version__
 from .protocols.cachestore import CacheStore
 from .services.beacon import BeaconService

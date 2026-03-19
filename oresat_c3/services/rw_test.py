@@ -56,7 +56,7 @@ class ReactionWheelTest(Service):
     def __init__(self, mock_hw: bool = False):
         super().__init__()
 
-    def on_start(self):
+    def run(self):
         # rw_1 is the only wheel in flatsat
         # calibrate
         for state in (
@@ -87,4 +87,6 @@ class ReactionWheelTest(Service):
         self.node.sdo_write("rw_1", "requested", "state", RWControllerState.IDLE)
 
     def on_loop(self):
-        pass
+        if self.node.od["node_status"][0x38].value == 2 and self.node.od["node_status"][0x3C].value == 2:
+            # both ADCS and RW_1 are ON
+            self.run()

@@ -54,13 +54,13 @@ class ADCSManager(Service):
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
-        self.K_RW = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input)
+        self.K_RW = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input)
         if self.use_variable_gain:
             self.gain_mode = 0 # start with "low" gain
             max_input = 0.01 # QUALITATIVE value for max torque used by LQR tuning ONLY
             LQR_max_error = .05
             LQR_max_rate = 0.2
-            self.K_RW_fine = get_gain_matrix(self.satInertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # define a fine pointing controller with aggressive error gains
+            self.K_RW_fine = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # define a fine pointing controller with aggressive error gains
         
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
@@ -269,6 +269,7 @@ class ADCSManager(Service):
         elif self.control_mode == "MTB_POINTING":
             omega = self._sensor_data["imu"]["data"]
             B = self.get_magnetometer_data()
+            star_tracker_output: dict[str, Any] = self.get_sensor_data(["star_tracker"])[0]["data"]
             if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
                 q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame

@@ -334,16 +334,19 @@ class ADCSManager(Service):
         ])
 
     def _on_star_tracker_data(self, subindex: str, value):
-        # TODO: convert to scalar-last quaternion
         if subindex == "orientation_time_since_midnight":
             # set or create new entry
-            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(3))
-        elif subindex == "orientation_right_ascension":
-            self._sensor_data_buffer["star_tracker"]["data"][0] = value
-        elif subindex == "orientation_declination":
-            self._sensor_data_buffer["star_tracker"]["data"][1] = value
-        elif subindex == "orientation_roll":
-            self._sensor_data_buffer["star_tracker"]["data"][2] = value
+            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(4))
+        elif subindex == "orientation_attitude_known":
+            self._sensor_data_buffer["star_tracker"]["data"]["attitude_known"] = value
+        elif subindex == "orientation_attitude_i":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][0] = value
+        elif subindex == "orientation_attitude_j":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][1] = value
+        elif subindex == "orientation_attitude_k":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][2] = value
+        elif subindex == "orientation_attitude_real":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][3] = value
             # all data should have been received
             self._sensor_data["star_tracker"] = self._sensor_data_buffer["star_tracker"]
 

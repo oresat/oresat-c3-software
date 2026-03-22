@@ -1,12 +1,11 @@
-from typing import TypedDict
+from typing import TypedDict, Any
 
-from numpy.typing import NDArray
 import numpy as np
 
 class ADCSConfig(TypedDict):
-    g: NDArray
+    g: Any
     rw_inertia: float
-    sat_inertia: NDArray
+    sat_inertia: Any
     update_time: float
     guidance_mode: str
     control_mode: str
@@ -14,19 +13,19 @@ class ADCSConfig(TypedDict):
     target_lat: float
     target_lon: float
     target_height: float
-    orbital_period: float | NDArray # TODO
-    orbital_inclination: float | NDArray # TODO
+    orbital_period: float # TODO
+    orbital_inclination: float # TODO
     star_tracker_uncertainty: float
     star_tracker_noise: float
     star_tracker_update_rate: float # in seconds
     gyro_uncertainty: float
     gyro_noise: float
     gyro_bias_drift: float
+    use_variable_gain: bool
 
 
 def build_config() -> ADCSConfig:
-    # TODO: reduce dependency on Basilisk imports further (likely by precomputation)
-    from Basilisk.utilities.macros import D2R
+    from .guidance_functions import D2R
     # Create reaction wheels
     # Define 4 reaction wheel unit vectors in a pyramid configuration (60 deg tilt from z-axis)
     z = np.cos(60 * np.pi / 180)  # wheel angle from z axis. Same for all wheels
@@ -122,6 +121,7 @@ def build_config() -> ADCSConfig:
         "gyro_uncertainty": P_b0,
         "gyro_noise": sigma_gyro,
         "gyro_bias_drift": sigma_bias,
+        "use_variable_gain": False,
     }
     print("Generated ADCS config:", config)
     return config

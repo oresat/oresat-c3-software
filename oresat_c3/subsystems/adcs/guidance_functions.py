@@ -1,6 +1,5 @@
 import numpy as np
 from . import quaternion as quat
-from Basilisk.utilities import macros
 from skyfield.framelib import itrs
 
 D2R = np.pi / 180.0

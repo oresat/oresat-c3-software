@@ -66,7 +66,7 @@ def error_angle(q_error):
     Error angle in degrees
     """
     
-    return 2*np.acos(abs(q_error[3])) * 180/ np.pi
+    return 2*np.arccos(abs(q_error[3])) * 180/ np.pi
 
 def quat_from_dcm_scalar_last(m):
     """

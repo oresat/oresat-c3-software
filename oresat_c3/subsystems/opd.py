@@ -150,6 +150,7 @@ class OpdNode:
             self._max7310.output_set(self._ENABLE_PIN)
             self._status = OpdNodeState.ENABLED
         except Max7310Error:
+            logger.error(f"OPD fault enabling {self.name} (0x{self.addr:02X})")
             self._status = OpdNodeState.FAULT
 
         return self._status
@@ -254,6 +255,7 @@ class OpdNode:
             fault = not self._max7310.input_status(self._NOT_FAULT_PIN)
         except Max7310Error:
             if self._status != OpdNodeState.NOT_FOUND:
+                logger.error(f"OPD fault pin tripped for {self.name} (0x{self.addr:02X})")
                 self._status = OpdNodeState.FAULT
         return fault
 
@@ -288,6 +290,7 @@ class OpdStm32Node(OpdNode):
                 self._max7310.output_clear(self._BOOT_PIN)
         except Max7310Error:
             self._status = OpdNodeState.FAULT
+            logger.error(f"OPD fault enabling {self.name} (0x{self.addr:02X})")
             return self._status
 
         return super().enable()
@@ -327,6 +330,7 @@ class OpdStm32Node(OpdNode):
             self._max7310.output_set(self._UART_PIN)
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
+            logger.error(f"OPD fault enabling UART for {self.name} (0x{self.addr:02X})")
             self._status = OpdNodeState.FAULT
 
     def disable_uart(self):
@@ -375,6 +379,7 @@ class OpdOctavoNode(OpdNode):
             r = super().enable()
         except Max7310Error:
             r = OpdNodeState.FAULT
+            logger.error(f"OPD fault enabling {self.name} (0x{self.addr:02X})")
         self._status = r
         return self._status
 
@@ -385,6 +390,7 @@ class OpdOctavoNode(OpdNode):
             self._max7310.output_set(self._UART_PIN)
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
+            logger.error(f"OPD fault enabling UART for {self.name} (0x{self.addr:02X})")
             self._status = OpdNodeState.FAULT
         return self._status
 
@@ -395,6 +401,7 @@ class OpdOctavoNode(OpdNode):
             self._max7310.output_clear(self._UART_PIN)
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
+            logger.error(f"OPD fault disabling UART for {self.name} (0x{self.addr:02X})")
             self._status = OpdNodeState.FAULT
         return self._status
 

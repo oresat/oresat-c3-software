@@ -103,7 +103,7 @@ class ADCSManager(Service):
                     "skytraq_ecef_vx", "skytraq_ecef_vy", "skytraq_ecef_vz"
                 )
             },
-            "imu": {
+            "adcs": {
                 "cb": self._on_imu_data,
                 "idx": (
                     "gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"
@@ -115,7 +115,7 @@ class ADCSManager(Service):
             "star_tracker": {
                 "timestamp": 0,
                 "data": {
-                    "attitude_known": 0,
+                    "attitude_known": False,
                     "orientation": []
                 }
             },
@@ -148,7 +148,7 @@ class ADCSManager(Service):
     def initialize_filter(self): # initializes/resets extended kalman filter
         omega = self._sensor_data["imu"]["data"]
         q = self._sensor_data["star_tracker"]["data"]["orientation"]
-        init_time = self.node.od['adcs']['IMU_time'] # TODO: what unit?
+        init_time = time()
         self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
 
     def update_ECEF_target(self, target_lat, target_lon, target_height):
@@ -196,11 +196,16 @@ class ADCSManager(Service):
 
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
             # get sensor data and modify for consumption by control algorithms
-            wheelSpeeds = self.node.od['adcs']['RW_speeds'] # get reaction wheel speeds
-            star_tracker_output: dict[str, Any] = self.get_sensor_data(["star_tracker"])[0]["data"]
-            omega = self.get_sensor_data(["imu"])[0]["data"] # get sensor data for star tracker and IMU
-            if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
-                q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
+            wheel_speeds = np.array([
+                self.node.od["rw_1"]["motor_velocity"].value,
+                self.node.od["rw_2"]["motor_velocity"].value,
+                self.node.od["rw_3"]["motor_velocity"].value,
+                self.node.od["rw_4"]["motor_velocity"].value,
+            ]) * 2 * np.pi
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker"])[0]
+            omega = np.array(self.get_sensor_data(["imu"])[0]["data"])
+            if star_tracker_output and star_tracker_output["data"]["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
+                q_star_tracker = star_tracker_output["data"]["orientation"]
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None
@@ -225,8 +230,8 @@ class ADCSManager(Service):
             # feed forward term to account for stored angular momentum
             alpha_d_B = (omega_desired - self.omega_desired_prev) / self.updateTime # desired acceleration in body frame
             self.omega_desired_prev = omega_desired.copy() # update previous target rate
-            H_wheels = self.rw_inertia * np.asarray(wheelSpeeds[:4]) @ self.G.T # calculate stored wheel momentum in body frame (resulting in a 3x1 vector of angular momentum axis elements in body frame)
-            tau_ff = self.sat_inertia @ alpha_d_B + np.cross(omega, self.sat_inertia @ omega + H_wheels) # total feed-forward torque accounting for gyroscopic coupling
+            h_wheels = self.rw_inertia * wheel_speeds @ self.G.T # calculate stored wheel momentum in body frame (resulting in a 3x1 vector of angular momentum axis elements in body frame)
+            tau_ff = self.sat_inertia @ alpha_d_B + np.cross(omega, self.sat_inertia @ omega + h_wheels) # total feed-forward torque accounting for gyroscopic coupling
 
             omega = omega-omega_desired # set biased omega after using true value to calculate feed forward term
 
@@ -238,7 +243,6 @@ class ADCSManager(Service):
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE
-            self.node.sdo_write("rw_1", "")
 
             if (self.control_mode == "THERMAL_REORIENT") and (quat.error_angle(q_error) <= 0.1) and (np.all(np.abs(omega) < 1e-6)):
                 # ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS! Must wait for wheels to turn off, but they should be at zero already by the end of the maneuver. If not, there is a problem.
@@ -384,7 +388,7 @@ class ADCSManager(Service):
             self._sensor_data_buffer["imu"]["data"][2] = value
             self._sensor_data["imu"] = self._sensor_data_buffer["imu"]
 
-    def get_magnetometer_data(self) -> np.typing.NDArray[np.float32]:
+    def get_magnetometer_data(self):
         # TODO: check format of data: OD shows int16, unit: Gauss
 
         # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)

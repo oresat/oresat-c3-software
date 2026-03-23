@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional, Tuple, Any, TypedDict
 
 from canopen.objectdictionary import ODRecord
-from olaf import Service
+from olaf import Service, logger
 
 import numpy as np
 from time import time
@@ -92,8 +92,9 @@ class ADCSManager(Service):
             "star_tracker_1": {
                 "cb": self._on_star_tracker_data,
                 "idx": (
-                    "orientation_time_since_midnight",
-                    "orientation_right_ascension", "orientation_declination", "orientation_roll"
+                    "orientation_time_since_midnight", "orientation_attitude_known",
+                    "orientation_attitude_i", "orientation_attitude_j", "orientation_attitude_k",
+                    "orientation_attitude_real"
                 )
             },
             "gps": {
@@ -350,6 +351,7 @@ class ADCSManager(Service):
         ])
 
     def _on_star_tracker_data(self, subindex: str, value):
+        logger.debug("ADCS received star tracker data: {}={}", subindex, value)
         if subindex == "orientation_time_since_midnight":
             # set or create new entry
             self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(4))
@@ -400,7 +402,7 @@ class ADCSManager(Service):
             self._sensor_data_buffer["imu"]["data"][2] = value
             self._sensor_data["imu"] = self._sensor_data_buffer["imu"]
 
-    def get_magnetometer_data(self):
+    def get_magnetometer_data(self) -> Any: # FIXME: type for NDArray of float32 when numpy.typing is available
         # TODO: check format of data: OD shows int16, unit: Gauss
 
         # there are FOUR magnetometers (2 on +Z end card, 2 on -Z)

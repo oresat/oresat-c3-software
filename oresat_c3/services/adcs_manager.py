@@ -9,6 +9,7 @@ from canopen.objectdictionary import ODRecord
 from olaf import Service
 
 import numpy as np
+from time import time
 from ..subsystems.adcs import quaternion as quat
 from skyfield.api import load
 from skyfield.framelib import itrs
@@ -31,7 +32,7 @@ class ADCSManager(Service):
 
         self.control_mode = config["control_mode"] # select control mode. Modes are "POINTING", "TRACKING", "DETUMBLE", "THERMAL_DETUMBLE", "THERMAL_REORIENT", and "THERMAL_SPINUP"
         self.guidance_mode = config["guidance_mode"] # select guidance mode. Modes are "TARGET", "NADIR", "MAX_DRAG", "MIN_DRAG"
-        self.pointing_reference = config["pointing_reference"] # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC"
+        self.pointing_reference = config["pointing_reference"] # select reference payload (i.e. Selfie Cam or Cirrus Flux Camera). Modes are "SC" and "CFC". SENTINEL will only ever use "SC" for the high-gain antenna
         self.ECEF_target = guid.GPS_to_ECEF(config["target_lat"], config["target_lon"], config["target_height"], ) # used for tracking mode to set static ground target with GPS coordinates in ECEF
         self.updateTime = config["update_time"] # controller interval (seconds)
         self.rw_inertia = config["rw_inertia"] # # reaction wheel inertia (scalar)
@@ -48,11 +49,19 @@ class ADCSManager(Service):
         self.omega_target = omega_target_rpm * 2*np.pi/60 # convert to [rad/s]
 
         # Controller gains
+        
+        self.use_variable_gain = config["use_variable_gain"]
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
         LQR_max_rate = 0.2
-        self.K_RW = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # calculate reaction wheel LQR gain matrix
-
+        self.K_RW = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input)
+        if self.use_variable_gain:
+            self.gain_mode = 0 # start with "low" gain
+            max_input = 0.01 # QUALITATIVE value for max torque used by LQR tuning ONLY
+            LQR_max_error = .05
+            LQR_max_rate = 0.2
+            self.K_RW_fine = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # define a fine pointing controller with aggressive error gains
+        
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
         LQR_max_rate_mag = 0.0003
@@ -158,10 +167,10 @@ class ADCSManager(Service):
         '''
 
         if self.guidance_mode in (
-            "TRACKING",
+            "TRACKING", # track static target on Earth's surface
             "NADIR",
-            "MAX_DRAG",
-            "MIN_DRAG",
+            "MAX_DRAG", # Orient satellite with largest face ram-pointing (+x)
+            "MIN_DRAG", # Orient satellite with smallest face ram-pointing (+z)
         ):
 
             r_ECEF, v_ECEF = self.get_sensor_data(["gps"])[0]["data"].values() # get ECEF position and velocity vectors
@@ -199,8 +208,6 @@ class ADCSManager(Service):
             q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
 
             q_last = self.q_target # save last target for feed-forward terms
-            self.update_tracking_quat() # update target orientation based on current orientation and fixed target
-
             q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
             q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
 
@@ -227,7 +234,7 @@ class ADCSManager(Service):
             Send torque commands reaction wheels
             '''
 
-            desired_torque = quat.quaternion_controller(q_error, omega) # compute desired 3-axis torque from controller
+            desired_torque = self.RW_controller(q_error, omega, time()) # compute desired 3-axis torque from controller. Pass in time for variable gain controller
             desired_torque = desired_torque+tau_ff # add feedforward terms
             wheel_torque = self.G_pinv @ desired_torque # convert desired 3-axis torque to inputs for 4 reaction wheels
             # COMMAND REACTION WHEELS HERE
@@ -260,6 +267,19 @@ class ADCSManager(Service):
                 # COMMAND MAGNETORQUERS
 
         elif self.control_mode == "MTB_POINTING":
+            omega = self._sensor_data["imu"]["data"]
+            B = self.get_magnetometer_data()
+            star_tracker_output: dict[str, Any] = self.get_sensor_data(["star_tracker"])[0]["data"]
+            if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
+                q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
+                q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
+            else:
+                q_st_rotated = None
+
+            q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
+            q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
+            q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
+            
             tau_des = self.mag_LQR_controller(q_error, omega) # desired 3-axis torque in body frame
             bm = self.b_mat(B)
             k = 1e-8
@@ -281,9 +301,25 @@ class ADCSManager(Service):
         else:
             print("UNKNOWN POINTING REFERENCE")
 
-    def RW_LQR_controller(self, q_error, omega):
-        x = np.concatenate((q_error[:3], omega)) # assemble state vector
-        return -self.K_RW @ x # invert sign for control
+    def RW_controller(self, q_error, omega, currentTimeSecs):
+        x = np.concatenate((q_error[:3], omega)) # assemble state vector            
+
+        if self.use_variable_gain and (quat.error_angle(q_error) < 1): # LQR controller with integral term
+            transient_time = 30 # seconds
+            if self.gain_mode == 0:
+                self.transient_start = currentTimeSecs
+                self.gain_mode = 1 # switch to transient mode
+                return - self.K_RW @ x # firt step of transient mode returns the same as standard controller
+            elif self.gain_mode == 1:
+                if (self.transient_start >= self.transient_start+transient_time):
+                    self.gain_mode = 2 # switch to full fine-pointing mode
+                gain_switch_time = currentTimeSecs - self.transient_start
+                return (-self.K_RW_fine @ x)*gain_switch_time/transient_time - (self.K_RW @ x)*(1-gain_switch_time/transient_time) # transient mode
+            else:
+                return -self.K_RW_fine @ x # - self.K_integrator @ self.state_integral
+        else:
+            self.gain_mode = 0 # standard gains
+            return -self.K_RW @ x # invert sign for control
 
     def mag_LQR_controller(self, q_error, omega):
         x = np.concatenate((q_error[:3], omega)) # assemble state vector
@@ -298,16 +334,19 @@ class ADCSManager(Service):
         ])
 
     def _on_star_tracker_data(self, subindex: str, value):
-        # TODO: convert to scalar-last quaternion
         if subindex == "orientation_time_since_midnight":
             # set or create new entry
-            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(3))
-        elif subindex == "orientation_right_ascension":
-            self._sensor_data_buffer["star_tracker"]["data"][0] = value
-        elif subindex == "orientation_declination":
-            self._sensor_data_buffer["star_tracker"]["data"][1] = value
-        elif subindex == "orientation_roll":
-            self._sensor_data_buffer["star_tracker"]["data"][2] = value
+            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(4))
+        elif subindex == "orientation_attitude_known":
+            self._sensor_data_buffer["star_tracker"]["data"]["attitude_known"] = value
+        elif subindex == "orientation_attitude_i":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][0] = value
+        elif subindex == "orientation_attitude_j":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][1] = value
+        elif subindex == "orientation_attitude_k":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][2] = value
+        elif subindex == "orientation_attitude_real":
+            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][3] = value
             # all data should have been received
             self._sensor_data["star_tracker"] = self._sensor_data_buffer["star_tracker"]
 

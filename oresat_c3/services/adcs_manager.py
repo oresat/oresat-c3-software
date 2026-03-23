@@ -1,7 +1,6 @@
 """'
 ADCS controller service
 """
-import copy
 from datetime import datetime, timezone
 from typing import Optional, Tuple, Any, TypedDict
 
@@ -111,28 +110,28 @@ class ADCSManager(Service):
                 )
             }
         }
-        self.last_sensor_time: dict[str, int] = {"star_tracker":0, "imu":0, "gps":0}
+        self.last_sensor_time: dict[str, int] = { "star_tracker": -1, "imu": -1, "gps": -1 }
         self._sensor_data: dict[str, TimestampedData] = {
             "star_tracker": {
-                "timestamp": 0,
+                "timestamp": -1,
                 "data": {
                     "attitude_known": False,
                     "orientation": []
                 }
             },
             "imu": {
-                "timestamp": 0,
+                "timestamp": -1,
                 "data": [] # pitch, roll, yaw
             },
             "gps": {
-                "timestamp": 0,
+                "timestamp": -1,
                 "data": {
                     "position": [],
                     "velocity": []
                 }
             }
         }
-        self._sensor_data_buffer: dict[str, TimestampedData] = copy.deepcopy(self._sensor_data)
+        self._sensor_data_buffer: dict[str, TimestampedData] = self._sensor_data.copy()
 
     def on_start(self):
         # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
@@ -145,6 +144,13 @@ class ADCSManager(Service):
                     k, subindex, None,
                     lambda value: v["cb"](subindex, value)
                 )
+
+    @property
+    def is_data_available(self) -> bool:
+        for v in self._sensor_data.values():
+            if v["timestamp"] < 0:
+                return False
+        return True
 
     def initialize_filter(self): # initializes/resets extended kalman filter
         omega = self._sensor_data["imu"]["data"]
@@ -178,7 +184,7 @@ class ADCSManager(Service):
                 # COMMAND WHEEL TORQUES HERE
             else:
                 self.initialize_filter()
-                
+
         if self.guidance_mode in (
             "TRACKING", # track static target on Earth's surface
             "NADIR",
@@ -186,7 +192,7 @@ class ADCSManager(Service):
             "MIN_DRAG", # Orient satellite with smallest face ram-pointing (+z)
         ):
 
-            r_ECEF, v_ECEF = self.get_sensor_data(["gps"])[0]["data"].values() # get ECEF position and velocity vectors
+            r_ECEF, v_ECEF = self._sensor_data["gps"]["data"].values()
             dt: datetime = datetime.now(timezone.utc) # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
             ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
@@ -286,9 +292,9 @@ class ADCSManager(Service):
         elif self.control_mode == "MTB_POINTING":
             omega = self._sensor_data["imu"]["data"]
             B = self.get_magnetometer_data()
-            star_tracker_output: dict[str, Any] = self.get_sensor_data(["star_tracker"])[0]["data"]
-            if star_tracker_output["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
-                q_star_tracker = star_tracker_output["orientation"] # unpack scalar last quaternion array from message
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker"])[0]
+            if star_tracker_output and star_tracker_output["data"]["attitude_known"]:
+                q_star_tracker = star_tracker_output["data"]["orientation"] # unpack scalar last quaternion array from message
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None

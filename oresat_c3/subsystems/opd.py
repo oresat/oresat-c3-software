@@ -10,7 +10,7 @@ from typing import Union
 
 from olaf import Adc, Gpio, logger
 
-from ..drivers.max7310 import Max7310, Max7310Error
+from ..drivers.max7310 import Max7310, Max7310Error, MockMax7310
 
 
 class OpdError(Exception):
@@ -64,8 +64,10 @@ class OpdNode:
 
         self._addr = addr
         self._name = name
-        self._mock = mock
-        self._max7310 = Max7310(bus, addr, mock)
+        if not mock:
+            self._max7310 = Max7310(bus, addr)
+        else:
+            self._max7310 = MockMax7310(bus, addr, 1 << self._NOT_FAULT_PIN)
         self._status = OpdNodeState.NOT_FOUND
 
     def __del__(self):
@@ -80,8 +82,6 @@ class OpdNode:
         inputs = 1 << self._NOT_FAULT_PIN
         try:
             self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
-            if self._mock:
-                self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
             self._status = OpdNodeState.DISABLED
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
@@ -191,9 +191,6 @@ class OpdNode:
                 self._max7310.output_set(self._CB_RESET_PIN)
                 sleep(self._RESET_DELAY_S)
                 self._max7310.output_clear(self._CB_RESET_PIN)
-
-                if self._mock:
-                    self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
 
                 if self.fault:
                     self._status = OpdNodeState.FAULT
@@ -313,8 +310,6 @@ class OpdStm32Node(OpdNode):
         inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
         try:
             self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
-            if self._mock:
-                self._max7310._mock_input_set(self._NOT_FAULT_PIN)  # pylint: disable=W0212
             self._status = OpdNodeState.DISABLED
         except Max7310Error:
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not found")

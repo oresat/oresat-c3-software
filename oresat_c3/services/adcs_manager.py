@@ -44,9 +44,9 @@ class ADCSManager(Service):
         self.q_90_rot = quat.axis_angle_to_quaternion([0,1,0], -90) # translate star tracker targets to +z side of satellite by rotating by 90 degrees CW about the y axis
         self.q_180_rot = quat.axis_angle_to_quaternion([1,0,0], -180) # translate CFC targets to +z side/viewpoint of satellite. Chose rotation about x axis for this one so that satellite +x facing doesn't change in guidance functions
 
-        self.q_target = np.array([0,0,0,1]) # attribute initialization, set to real value in sim main
-        omega_target_rpm = np.array([0.0, 0.0, 0.0]) # [RPM]
-        self.omega_target = omega_target_rpm * 2*np.pi/60 # convert to [rad/s]
+        self.q_target = np.array([0,0,0,1]) # attribute initialization, set by guidance functions
+        self.spin_omega_target = np.array([0, 0, 0.034])
+        self.filter_initialized = False
 
         # Controller gains
         
@@ -165,7 +165,19 @@ class ADCSManager(Service):
         portion of the code, and just defines the target which is fed into the 
         control algorithms
         '''
-
+        
+        if (self.control_mode in ("RW_POINTING", "THERMAL_REORIENT")) and not self.filter_initialized:
+            omega = self._sensor_data["imu"]["data"]
+            if not self.is_data_available:
+                return
+            if not self._sensor_data["star_tracker"]["data"]["attitude_known"]:
+                d_omega = self.spin_omega_target-omega # desired delta omega
+                tau = self.satInertia @ d_omega/self.updateTime/5 # divide by five to smooth control inputs
+                wheel_torque = self.G_pinv @ tau
+                # COMMAND WHEEL TORQUES HERE
+            else:
+                self.initialize_filter()
+                
         if self.guidance_mode in (
             "TRACKING", # track static target on Earth's surface
             "NADIR",

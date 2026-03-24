@@ -142,7 +142,7 @@ class ADCSManager(Service):
             for subindex in v["idx"]:
                 self.node.add_sdo_callbacks(
                     k, subindex, None,
-                    lambda value: v["cb"](subindex, value)
+                    lambda value, f=v["cb"], idx=subindex: f(idx, value)
                 )
 
     @property

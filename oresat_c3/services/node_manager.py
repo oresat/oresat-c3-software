@@ -4,7 +4,7 @@ Node manager service.
 
 import json
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, unique
 from time import monotonic
 from typing import Union
@@ -53,14 +53,16 @@ class NodeState(Enum):
 
 
 @dataclass
-class Node(Card):
+class Node:
     """Node data."""
 
-    opd_resets: int = 0
+    info: Card
+    """Static info about this node's card."""
+    opd_resets: int = field(init=False, default=0)
     """OPD reset count."""
-    last_enable: float = 0.0
+    last_enable: float = field(init=False, default=0.0)
     """last enable timeout."""
-    status: NodeState = NodeState.NOT_FOUND
+    status: NodeState = field(init=False, default=NodeState.NOT_FOUND)
     """Node status."""
 
 
@@ -89,9 +91,11 @@ class NodeManagerService(Service):
             mock=mock_hw,
         )
 
+        self._data = {}
         self.node_id_to_name = {}
         self.opd_addr_to_name = {0: "Invalid"}
         for name, info in cards.items():
+            self._data[name] = Node(info)
             self.node_id_to_name[info.node_id] = name
 
             if info.opd_address == 0:
@@ -99,18 +103,6 @@ class NodeManagerService(Service):
             self.opd_addr_to_name[info.opd_address] = name
             self.opd.add_card(name, info, self._I2C_BUS_NUM)
 
-        self._data = {
-            name: Node(
-                name,
-                info.nice_name,
-                info.node_id,
-                info.processor,
-                info.opd_address,
-                info.opd_always_on,
-                info.child,
-            )
-            for name, info in cards.items()
-        }
         self._data["c3"].status = NodeState.ON
 
     def on_start(self) -> None:
@@ -131,8 +123,8 @@ class NodeManagerService(Service):
             self._get_uart_node_select,
             self._set_uart_node_select,
         )
-        for name in self._data:
-            if self._data[name].node_id == 0:
+        for name, node in self._data.items():
+            if node.info.node_id == 0:
                 continue  # not a CANopen node
             self.node.add_sdo_callbacks(
                 "node_status",
@@ -154,7 +146,7 @@ class NodeManagerService(Service):
                 next_state = NodeState.ON
             return next_state
 
-        if node.processor == "stm32":
+        if node.info.processor == "stm32":
             timeout = self._STM32_BOOT_TIMEOUT
         else:
             timeout = self._OCTAVO_BOOT_TIMEOUT
@@ -184,7 +176,7 @@ class NodeManagerService(Service):
         """Determine a node's state."""
 
         # update status of data not on the OPD
-        if self._data[name].opd_address == 0:
+        if self._data[name].info.opd_address == 0:
             if monotonic() > (self.node.node_status[name][2] + self._HB_TIMEOUT):
                 next_state = NodeState.OFF
             else:
@@ -212,7 +204,7 @@ class NodeManagerService(Service):
             elif status == OpdNodeState.NOT_FOUND:
                 next_state = NodeState.NOT_FOUND
             elif status == OpdNodeState.ENABLED:
-                if self._data[name].processor == "stm32" and self.opd[name].in_bootloader_mode:
+                if self._data[name].info.processor == "stm32" and self.opd[name].in_bootloader_mode:
                     next_state = NodeState.BOOTLOADER
                 elif self._data[name].node_id != 0:  # aka CANopen nodes
                     next_state = self._check_co_nodes_state(name)
@@ -255,25 +247,27 @@ class NodeManagerService(Service):
             self._loops = 0
 
         # reset nodes with errors and probe for nodes not found
-        for name, info in self._data.items():
-            if info.opd_address == 0:
+        for name, node in self._data.items():
+            try:
+                opd = self.opd[name]
+            except KeyError:
                 continue
 
-            if self._loops % 10 == 0 and self._data[name].status == NodeState.NOT_FOUND:
-                self.opd[name].probe(reset=True)
+            if self._loops % 10 == 0 and node.status == NodeState.NOT_FOUND:
+                opd.probe(reset=True)
 
-            if info.opd_always_on and info.status == NodeState.OFF:
+            if node.info.opd_always_on and node.status == NodeState.OFF:
                 self.enable(name)
 
-            if info.status == NodeState.DEAD and self.opd[name].is_enabled:
-                self.opd[name].disable()  # make sure this is disabled
-            elif info.status == NodeState.ERROR:
-                logger.error(f"resetting node {name}, try {info.opd_resets + 1}")
-                self.opd[name].reset(1)
-                self._data[name].last_enable = monotonic()
-                info.opd_resets += 1
-            elif info.status in [NodeState.ON, NodeState.OFF]:
-                info.opd_resets = 0
+            if node.status == NodeState.DEAD and opd.is_enabled:
+                opd.disable()  # make sure this is disabled
+            elif node.status == NodeState.ERROR:
+                logger.error(f"resetting node {name}, try {node.opd_resets + 1}")
+                opd.reset(1)
+                node.last_enable = monotonic()
+                node.opd_resets += 1
+            elif node.status in (NodeState.ON, NodeState.OFF):
+                node.opd_resets = 0
 
     def enable(self, name: Union[str, int], *, bootloader_mode: bool = False) -> None:
         """
@@ -292,27 +286,30 @@ class NodeManagerService(Service):
             name = self.opd_addr_to_name[name]
 
         node = self._data[name]
-        child_node = self._data[node.child] if node.child else None
-        if node.opd_address == 0:
+        if node.info.opd_address == 0:
             logger.warning(f"cannot enable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
-
-        if node.status != NodeState.OFF:
-            logger.debug(f"cannot enable node {name} unless it is disabled")
-            return
 
         if node.status == NodeState.DEAD:
             logger.error(f"cannot enable node {name} as it is DEAD")
             return
 
-        if node.processor == "stm32":
-            self.opd[name].enable(bootloader_mode=bootloader_mode)
-            if child_node:
-                self.opd[node.child].enable(bootloader_mode=bootloader_mode)
+        if node.status != NodeState.OFF:
+            logger.debug(f"cannot enable node {name} unless it is disabled")
+            return
+
+        opd = self.opd[name]
+        opd_child = self.opd[node.info.child] if node.info.child else None
+        if isinstance(opd, OpdStm32Node):
+            opd.enable(bootloader_mode=bootloader_mode)
+            if isinstance(opd_child, OpdStm32Node):
+                opd_child.enable(bootloader_mode=bootloader_mode)
+            elif opd_child:
+                opd_child.enable()
         else:
-            self.opd[name].enable()
-            if child_node:
-                self.opd[node.child].enable()
+            opd.enable()
+            if opd_child:
+                opd_child.enable()
         node.last_enable = monotonic()
 
     def disable(self, name: Union[str, int]) -> None:
@@ -329,8 +326,8 @@ class NodeManagerService(Service):
             name = self.opd_addr_to_name[name]
 
         node = self._data[name]
-        child_node = self._data[node.child] if node.child else None
-        if node.opd_address == 0:
+        child_node = self._data[node.info.child] if node.info.child else None
+        if node.info.opd_address == 0:
             logger.warning(f"cannot disable node {name} as it is not on the OPD")
             return  # not on OPD, nothing to do
 
@@ -339,7 +336,7 @@ class NodeManagerService(Service):
             return
 
         if child_node:
-            self.opd[node.child].disable()
+            self.opd[node.info.child].disable()
         self.opd[name].disable()
 
     def node_status(self, name: Union[str, int]) -> int:
@@ -371,15 +368,15 @@ class NodeManagerService(Service):
         """SDO read callback to get the status of all data as a JSON."""
 
         data = []
-        for name, info in self._data.items():
+        for name, node in self._data.items():
             data.append(
                 {
                     "name": name,
-                    "nice_name": info.nice_name,
-                    "node_id": info.node_id,
-                    "processor": info.processor,
-                    "opd_addr": info.opd_address,
-                    "status": info.status.name,
+                    "nice_name": node.info.nice_name,
+                    "node_id": node.info.node_id,
+                    "processor": node.info.processor,
+                    "opd_addr": node.info.opd_address,
+                    "status": node.status.name,
                 }
             )
         return json.dumps(data)
@@ -391,7 +388,7 @@ class NodeManagerService(Service):
         if value == 0:
             self.opd.disable()
             for name, node in self._data.items():
-                if node.opd_address != 0 and node.status != NodeState.NOT_FOUND:
+                if node.info.opd_address != 0 and node.status != NodeState.NOT_FOUND:
                     logger.info(f"node {name} state change {node.status.name} -> NOT_FOUND")
                     node.status = NodeState.NOT_FOUND
         elif value == 1:
@@ -403,7 +400,7 @@ class NodeManagerService(Service):
     def _get_uart_node_select(self) -> int:
         """SDO write callback to select a node to connect to via UART."""
 
-        return 0 if self.opd.uart_node is None else self._data[self.opd.uart_node].opd_address
+        return 0 if self.opd.uart_node is None else self._data[self.opd.uart_node].info.opd_address
 
     def _set_uart_node_select(self, value: int) -> None:
         """

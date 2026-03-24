@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 from olaf import Service, logger
 from oresat_configs import Card
 
-from ..subsystems.opd import Opd, OpdNode, OpdNodeState, OpdOctavoNode, OpdState, OpdStm32Node
+from ..subsystems.opd import Opd, OpdNode, OpdNodeState, OpdState, OpdStm32Node
 
 
 class NodeState(IntEnum):
@@ -93,17 +93,7 @@ class NodeManagerService(Service):
         for name, info in cards.items():
             if info.opd_address == 0:
                 continue  # not an opd node
-
-            if info.processor == "none":
-                node = OpdNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
-            elif info.processor == "stm32":
-                node = OpdStm32Node(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
-            elif info.processor == "octavo":
-                node = OpdOctavoNode(self._I2C_BUS_NUM, info.nice_name, info.opd_address, mock_hw)
-            else:
-                continue
-
-            self.opd[name] = node
+            self.opd.add_card(name, info, self._I2C_BUS_NUM)
 
         self.opd_addr_to_name = {info.opd_address: name for name, info in cards.items()}
         self.node_id_to_name = {info.node_id: name for name, info in cards.items()}
@@ -292,7 +282,7 @@ class NodeManagerService(Service):
                 continue
 
             if self._loops % 10 == 0 and self._data[name].status == NodeState.NOT_FOUND:
-                self.opd[name].probe(True)
+                self.opd[name].probe(reset=True)
 
             if info.opd_always_on and info.status == NodeState.OFF:
                 self.enable(name)
@@ -338,9 +328,9 @@ class NodeManagerService(Service):
             return
 
         if node.processor == "stm32":
-            self.opd[name].enable(bootloader_mode)
+            self.opd[name].enable(bootloader_mode=bootloader_mode)
             if child_node:
-                self.opd[node.child].enable(bootloader_mode)
+                self.opd[node.child].enable(bootloader_mode=bootloader_mode)
         else:
             self.opd[name].enable()
             if child_node:

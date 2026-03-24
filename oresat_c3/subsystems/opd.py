@@ -4,11 +4,14 @@ Everything todo with the OPD (OreSat Power Domain) functionality.
 Every card, other than the solar cards, has a MAX7310 that can be used to turn the card or off.
 """
 
-from enum import IntEnum
+from collections.abc import Generator
+from contextlib import suppress
+from enum import Enum, unique
 from time import sleep
 from typing import Union
 
 from olaf import Adc, Gpio, logger
+from oresat_configs import Card
 
 from ..drivers.max7310 import Max7310, Max7310Error, MockMax7310
 
@@ -17,7 +20,8 @@ class OpdError(Exception):
     """Error with :py:class:`Opd` or :py:class:`OpdNode`"""
 
 
-class OpdNodeState(IntEnum):
+@unique
+class OpdNodeState(Enum):
     """OPD node states"""
 
     DISABLED = 0
@@ -48,7 +52,7 @@ class OpdNode:
     _ENABLE_PIN = 3
     _CB_RESET_PIN = 4
 
-    def __init__(self, bus: int, name: str, addr: int, mock: bool = False):
+    def __init__(self, bus: int, name: str, addr: int, *, mock: bool = False) -> None:
         """
         Parameters
         ----------
@@ -69,26 +73,24 @@ class OpdNode:
         else:
             self._max7310 = MockMax7310(bus, addr, 1 << self._NOT_FAULT_PIN)
         self._status = OpdNodeState.NOT_FOUND
+        self._inputs = 1 << self._NOT_FAULT_PIN
 
-    def __del__(self):
-        try:
+    def __del__(self) -> None:
+        with suppress(Max7310Error):
             self._max7310.output_clear(self._ENABLE_PIN)
-        except Max7310Error:
-            pass
 
-    def configure(self):
+    def configure(self) -> None:
         """Configure the MAX7310 for the OPD node."""
 
-        inputs = 1 << self._NOT_FAULT_PIN
         try:
-            self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
+            self._max7310.configure(0, 0, self._inputs, self._TIMEOUT_CONFIG)
             self._status = OpdNodeState.DISABLED
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not configured")
             self._status = OpdNodeState.FAULT
 
-    def probe(self, reset: bool = False) -> bool:
+    def probe(self, *, reset: bool = False) -> bool:
         """
         Probe the OPD for a node (see if it is there). Will automatically call configure the
         MAX7310, if found.
@@ -120,10 +122,9 @@ class OpdNode:
                     self.configure()
 
                 self._status = OpdNodeState.DISABLED
-            else:
-                if self._status != OpdNodeState.NOT_FOUND:
-                    logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was lost")
-                    self._status = OpdNodeState.NOT_FOUND
+            elif self._status != OpdNodeState.NOT_FOUND:
+                logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was lost")
+                self._status = OpdNodeState.NOT_FOUND
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not found")
@@ -202,6 +203,12 @@ class OpdNode:
 
         return self._status
 
+    def enable_uart(self) -> None:
+        pass
+
+    def disable_uart(self) -> None:
+        pass
+
     @property
     def name(self) -> str:
         """int: Unique name."""
@@ -219,11 +226,8 @@ class OpdNode:
         """OpdNodeState: Status of the OPD node."""
 
         valid = False
-        try:
+        with suppress(Max7310Error):
             valid = self._max7310.is_valid
-        except Max7310Error:
-            pass
-
         if not valid:
             self._status = OpdNodeState.NOT_FOUND
         elif self.is_enabled and self.fault:
@@ -263,7 +267,23 @@ class OpdStm32Node(OpdNode):
     _BOOT_PIN = 5  # bootloader
     _UART_PIN = 7  # connect to C3 UART
 
-    def enable(self, bootloader_mode: bool = False) -> OpdNodeState:
+    def __init__(self, bus: int, name: str, addr: int, *, mock: bool = False) -> None:
+        """
+        Parameters
+        ----------
+        not_enable_pin: int
+            Pin that enable the OPD subsystem.
+        name: str
+            Name of OPD node.
+        bus: int
+            The I2C bus.
+        mock: bool
+            Mock the OPD subsystem.
+        """
+        super().__init__(bus, name, addr, mock=mock)
+        self._inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
+
+    def enable(self, *, bootloader_mode: bool = False) -> OpdNodeState:
         """
         Enable the OPD node.
 
@@ -289,7 +309,7 @@ class OpdStm32Node(OpdNode):
 
         return super().enable()
 
-    def disable(self):
+    def disable(self) -> OpdNodeState:
         """
         Disable the OPD node.
 
@@ -298,24 +318,11 @@ class OpdStm32Node(OpdNode):
         OpdNodeState
             The node state after disabling the node.
         """
-        try:
+        with suppress(Max7310Error):
             self._max7310.output_clear(self._BOOT_PIN)
-        except Max7310Error:
-            pass
         return super().disable()
 
-    def configure(self):
-        """Configure the MAX7310 for the OPD node."""
-
-        inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
-        try:
-            self._max7310.configure(0, 0, inputs, self._TIMEOUT_CONFIG)
-            self._status = OpdNodeState.DISABLED
-        except Max7310Error:
-            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was not found")
-            self._status = OpdNodeState.FAULT
-
-    def enable_uart(self):
+    def enable_uart(self) -> None:
         """Connect the node the C3's UART"""
 
         try:
@@ -324,7 +331,7 @@ class OpdStm32Node(OpdNode):
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
-    def disable_uart(self):
+    def disable_uart(self) -> None:
         """Disconnect the node from the C3's UART"""
 
         try:
@@ -373,7 +380,7 @@ class OpdOctavoNode(OpdNode):
         self._status = r
         return self._status
 
-    def enable_uart(self):
+    def enable_uart(self) -> None:
         """Connect the node the C3's UART"""
 
         try:
@@ -381,9 +388,8 @@ class OpdOctavoNode(OpdNode):
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
-        return self._status
 
-    def disable_uart(self):
+    def disable_uart(self) -> None:
         """Disconnect the node the C3's UART"""
 
         try:
@@ -391,7 +397,6 @@ class OpdOctavoNode(OpdNode):
             logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
-        return self._status
 
     @property
     def is_uart_enabled(self) -> bool:
@@ -405,7 +410,8 @@ class OpdOctavoNode(OpdNode):
         return r
 
 
-class OpdState(IntEnum):
+@unique
+class OpdState(Enum):
     """OPD subsystem states."""
 
     DISABLED = 0x0
@@ -430,8 +436,9 @@ class Opd:
         not_enable_pin: str,
         not_fault_pin: str,
         current_pin: int,
+        *,
         mock: bool = False,
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -445,13 +452,14 @@ class Opd:
             Mock the OPD subsystem.
         """
 
+        self._mock = mock
         self._not_enable_pin = Gpio(not_enable_pin, mock)
         self._not_fault_pin = Gpio(not_fault_pin, mock)
         self._not_fault_pin._mock_value = 1  # fix default for mocking
         self._adc = Adc(current_pin, mock)
         self._not_enable_pin.high()  # make sure OPD disable initially
 
-        self._nodes = {}  # type: ignore
+        self._nodes: dict[str, OpdNode] = {}
         self._status = OpdState.DISABLED
         self._uart_node: Union[str, None] = None
         self._resets = 0
@@ -459,13 +467,21 @@ class Opd:
     def __getitem__(self, name: str) -> OpdNode:
         return self._nodes[name]
 
-    def __setitem__(self, name: str, node: OpdNode):
-        self._nodes[name] = node
+    def add_card(self, name: str, info: Card, bus_num: int) -> None:
+        opd_type = {
+            "none": OpdNode,
+            "stm32": OpdStm32Node,
+            "octavo": OpdOctavoNode,
+        }
 
-    def __iter__(self) -> OpdNode:
+        self._nodes[name] = opd_type[info.processor](
+            bus=bus_num, name=info.nice_name, addr=info.opd_address, mock=self._mock
+        )
+
+    def __iter__(self) -> Generator[OpdNode]:
         yield from self._nodes.values()
 
-    def enable(self):
+    def enable(self) -> None:
         """Enable the OPD subsystem, will also do a scan."""
 
         if self._status == OpdState.DEAD:
@@ -477,9 +493,9 @@ class Opd:
         self._not_enable_pin.low()
         self._status = OpdState.ENABLED
 
-        self.scan(True)
+        self.scan(reset=True)
 
-    def disable(self):
+    def disable(self) -> None:
         """Disable the OPD subsystem."""
 
         logger.info("stopping OPD subsystem")
@@ -493,7 +509,7 @@ class Opd:
         self._status = OpdState.DISABLED
         self._resets = 0
 
-    def reset(self, tries: int = 3, disable_delay: float = 10):
+    def reset(self, tries: int = 3, disable_delay: float = 10) -> None:
         """
         Restart the OPD subsystem with a delay between stop and start.
 
@@ -523,7 +539,7 @@ class Opd:
             self.disable()
             self._status = OpdState.DEAD
 
-    def scan(self, reset: bool = False) -> int:
+    def scan(self, *, reset: bool = False) -> int:
         """
         Scan / probe for all nodes. This will turn on all battery cards found.
 
@@ -540,7 +556,7 @@ class Opd:
 
         count = 0
         for node in self._nodes.values():
-            if node.probe(reset):
+            if node.probe(reset=reset):
                 count += 1
 
         return count
@@ -563,7 +579,7 @@ class Opd:
 
         return self._status
 
-    def _uart_disconnect(self):
+    def _uart_disconnect(self) -> None:
         if self._uart_node is not None:
             self._nodes[self._uart_node].disable_uart()
             self._uart_node = None
@@ -579,7 +595,7 @@ class Opd:
         return self._uart_node
 
     @uart_node.setter
-    def uart_node(self, name: Union[str, None]):
+    def uart_node(self, name: Union[str, None]) -> None:
 
         self._uart_disconnect()
         if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:

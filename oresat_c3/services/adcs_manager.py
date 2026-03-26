@@ -360,7 +360,10 @@ class ADCSManager(Service):
         logger.debug("ADCS received star tracker data: {}={}", subindex, value)
         if subindex == "orientation_time_since_midnight":
             # set or create new entry
-            self._sensor_data_buffer["star_tracker"] = TimestampedData(timestamp=value, data=np.zeros(4))
+            self._sensor_data_buffer["star_tracker"] = TimestampedData(
+                    timestamp=value,
+                    data={ "attitude_known": False, "orientation": np.zeros(4) }
+                    )
         elif subindex == "orientation_attitude_known":
             self._sensor_data_buffer["star_tracker"]["data"]["attitude_known"] = value
         elif subindex == "orientation_attitude_i":

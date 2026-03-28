@@ -377,7 +377,8 @@ class ADCSManager(Service):
             buf = TimestampedData(timestamp=-1, data={ "attitude_known": None, "orientation": np.zeros(4) })
             self._sensor_data_buffer["star_tracker"] = buf
             # reset validity buf
-            for k: str in self._sensor_data_valid_buffer["star_tracker"]:
+            k: str
+            for k in self._sensor_data_valid_buffer["star_tracker"]:
                 self._sensor_data_valid_buffer["star_tracker"][k] = False
             
         if subindex == "orientation_time_since_midnight":

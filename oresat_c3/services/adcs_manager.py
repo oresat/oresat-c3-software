@@ -2,7 +2,7 @@
 ADCS controller service
 """
 from datetime import datetime, timezone
-from typing import Optional, Tuple, Any, TypedDict
+from typing import Optional, Tuple, Any, TypedDict, Union
 
 from canopen.objectdictionary import ODRecord
 from olaf import Service, logger
@@ -131,15 +131,16 @@ class ADCSManager(Service):
                 }
             }
         }
-        self._sensor_data_buffer: dict[str, TimestampedData] = self._sensor_data.copy()
+        self._sensor_data_buffer: dict[str, TimestampedData] = {}
+        self._sensor_data_valid_buffer: dict[str, dict[str, bool]] = {}
 
     def on_start(self):
-        # initialize filter with star tracker and gyro data if using one of the reaction wheel mode
-        if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
-            self.initialize_filter()
         # add SDO callbacks, which are also called for relevant PDOs
+        # at the same time, initialize valid data tracking
         for k, v in self._tpdo_mapped_callbacks.items():
+            self._sensor_data_valid_buffer[k] = {}
             for subindex in v["idx"]:
+                self._sensor_data_valid_buffer[k][subindex] = False
                 self.node.add_sdo_callbacks(
                     k, subindex, None,
                     lambda value, f=v["cb"], idx=subindex: f(idx, value)
@@ -356,28 +357,53 @@ class ADCSManager(Service):
             [by, -bx,   0]
         ])
 
-    def _on_star_tracker_data(self, subindex: str, value):
-        logger.debug("ADCS received star tracker data: {}={}", subindex, value)
-        if subindex == "orientation_time_since_midnight":
-            # set or create new entry
-            self._sensor_data_buffer["star_tracker"] = TimestampedData(
-                    timestamp=value,
-                    data={ "attitude_known": False, "orientation": np.zeros(4) }
-                    )
-        elif subindex == "orientation_attitude_known":
-            self._sensor_data_buffer["star_tracker"]["data"]["attitude_known"] = value
-        elif subindex == "orientation_attitude_i":
-            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][0] = value
-        elif subindex == "orientation_attitude_j":
-            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][1] = value
-        elif subindex == "orientation_attitude_k":
-            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][2] = value
-        elif subindex == "orientation_attitude_real":
-            self._sensor_data_buffer["star_tracker"]["data"]["orientation"][3] = value
-            # all data should have been received
-            self._sensor_data["star_tracker"] = self._sensor_data_buffer["star_tracker"]
+    def _data_buffer_valid(self, index: str) -> bool:
+        # FIXME: ensure works for dict data and list data
+        v = self._sensor_data_buffer.values()
+        if v and v["timestamp"] >= 0:
+            for data in v:
+                if not data:
+                    return False
+        else:
+            return False
 
-    def _on_gps_data(self, subindex: str, value) -> Optional[Tuple[list, list]]:
+        return True
+
+    def _on_star_tracker_data(self, subindex: str, value: Union[bool, float]):
+        # TODO: move duplicate logic to decorator
+        logger.debug("ADCS received star tracker data: {}={}", subindex, value)
+        buf: Optional[TimestampedData] = self._sensor_data_buffer.get("star_tracker", None)
+        if not buf:
+            buf = TimestampedData(timestamp=-1, data={ "attitude_known": None, "orientation": np.zeros(4) })
+            self._sensor_data_buffer["star_tracker"] = buf
+            # reset validity buf
+            for k: str in self._sensor_data_valid_buffer["star_tracker"]:
+                self._sensor_data_valid_buffer["star_tracker"][k] = False
+            
+        if subindex == "orientation_time_since_midnight":
+            buf["timestamp"] = value
+            self._sensor_data_valid_buffer["star_tracker"][subindex] = True
+        elif subindex == "orientation_attitude_known":
+            buf["data"]["attitude_known"] = value
+        elif subindex == "orientation_attitude_i":
+            buf["data"]["orientation"][0] = value
+        elif subindex == "orientation_attitude_j":
+            buf["data"]["orientation"][1] = value
+        elif subindex == "orientation_attitude_k":
+            buf["data"]["orientation"][2] = value
+        elif subindex == "orientation_attitude_real":
+            buf["data"]["orientation"][3] = value
+        else:
+            logger.error("ADCS received invalid star tracker PDO data subindex")
+            return
+
+        self._sensor_data_valid_buffer["star_tracker"][subindex] = True
+
+        if _data_buffer_valid("star_tracker"):
+            self._sensor_data["star_tracker"] = self._sensor_data_buffer.pop("star_tracker")
+
+    def _on_gps_data(self, subindex: str, value: float) -> Optional[Tuple[list, list]]:
+        logger.debug(f"ADCS received GPS data {subindex}={value}")
         if subindex == "skytraq_time_since_midnight":
             # set or create new entry
             self._sensor_data_buffer["gps"] = TimestampedData(timestamp=value, data={
@@ -399,7 +425,8 @@ class ADCSManager(Service):
             # expect vz is last to arrive
             self._sensor_data["gps"] = self._sensor_data_buffer["gps"]
 
-    def _on_imu_data(self, subindex: str, value) -> Optional[list]:
+    def _on_imu_data(self, subindex: str, value: Any) -> Optional[list]:
+        logger.debug(f"ADCS received IMU data {subindex}={value}")
         # FIXME: the timestamp should be sent from the IMU
         if subindex == "gyroscope_pitch_rate":
             dt = datetime.today()

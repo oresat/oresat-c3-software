@@ -21,8 +21,8 @@ dependencies = [
     "bitstring",
     "cfdp-py==0.1.2",
     "dataclasses-json",
-    "oresat-configs",
-    "oresat-olaf>=3.5.0",
+    "oresat-configs==0.8.*",
+    "oresat-olaf>=3.6.5",
     "smbus2",
     "spacepackets",
 ]

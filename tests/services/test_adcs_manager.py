@@ -13,7 +13,6 @@ class TestState(unittest.TestCase):
     def setUp(self):
         config = OreSatConfig(Mission.default())
         self.od = config.od_db["c3"]
-        fram_def = config.fram_def
         network = CanNetwork("virtual", "vcan0")
         self.node = MasterNode(network, self.od, config.od_db)
         adcs_config = build_config()

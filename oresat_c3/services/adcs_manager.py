@@ -204,7 +204,7 @@ class ADCSManager(Service):
                 return
             if not self._sensor_data["star_tracker_1"]["data"]["attitude_known"]:
                 d_omega = self.spin_omega_target-omega # desired delta omega
-                tau = self.satInertia @ d_omega/self.updateTime/5 # divide by five to smooth control inputs
+                tau = self.sat_inertia @ d_omega/self.updateTime/5 # divide by five to smooth control inputs
                 wheel_torque = self.G_pinv @ tau
                 # COMMAND WHEEL TORQUES HERE
             else:

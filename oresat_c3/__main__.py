@@ -96,20 +96,30 @@ def watchdog():
         updating = app.od["updater"]["status"].value == UpdaterState.UPDATING
         edl = app.od["status"].value == C3State.EDL
 
-        if not performance and (updating or edl):
-            logger.info("setting cpufreq governor to performance mode")
-            set_cpufreq_gov("performance")
-            performance = True
-        elif performance and not updating and not edl:
-            logger.info("setting cpufreq governor to powersave mode")
-            set_cpufreq_gov("powersave")
-            performance = False
+        # PATCH: Wrap cpufreq calls in try/except for WSL/Desktop compatibility
+        try:
+            if not performance and (updating or edl):
+                logger.info("setting cpufreq governor to performance mode")
+                set_cpufreq_gov("performance")
+                performance = True
+            elif performance and not updating and not edl:
+                logger.info("setting cpufreq governor to powersave mode")
+                set_cpufreq_gov("powersave")
+                performance = False
+        except FileNotFoundError:
+            # WSL/Desktop environments do not have access to cpu governor files
+            pass
+        except Exception as e:
+            logger.error(f"Failed to set cpu governor: {e}")
 
 
 def main():
     """OreSat C3 app main."""
 
-    set_system_time_to_rtc_time()
+    try:
+        set_system_time_to_rtc_time()
+    except Exception as e:
+        logger.error(f"Failed to set RTC time: {e}")
 
     path = os.path.dirname(os.path.abspath(__file__))
 

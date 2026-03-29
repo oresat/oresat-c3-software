@@ -42,7 +42,6 @@ def adcs_callback(key: str):
             func(self, *args, **kwargs, buf=buf)
             self._sensor_data_valid_buffer[key][args[0]] = True
             if self._data_buffer_valid("star_tracker_1"):
-                print("POP!")
                 self._sensor_data["star_tracker_1"] = self._sensor_data_buffer.pop("star_tracker_1")
         return wrapper
     return decorator

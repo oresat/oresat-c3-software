@@ -1,6 +1,7 @@
 """'
 ADCS controller service
 """
+import functools
 from datetime import datetime, timezone
 from typing import Optional, Tuple, Any, TypedDict, Union
 
@@ -22,6 +23,29 @@ from ..subsystems.adcs import guidance_functions as guid
 class TimestampedData(TypedDict):
     timestamp: int
     data: Any
+
+def adcs_callback(key: str):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            logger.debug("ADCS received {} data: {}={}", key, *args)
+            buf: Optional[TimestampedData] = self._sensor_data_buffer.get(key, None)
+            if not buf:
+                # FIXME: need to init different data member for each cb type
+                buf = TimestampedData(timestamp=-1,
+                                      data={"attitude_known": None, "orientation": np.zeros(4)})
+                self._sensor_data_buffer[key] = buf
+                # reset validity buf
+                k: str
+                for k in self._sensor_data_valid_buffer[key]:
+                    self._sensor_data_valid_buffer[key][k] = False
+            func(self, *args, **kwargs, buf=buf)
+            self._sensor_data_valid_buffer[key][args[0]] = True
+            if self._data_buffer_valid("star_tracker_1"):
+                print("POP!")
+                self._sensor_data["star_tracker_1"] = self._sensor_data_buffer.pop("star_tracker_1")
+        return wrapper
+    return decorator
 
 
 class ADCSManager(Service):
@@ -48,7 +72,7 @@ class ADCSManager(Service):
         self.filter_initialized = False
 
         # Controller gains
-        
+
         self.use_variable_gain = config["use_variable_gain"]
         max_input = 0.001 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error = 1
@@ -60,7 +84,7 @@ class ADCSManager(Service):
             LQR_max_error = .05
             LQR_max_rate = 0.2
             self.K_RW_fine = get_gain_matrix(self.sat_inertia, self.updateTime, LQR_max_error, LQR_max_rate, max_input) # define a fine pointing controller with aggressive error gains
-        
+
         max_input_mag = 3 # QUALITATIVE value for max torque used by LQR tuning ONLY
         LQR_max_error_mag = 0.5
         LQR_max_rate_mag = 0.0003
@@ -96,6 +120,12 @@ class ADCSManager(Service):
                     "orientation_attitude_real"
                 )
             },
+            "adcs": {
+                "cb": self._on_imu_data,
+                "idx": (
+                    "gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"
+                )
+            },
             "gps": {
                 "cb": self._on_gps_data,
                 "idx": (
@@ -103,23 +133,17 @@ class ADCSManager(Service):
                     "skytraq_ecef_vx", "skytraq_ecef_vy", "skytraq_ecef_vz"
                 )
             },
-            "adcs": {
-                "cb": self._on_imu_data,
-                "idx": (
-                    "gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"
-                )
-            }
         }
-        self.last_sensor_time: dict[str, int] = { "star_tracker": -1, "imu": -1, "gps": -1 }
+        self.last_sensor_time: dict[str, int] = { "star_tracker_1": -1, "adcs": -1, "gps": -1 }
         self._sensor_data: dict[str, TimestampedData] = {
-            "star_tracker": {
+            "star_tracker_1": {
                 "timestamp": -1,
                 "data": {
                     "attitude_known": False,
                     "orientation": []
                 }
             },
-            "imu": {
+            "adcs": {
                 "timestamp": -1,
                 "data": [] # pitch, roll, yaw
             },
@@ -129,7 +153,7 @@ class ADCSManager(Service):
                     "position": [],
                     "velocity": []
                 }
-            }
+            },
         }
         self._sensor_data_buffer: dict[str, TimestampedData] = {}
         self._sensor_data_valid_buffer: dict[str, dict[str, bool]] = {}
@@ -143,7 +167,7 @@ class ADCSManager(Service):
                 self._sensor_data_valid_buffer[k][subindex] = False
                 self.node.add_sdo_callbacks(
                     k, subindex, None,
-                    lambda value, f=v["cb"], idx=subindex: f(idx, value)
+                    lambda value, f=v["cb"], idx=subindex: f(subindex=idx, value=value)
                 )
 
     @property
@@ -154,8 +178,8 @@ class ADCSManager(Service):
         return True
 
     def initialize_filter(self): # initializes/resets extended kalman filter
-        omega = self._sensor_data["imu"]["data"]
-        q = self._sensor_data["star_tracker"]["data"]["orientation"]
+        omega = self._sensor_data["adcs"]["data"]
+        q = self._sensor_data["star_tracker_1"]["data"]["orientation"]
         init_time = time()
         self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
 
@@ -173,12 +197,12 @@ class ADCSManager(Service):
         portion of the code, and just defines the target which is fed into the 
         control algorithms
         '''
-        
+
         if (self.control_mode in ("RW_POINTING", "THERMAL_REORIENT")) and not self.filter_initialized:
-            omega = self._sensor_data["imu"]["data"]
+            omega = self._sensor_data["adcs"]["data"]
             if not self.is_data_available:
                 return
-            if not self._sensor_data["star_tracker"]["data"]["attitude_known"]:
+            if not self._sensor_data["star_tracker_1"]["data"]["attitude_known"]:
                 d_omega = self.spin_omega_target-omega # desired delta omega
                 tau = self.satInertia @ d_omega/self.updateTime/5 # divide by five to smooth control inputs
                 wheel_torque = self.G_pinv @ tau
@@ -222,8 +246,8 @@ class ADCSManager(Service):
                 self.node.od["rw_3"]["motor_velocity"].value,
                 self.node.od["rw_4"]["motor_velocity"].value,
             ]) * 2 * np.pi
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker"])[0]
-            omega = np.array(self.get_sensor_data(["imu"])[0]["data"])
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker_1"])[0]
+            omega = np.array(self.get_sensor_data(["adcs"])[0]["data"])
             if star_tracker_output and star_tracker_output["data"]["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
                 q_star_tracker = star_tracker_output["data"]["orientation"]
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
@@ -273,7 +297,7 @@ class ADCSManager(Service):
             '''
 
         elif (self.control_mode == "DETUMBLE") or (self.control_mode == "THERMAL_DETUMBLE"): # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
-            omega = self._sensor_data["imu"]["data"]
+            omega = self._sensor_data["adcs"]["data"]
             B = self.get_magnetometer_data()
             desired_torque = self.detumble_gain/(np.linalg.norm(B)**2)*np.cross(omega, B) # detumble controller as defined by Markley & Crassidis
             # COMMAND MAGNETORQUERS
@@ -283,7 +307,7 @@ class ADCSManager(Service):
                 self.initialize_filter() # reset filter as it hasn't been used since reaction wheels last
 
         elif self.control_mode == "THERMAL_SPINUP": # spin up about satellite's z-axis using magnetorquer
-            omega = self._sensor_data["imu"]["data"]
+            omega = self._sensor_data["adcs"]["data"]
             B = self.get_magnetometer_data()
             if omega[2] < self.thermal_spin_rpm*2*np.pi/60: # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0,0,1] # spin about the z axis
@@ -291,9 +315,9 @@ class ADCSManager(Service):
                 # COMMAND MAGNETORQUERS
 
         elif self.control_mode == "MTB_POINTING":
-            omega = self._sensor_data["imu"]["data"]
+            omega = self._sensor_data["adcs"]["data"]
             B = self.get_magnetometer_data()
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker"])[0]
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker_1"])[0]
             if star_tracker_output and star_tracker_output["data"]["attitude_known"]:
                 q_star_tracker = star_tracker_output["data"]["orientation"] # unpack scalar last quaternion array from message
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
@@ -303,7 +327,7 @@ class ADCSManager(Service):
             q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated) # update filter with applicable data
             q_error = quat.quat_error(self.q_target, q) # get error quaternion, this function automatically sanitizes by performing normalization and hemisphere checks
             q_error = quat.hemi(q_error) # only apply hemisphere check once, after determining error quaternion to maintain associativity across hermisphere boundaries
-            
+
             tau_des = self.mag_LQR_controller(q_error, omega) # desired 3-axis torque in body frame
             bm = self.b_mat(B)
             k = 1e-8
@@ -358,32 +382,25 @@ class ADCSManager(Service):
         ])
 
     def _data_buffer_valid(self, index: str) -> bool:
-        # FIXME: ensure works for dict data and list data
-        v = self._sensor_data_buffer.values()
-        if v and v["timestamp"] >= 0:
-            for data in v:
-                if not data:
-                    return False
-        else:
-            return False
+        """
+        Check if the data buffer at an index contains valid data.
+        Parameters
+        ----------
+        index
+            The data buffer index.
 
-        return True
+        Returns
+        -------
+        bool
+            True if the buffer has valid data, else False.
 
-    def _on_star_tracker_data(self, subindex: str, value: Union[bool, float]):
-        # TODO: move duplicate logic to decorator
-        logger.debug("ADCS received star tracker data: {}={}", subindex, value)
-        buf: Optional[TimestampedData] = self._sensor_data_buffer.get("star_tracker", None)
-        if not buf:
-            buf = TimestampedData(timestamp=-1, data={ "attitude_known": None, "orientation": np.zeros(4) })
-            self._sensor_data_buffer["star_tracker"] = buf
-            # reset validity buf
-            k: str
-            for k in self._sensor_data_valid_buffer["star_tracker"]:
-                self._sensor_data_valid_buffer["star_tracker"][k] = False
-            
+        """
+        return all(b for b in self._sensor_data_valid_buffer[index].values())
+
+    @adcs_callback("star_tracker_1")
+    def _on_star_tracker_data(self, subindex: str, value: Union[bool, float], buf: TimestampedData) -> None:
         if subindex == "orientation_time_since_midnight":
             buf["timestamp"] = value
-            self._sensor_data_valid_buffer["star_tracker"][subindex] = True
         elif subindex == "orientation_attitude_known":
             buf["data"]["attitude_known"] = value
         elif subindex == "orientation_attitude_i":
@@ -397,11 +414,6 @@ class ADCSManager(Service):
         else:
             logger.error("ADCS received invalid star tracker PDO data subindex")
             return
-
-        self._sensor_data_valid_buffer["star_tracker"][subindex] = True
-
-        if _data_buffer_valid("star_tracker"):
-            self._sensor_data["star_tracker"] = self._sensor_data_buffer.pop("star_tracker")
 
     def _on_gps_data(self, subindex: str, value: float) -> Optional[Tuple[list, list]]:
         logger.debug(f"ADCS received GPS data {subindex}={value}")
@@ -432,12 +444,12 @@ class ADCSManager(Service):
         if subindex == "gyroscope_pitch_rate":
             dt = datetime.today()
             ms_since_midnight = (((((dt.hour * 60) + dt.minute) * 60) + dt.second) * 1000) + (dt.microsecond // 1000)
-            self._sensor_data_buffer["imu"] = TimestampedData(timestamp=ms_since_midnight, data=[value, 0, 0])
+            self._sensor_data_buffer["adcs"] = TimestampedData(timestamp=ms_since_midnight, data=[value, 0, 0])
         elif subindex == "gyroscope_yaw_rate":
-            self._sensor_data_buffer["imu"]["data"][1] = value
+            self._sensor_data_buffer["adcs"]["data"][1] = value
         elif subindex == "gyroscope_roll_rate":
-            self._sensor_data_buffer["imu"]["data"][2] = value
-            self._sensor_data["imu"] = self._sensor_data_buffer["imu"]
+            self._sensor_data_buffer["adcs"]["data"][2] = value
+            self._sensor_data["adcs"] = self._sensor_data_buffer["adcs"]
 
     def get_magnetometer_data(self) -> Any: # FIXME: type for NDArray of float32 when numpy.typing is available
         # TODO: check format of data: OD shows int16, unit: Gauss

@@ -33,7 +33,7 @@ class TestState(unittest.TestCase):
             111000111
         )
         self.assertEqual(
-            self.service._sensor_data_buffer["star_tracker_1"]["timestamp"],
+            self.service._sensor_data_buffer["star_tracker_1"].timestamp,
             111000111
         )
         self.assertTrue(

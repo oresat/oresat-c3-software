@@ -3,8 +3,8 @@ ADCS controller service
 """
 import functools
 from datetime import datetime, timezone
-from typing import Optional, Tuple, Any, TypedDict, Union
-from dataclass import dataclass
+from typing import Optional, Any, Union, Callable, Type, Tuple
+from dataclasses import dataclass, field
 
 from canopen.objectdictionary import ODRecord
 from olaf import Service, logger
@@ -21,26 +21,33 @@ from ..subsystems.adcs.discrete_state_space import get_gain_matrix
 from ..subsystems.adcs.kalman_filter import Multiplicative_Extended_Kalman_Filter
 from ..subsystems.adcs import guidance_functions as guid
 
+
+
+@dataclass
+class StarTrackerData:
+    attitude_known: bool = False
+    orientation: Any = field(default_factory=lambda: np.zeros(4)) # FIXME: numpy.typing annotation, when available
+
+@dataclass
+class GPSData:
+    position: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    velocity: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+
+@dataclass
+class IMUData:
+    gyro: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+
 @dataclass
 class TimestampedData:
     timestamp: int
-    data: Any
+    data: Union[StarTrackerData, GPSData, IMUData]
 
-    @classmethod
-    def from_key(cls, key: str) -> "TimestampedData":
-        data: Any = None
-        if key == "star_tracker_1":
-            data = { "attitude_known": None, "orientation": np.zeros(4) }
-        elif key == "adcs":
-            data = {
-                "position": [None] * 3,
-                "velocity": [None] * 3,
-            }
-        elif key == "gps":
-            data = [None] * 3
-        else:
-            logger.error("Invalid key '{}' for creating TimestampedData", key)
-        return cls(-1, data)
+@dataclass
+class CallbackDataMapping:
+    callback: Callable[[str, Union[bool, float], TimestampedData], None]
+    dataclass: Type[Union[StarTrackerData, GPSData, IMUData]]
+    od_indices: Tuple[str]
+
 
 def adcs_callback(key: str):
     def decorator(func):
@@ -49,7 +56,7 @@ def adcs_callback(key: str):
             logger.debug("ADCS received {} data: {}={}", key, *args)
             buf: Optional[TimestampedData] = self._sensor_data_buffer.get(key, None)
             if not buf:
-                buf = TimestampedData.from_key(key)
+                buf = TimestampedData(-1, self._data_mapping[key].dataclass())
                 self._sensor_data_buffer[key] = buf
                 # reset validity buf
                 k: str
@@ -58,6 +65,7 @@ def adcs_callback(key: str):
             func(self, *args, **kwargs, buf=buf)
             self._sensor_data_valid_buffer[key][args[0]] = True
             if self._data_buffer_valid(key):
+                logger.debug("Data buffer filled for {}", key)
                 self._sensor_data[key] = self._sensor_data_buffer.pop(key)
         return wrapper
     return decorator
@@ -125,28 +133,31 @@ class ADCSManager(Service):
         self.thermal_spin_rpm = 1.0 # thermal spin rate about the z-axis (body frame)
         self.omega_desired_prev = np.zeros(3) # for feed forward term
 
-        self._data_mapping = {
-            "star_tracker_1": {
-                "cb": self._on_star_tracker_data,
-                "idx": (
+        self._data_mapping: dict[str, CallbackDataMapping] = {
+            "star_tracker_1": CallbackDataMapping(
+                callback=self._on_star_tracker_data,
+                dataclass=StarTrackerData,
+                od_indices=(
                     "orientation_time_since_midnight", "orientation_attitude_known",
                     "orientation_attitude_i", "orientation_attitude_j", "orientation_attitude_k",
                     "orientation_attitude_real"
                 )
-            },
-            "adcs": {
-                "cb": self._on_imu_data,
-                "idx": (
+            ),
+            "adcs": CallbackDataMapping(
+                callback=self._on_imu_data,
+                dataclass=IMUData,
+                od_indices=(
                     "gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"
                 )
-            },
-            "gps": {
-                "cb": self._on_gps_data,
-                "idx": (
+            ),
+            "gps": CallbackDataMapping(
+                callback=self._on_gps_data,
+                dataclass=GPSData,
+                od_indices=(
                     "skytraq_ecef_x", "skytraq_ecef_y", "skytraq_ecef_z",
                     "skytraq_ecef_vx", "skytraq_ecef_vy", "skytraq_ecef_vz"
                 )
-            },
+            ),
         }
         self.last_sensor_time: dict[str, int] = {}
         self._sensor_data: dict[str, TimestampedData] = {}
@@ -156,15 +167,19 @@ class ADCSManager(Service):
     def on_start(self):
         # add SDO callbacks, which are also called for relevant PDOs
         # at the same time, initialize valid data tracking and sensor times
+        logger.debug("Initializing sensor data mappings...")
         for k, v in self._data_mapping.items():
             self._sensor_data_valid_buffer[k] = {}
             self.last_sensor_time[k] = -1
-            for subindex in v["idx"]:
+            for subindex in v.od_indices:
                 self._sensor_data_valid_buffer[k][subindex] = False
                 self.node.add_sdo_callbacks(
                     k, subindex, None,
-                    lambda value, f=v["cb"], idx=subindex: f(subindex=idx, value=value)
+                    lambda value, f=v.callback, idx=subindex: f(idx, value)
                 )
+            logger.debug("Mapping initialized for {}", k)
+        logger.debug("Sensor data mappings initialized")
+        logger.info("ADCSManager ready")
 
     @property
     def is_data_available(self) -> bool:
@@ -175,7 +190,7 @@ class ADCSManager(Service):
 
     def initialize_filter(self): # initializes/resets extended kalman filter
         omega = self._sensor_data["adcs"].data
-        q = self._sensor_data["star_tracker_1"].data["orientation"]
+        q = self._sensor_data["star_tracker_1"].data.orientation
         init_time = time()
         self.EKF.reset(q, omega, init_time) # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
 
@@ -198,7 +213,7 @@ class ADCSManager(Service):
             omega = self._sensor_data["adcs"].data
             if not self.is_data_available:
                 return
-            if not self._sensor_data["star_tracker_1"].data["attitude_known"]:
+            if not self._sensor_data["star_tracker_1"].data.attitude_known:
                 d_omega = self.spin_omega_target-omega # desired delta omega
                 tau = self.sat_inertia @ d_omega/self.updateTime/5 # divide by five to smooth control inputs
                 wheel_torque = self.G_pinv @ tau
@@ -213,7 +228,10 @@ class ADCSManager(Service):
             "MIN_DRAG", # Orient satellite with smallest face ram-pointing (+z)
         ):
 
-            r_ECEF, v_ECEF = self._sensor_data["gps"].data.values()
+
+            gps_data = self._sensor_data["gps"].data
+            r_ECEF = np.array(gps_data.position)
+            v_ECEF = np.array(gps_data.velocity)
             dt: datetime = datetime.now(timezone.utc) # get current ephemeris time from last GPS update
             t = self.skyfield_timescale.from_datetime(dt) # set ephemeris calculation time
             ECI_2_ECEF = self.skyfield_EOP.rotation_at(t) # inertial -> ECEF rotation matrix
@@ -243,9 +261,9 @@ class ADCSManager(Service):
                 self.node.od["rw_4"]["motor_velocity"].value,
             ]) * 2 * np.pi
             star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker_1"])[0]
-            omega = np.array(self.get_sensor_data(["adcs"])[0].data)
-            if star_tracker_output and star_tracker_output.data["attitude_known"]: # if attitude_known flag is 1 (true), data is valid
-                q_star_tracker = star_tracker_output.data["orientation"]
+            omega = np.array(self._sensor_data["adcs"].data.gyro)
+            if star_tracker_output and star_tracker_output.data.attitude_known:
+                q_star_tracker = star_tracker_output.data.orientation
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None
@@ -303,7 +321,7 @@ class ADCSManager(Service):
                 self.initialize_filter() # reset filter as it hasn't been used since reaction wheels last
 
         elif self.control_mode == "THERMAL_SPINUP": # spin up about satellite's z-axis using magnetorquer
-            omega = self._sensor_data["adcs"].data
+            omega = self._sensor_data["adcs"].data.gyro
             B = self.get_magnetometer_data()
             if omega[2] < self.thermal_spin_rpm*2*np.pi/60: # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0,0,1] # spin about the z axis
@@ -314,8 +332,8 @@ class ADCSManager(Service):
             omega = self._sensor_data["adcs"].data
             B = self.get_magnetometer_data()
             star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(["star_tracker_1"])[0]
-            if star_tracker_output and star_tracker_output.data["attitude_known"]:
-                q_star_tracker = star_tracker_output.data["orientation"] # unpack scalar last quaternion array from message
+            if star_tracker_output and star_tracker_output.data.attitude_known:
+                q_star_tracker = star_tracker_output.data.orientation
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker) # rotate star tracker output into body frame
             else:
                 q_st_rotated = None
@@ -398,49 +416,51 @@ class ADCSManager(Service):
         if subindex == "orientation_time_since_midnight":
             buf.timestamp = value
         elif subindex == "orientation_attitude_known":
-            buf.data["attitude_known"] = value
+            buf.data.attitude_known = value
         elif subindex == "orientation_attitude_i":
-            buf.data["orientation"][0] = value
+            buf.data.orientation[0] = value
         elif subindex == "orientation_attitude_j":
-            buf.data["orientation"][1] = value
+            buf.data.orientation[1] = value
         elif subindex == "orientation_attitude_k":
-            buf.data["orientation"][2] = value
+            buf.data.orientation[2] = value
         elif subindex == "orientation_attitude_real":
-            buf.data["orientation"][3] = value
+            buf.data.orientation[3] = value
         else:
-            logger.error("ADCS received invalid star tracker PDO data subindex")
+            logger.error("Received invalid star tracker subindex")
 
     @adcs_callback("gps")
     def _on_gps_data(self, subindex: str, value: float, buf: TimestampedData) -> None:
         if subindex == "skytraq_time_since_midnight":
             buf.timestamp = value
         elif subindex == "skytraq_ecef_x":
-            buf.data["position"][0] = value
+            buf.data.position[0] = value
         elif subindex == "skytraq_ecef_y":
-            buf.data["position"][1] = value
+            buf.data.position[1] = value
         elif subindex == "skytraq_ecef_z":
-            buf.data["position"][2] = value
+            buf.data.position[2] = value
         elif subindex == "skytraq_ecef_vx":
-            buf.data["velocity"][0] = value
+            buf.data.velocity[0] = value
         elif subindex == "skytraq_ecef_vy":
-            buf.data["velocity"][1] = value
+            buf.data.velocity[1] = value
         elif subindex == "skytraq_ecef_vz":
-            buf.data["velocity"][2] = value
+            buf.data.velocity[2] = value
         else:
-            logger.error("Received invalid star tracker PDO data subindex")
+            logger.error("Received invalid GPS subindex")
 
     @adcs_callback("adcs")
-    def _on_imu_data(self, subindex: str, value: Any, buf: TimestampedData) -> None:
+    def _on_imu_data(self, subindex: str, value: float, buf: TimestampedData) -> None:
         # FIXME: the timestamp should be sent from the IMU
         if subindex == "gyroscope_pitch_rate":
             dt = datetime.today()
             ms_since_midnight = (((((dt.hour * 60) + dt.minute) * 60) + dt.second) * 1000) + (dt.microsecond // 1000)
             buf.timestamp = ms_since_midnight
-            buf.data[0] = value
+            buf.data.gyro[0] = value
         elif subindex == "gyroscope_yaw_rate":
-            buf.data[1] = value
+            buf.data.gyro[1] = value
         elif subindex == "gyroscope_roll_rate":
-            buf.data[2] = value
+            buf.data.gyro[2] = value
+        else:
+            logger.error("Received invalid IMU subindex")
 
     def get_magnetometer_data(self) -> Any: # FIXME: type for NDArray of float32 when numpy.typing is available
         # TODO: check format of data: OD shows int16, unit: Gauss

@@ -1,7 +1,7 @@
 import numpy as np
 from .quaternion import quat_mult, axis_angle_to_quaternion, quat_conjugate, hemi
 
-class Multiplicative_Extended_Kalman_Filter():
+class MEKF:
     def __init__(self, P_star_tracker_0, sigma_star, P_b0, sigma_gyro, sigma_bias):
         # Computationally more efficient to define these once rather than create them multiple times each iteration
         self.I3 = np.eye(3) # 3x3 unit matrix

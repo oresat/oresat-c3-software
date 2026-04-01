@@ -272,7 +272,7 @@ class ADCSManager(Service):
                 self.initialize_filter()
 
         if self.guidance_mode in (
-            "TRACKING",  # track static target on Earth's surface
+            "TARGET",  # track static target on Earth's surface
             "NADIR",
             "MAX_DRAG",  # Orient satellite with largest face ram-pointing (+x)
             "MIN_DRAG",  # Orient satellite with smallest face ram-pointing (+z)

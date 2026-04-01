@@ -18,9 +18,9 @@ from olaf import (
     set_cpufreq_gov,
 )
 
-from oresat_c3.services.rw_test import ReactionWheelTest
 from . import C3State, __version__
 from .protocols.cachestore import CacheStore
+from .services.adcs_manager import ADCSManager
 from .services.beacon import BeaconService
 from .services.channel_router import ChannelRouterService
 from .services.cop_manager import CopManagerService
@@ -29,6 +29,7 @@ from .services.node_flasher import NodeFlasherService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
+from .subsystems.adcs.config import build_config
 from .subsystems.rtc import set_system_time_to_rtc_time
 
 
@@ -152,9 +153,8 @@ def main():
     adcs_config = build_config()
     adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
     edl_service = EdlService(app.node, radios_service, node_mgr_service, beacon_service)
-    rw_test = ReactionWheelTest(mock_hw)
-    # adcs_config = build_config()
-    # adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
+    adcs_config = build_config(str(config.mission))
+    adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
 
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)
@@ -163,8 +163,7 @@ def main():
     app.add_service(channel_router_service)
     app.add_service(edl_service)
     app.add_service(node_mgr_service)
-    app.add_service(rw_test)
-    # app.add_service(adcs_mgr_service)
+    app.add_service(adcs_mgr_service)
 
     for file_name in os.listdir(f"{path}/templates"):
         rest_api.add_template(f"{path}/templates/{file_name}")

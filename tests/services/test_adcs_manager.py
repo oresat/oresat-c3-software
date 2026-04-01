@@ -1,5 +1,6 @@
 import unittest
 
+from canopen.objectdictionary import ODRecord
 from olaf import CanNetwork, MasterNode
 from oresat_configs import Mission, OreSatConfig
 
@@ -40,3 +41,19 @@ class TestState(unittest.TestCase):
             self.service._sensor_data_valid_buffer["star_tracker_1"]["orientation_time_since_midnight"],
             True
         )
+
+    def test_magnetometer_data(self):
+        import numpy as np
+        adcs_record: ODRecord = self.node.od["adcs"]
+        values = np.array([1, 2, 3])
+        # write known inputs to OD
+        for direction in ("pos", "min"):
+            for num in range(1, 3):
+                i: int = 0
+                for dim in ("x", "y", "z"):
+                    adcs_record[f"{direction}_z_magnetometer_{num}_{dim}"].value = values[i]
+                    i = (i + 1) % 3
+        self.node.od["adcs"].value = adcs_record
+        b = self.service.get_magnetometer_data()
+        compare = values * 1e-7 # conver to Tesla
+        self.assertTrue((b == compare).all())

@@ -588,13 +588,17 @@ class ADCSManager(Service):
         avg *= 1e-7  # convert milligauss -> Tesla
         return avg
 
-    def get_sensor_data(self, sensor: str) -> Optional[TimestampedData]:
-        """Get data from list of sensor names
+    def get_sensor_data(
+        self, sensor: str, default: Optional[TimestampedData] = None
+    ) -> Optional[TimestampedData]:
+        """Get new sensor data, if it is available.
 
         Parameters
         ----------
         sensor : str
             the sensor name
+        default : Optional[Timestamp]
+            The default return value if no new data is available.
 
         Returns
         -------
@@ -607,4 +611,4 @@ class ADCSManager(Service):
             self.last_sensor_time[sensor] = data.timestamp
             return data
         else:
-            return None
+            return default

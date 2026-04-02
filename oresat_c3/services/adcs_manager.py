@@ -242,18 +242,15 @@ class ADCSManager(Service):
         return True
 
     def initialize_filter(self) -> None:
-        """Initializes or reset the extended kalman filter"""
+        """Initialize or reset the extended kalman filter"""
         omega = self._sensor_data["adcs"].data
         q = self._sensor_data["star_tracker_1"].data.orientation
         init_time = time()
-        self.EKF.reset(
-            q, omega, init_time
-        )  # reset filter states for next maneuver CHECK IF STAR TRACKER WAS AVAILABLE
+        # reset filter states for next maneuver TODO: CHECK IF STAR TRACKER WAS AVAILABLE
+        self.EKF.reset(q, omega, init_time)
 
     def update_ECEF_target(self, target_lat, target_lon, target_height) -> None:
-        self.ECEF_target = guid.GPS_to_ECEF(
-            target_lat, target_lon, target_height
-        )  # convert GPS coordinates to ECEF coordinates
+        self.ECEF_target = guid.GPS_to_ECEF(target_lat, target_lon, target_height)
 
     def on_loop(self) -> None:
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT") and not self.filter_initialized:
@@ -262,9 +259,8 @@ class ADCSManager(Service):
                 return
             if not self._sensor_data["star_tracker_1"].data.attitude_known:
                 d_omega = self.spin_omega_target - omega  # desired delta omega
-                tau = (
-                    self.sat_inertia @ d_omega / self.update_time / 5
-                )  # divide by five to smooth control inputs
+                # calculate tau, divide by five to smooth control inputs
+                tau = self.sat_inertia @ d_omega / self.update_time / 5
                 wheel_torque = self.G_pinv @ tau
                 # TODO: COMMAND REACTION WHEELS HERE
                 logger.debug("Command reaction wheels: {}", wheel_torque)
@@ -328,9 +324,7 @@ class ADCSManager(Service):
                 * 2
                 * np.pi
             )
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(
-                ["star_tracker_1"]
-            )[0]
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
             omega = np.array(self._sensor_data["adcs"].data.gyro)
             if star_tracker_output and star_tracker_output.data.attitude_known:
                 q_star_tracker = star_tracker_output.data.orientation
@@ -423,9 +417,7 @@ class ADCSManager(Service):
         elif self.control_mode == "MTB_POINTING":
             omega = self._sensor_data["adcs"].data
             b = self.get_magnetometer_data()
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data(
-                ["star_tracker_1"]
-            )[0]
+            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
             if star_tracker_output and star_tracker_output.data.attitude_known:
                 q_star_tracker = star_tracker_output.data.orientation
                 # rotate star tracker output into body frame
@@ -464,7 +456,9 @@ class ADCSManager(Service):
         else:
             logger.error("Unknown pointing reference {}", self.pointing_reference)
 
-    def rw_controller(self, q_error: np.ndarray, omega: np.ndarray, current_time: float):
+    def rw_controller(
+        self, q_error: np.ndarray, omega: np.ndarray, current_time: float
+    ) -> np.ndarray:
         x = np.concatenate((q_error[:3], omega))
 
         if self.use_variable_gain and quat.error_angle(q_error) < 1:
@@ -594,28 +588,23 @@ class ADCSManager(Service):
         avg *= 1e-7  # convert milligauss -> Tesla
         return avg
 
-    def get_sensor_data(self, sensor_list) -> list[Optional[TimestampedData]]:
+    def get_sensor_data(self, sensor: str) -> Optional[TimestampedData]:
         """Get data from list of sensor names
 
         Parameters
         ----------
-        sensor_list : list
-            a list of sensor names
+        sensor : str
+            the sensor name
 
         Returns
         -------
-        list[Optional[TimestampedData]]
-            A list of sensor data, in the same order as sensor_list, or
-            None if no new data is available.
+        Optional[TimestampedData]
+            The sensor data, or None if no new data is available.
         """
 
-        return_list = []
-        for sensor in sensor_list:
-            data = self._sensor_data[sensor]
-            if data.timestamp == self.last_sensor_time[sensor]:
-                return_list.append(None)
-            else:
-                self.last_sensor_time[sensor] = data.timestamp
-                return_list.append(self._sensor_data[sensor])
-
-        return return_list
+        data = self._sensor_data[sensor]
+        if data and data.timestamp != self.last_sensor_time[sensor]:
+            self.last_sensor_time[sensor] = data.timestamp
+            return data
+        else:
+            return None

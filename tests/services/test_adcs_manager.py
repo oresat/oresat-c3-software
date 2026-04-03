@@ -53,10 +53,7 @@ class TestState(unittest.TestCase):
         self.assertTrue(self.service._sensor_data["star_tracker_1"].data.attitude_known)
 
     def test_gps_data(self):
-        self.service._on_gps_data(
-            "skytraq_time_since_midnight",
-            111000111
-        )
+        self.service._on_gps_data("skytraq_time_since_midnight", 111000111)
         self.assertEqual(self.service._sensor_data_buffer["gps"].timestamp, 111000111)
         self.assertTrue(
             self.service._sensor_data_valid_buffer["gps"]["skytraq_time_since_midnight"],
@@ -129,4 +126,3 @@ class TestState(unittest.TestCase):
         self.test_gps_data()
         self.test_imu_data()
         self.assertTrue(self.service.is_data_available)
-

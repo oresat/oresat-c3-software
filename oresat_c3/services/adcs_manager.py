@@ -250,7 +250,7 @@ class ADCSManager(Service):
         self.EKF.reset(q, omega, init_time)
 
     def update_ecef_target(
-            self, target_lat: float, target_lon: float, target_height: float
+        self, target_lat: float, target_lon: float, target_height: float
     ) -> None:
         self.ECEF_target = guid.gps_to_ecef(target_lat, target_lon, target_height)
 

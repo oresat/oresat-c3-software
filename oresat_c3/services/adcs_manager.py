@@ -9,7 +9,7 @@ and magnetorquers.
 import functools
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from time import time
+from time import time, sleep
 from typing import Callable, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -40,7 +40,7 @@ class GPSData:
 
 @dataclass
 class IMUData:
-    gyro: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
+    gyro: np.ndarray = field(default_factory=lambda: np.zeros(3))
 
 
 @dataclass
@@ -236,14 +236,15 @@ class ADCSManager(Service):
         bool
             True if data is available, False otherwise
         """
-        for v in self._sensor_data.values():
-            if v.timestamp < 0:
+        for t in self.last_sensor_time.values():
+            if t < 0:
                 return False
         return True
 
     def initialize_filter(self) -> None:
         """Initialize or reset the extended kalman filter"""
-        omega = self._sensor_data["adcs"].data
+        logger.debug("Resetting extended kalman filter")
+        omega = self._sensor_data["adcs"].data.gyro
         q = self._sensor_data["star_tracker_1"].data.orientation
         init_time = time()
         # reset filter states for next maneuver TODO: CHECK IF STAR TRACKER WAS AVAILABLE
@@ -254,9 +255,10 @@ class ADCSManager(Service):
 
     def on_loop(self) -> None:
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT") and not self.filter_initialized:
-            omega = self._sensor_data["adcs"].data
             if not self.is_data_available:
+                sleep(5)
                 return
+            omega = self._sensor_data["adcs"].data.gyro
             if not self._sensor_data["star_tracker_1"].data.attitude_known:
                 d_omega = self.spin_omega_target - omega  # desired delta omega
                 # calculate tau, divide by five to smooth control inputs
@@ -281,8 +283,8 @@ class ADCSManager(Service):
             """
 
             gps_data = self._sensor_data["gps"].data
-            r_ecef = np.array(gps_data.position)
-            v_ecef = np.array(gps_data.velocity)
+            r_ecef = np.asarray(gps_data.position)
+            v_ecef = np.asarray(gps_data.velocity)
             dt: datetime = datetime.now(timezone.utc) # TODO can use skyfield timelib.now
             t = self.skyfield_timescale.from_datetime(dt)  # set ephemeris calculation time
             eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
@@ -325,7 +327,7 @@ class ADCSManager(Service):
                 * np.pi
             )
             star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
-            omega = np.array(self._sensor_data["adcs"].data.gyro)
+            omega = self._sensor_data["adcs"].data.gyro
             if star_tracker_output and star_tracker_output.data.attitude_known:
                 q_star_tracker = star_tracker_output.data.orientation
                 # rotate star tracker output into body frame
@@ -390,7 +392,7 @@ class ADCSManager(Service):
 
         elif self.control_mode == "DETUMBLE" or self.control_mode == "THERMAL_DETUMBLE":
             # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
-            omega = self._sensor_data["adcs"].data
+            omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
             # detumble controller as defined by Markley & Crassidis
             desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
@@ -415,7 +417,7 @@ class ADCSManager(Service):
                 logger.debug("Command Magnetorquers: {}", desired_torque)
 
         elif self.control_mode == "MTB_POINTING":
-            omega = self._sensor_data["adcs"].data
+            omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
             star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
             if star_tracker_output and star_tracker_output.data.attitude_known:

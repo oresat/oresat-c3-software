@@ -122,7 +122,10 @@ class TestState(unittest.TestCase):
     def test_is_data_available(self):
         self.service._sensor_data.clear()
         self.service._sensor_data_buffer.clear()
+        self.assertFalse(self.service.is_data_available)
         self.test_star_tracker_data()
+        self.assertFalse(self.service.is_data_available)
         self.test_gps_data()
+        self.assertFalse(self.service.is_data_available)
         self.test_imu_data()
         self.assertTrue(self.service.is_data_available)

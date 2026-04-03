@@ -21,10 +21,14 @@ dependencies = [
     "bitstring",
     "cfdp-py==0.1.2",
     "dataclasses-json",
+    "numpy>=1.19.5",
     "oresat-configs==0.8.*",
     "oresat-olaf>=3.6.5",
+    "scipy>=1.6.0",
+    "skyfield>=1.54",
     "smbus2",
     "spacepackets",
+    "typing-extensions>=4.15.0"
 ]
 dynamic = ["version"]
 

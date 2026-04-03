@@ -9,7 +9,7 @@ and magnetorquers.
 import functools
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from time import time, sleep
+from time import sleep, time
 from typing import Callable, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
@@ -244,7 +244,7 @@ class ADCSManager(Service):
         omega = self._sensor_data["adcs"].data.gyro
         q = self._sensor_data["star_tracker_1"].data.orientation
         init_time = time()
-        # reset filter states for next maneuver TODO: CHECK IF STAR TRACKER WAS AVAILABLE
+        # reset filter states for next maneuver
         self.EKF.reset(q, omega, init_time)
 
     def update_ECEF_target(self, target_lat, target_lon, target_height) -> None:
@@ -282,8 +282,7 @@ class ADCSManager(Service):
             gps_data = self._sensor_data["gps"].data
             r_ecef = np.asarray(gps_data.position)
             v_ecef = np.asarray(gps_data.velocity)
-            dt: datetime = datetime.now(timezone.utc) # TODO can use skyfield timelib.now
-            t = self.skyfield_timescale.from_datetime(dt)  # set ephemeris calculation time
+            t = self.skyfield_timescale.now()  # set ephemeris calculation time
             eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
             # used to get correct facing for star tracker
             # Nadir vector is opposite of vector from earth.

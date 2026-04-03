@@ -236,10 +236,7 @@ class ADCSManager(Service):
         bool
             True if data is available, False otherwise
         """
-        for t in self.last_sensor_time.values():
-            if t < 0:
-                return False
-        return True
+        return all(self.last_sensor_time.values())
 
     def initialize_filter(self) -> None:
         """Initialize or reset the extended kalman filter"""

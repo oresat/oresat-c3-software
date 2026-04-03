@@ -167,7 +167,9 @@ class ADCSManager(Service):
 
         self.skyfield_timescale = load.timescale()
         # Earth Orientation Parameters
-        # UPDATE THIS TO POINT TO ACTUAL FILE || IMPORTANT TO UPDATE, SENSITIVE TO ERRORS OVER TIME
+        # TODO: UPDATE THIS TO POINT TO ACTUAL FILE
+        #  IMPORTANT TO UPDATE, SENSITIVE TO ERRORS OVER TIME
+        # Note: ITRS is also used in guidance_functions
         self.skyfield_EOP = itrs
 
         self.max_torque: float = 0.001  # maximum torque output of reaction wheel [Nm]

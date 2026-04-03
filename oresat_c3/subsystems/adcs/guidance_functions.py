@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 from olaf import logger
-from skyfield.framelib import itrs  # FIXME: this may need updated with ITRS in the service
+from skyfield.framelib import itrs
 
 from . import quaternion as quat
 
@@ -40,7 +40,7 @@ class GroundStation:
 
 station_list = [
     # GroundStation("ESI", 39.608251, -104.895788, 1716),
-    GroundStation("KSAT_Svalbard", 78.231500, 15.411100, 488),  # TODO: ASK IF KSAT IS STILL VALID
+    GroundStation("KSAT_Svalbard", 78.231500, 15.411100, 488),
     GroundStation("Deadhorse, AK", 70.201, -148.46, 0),
     GroundStation("Tampere", 61.497, 23.761, 0),
     GroundStation("Kaspichan", 43.31, 27.15, 0),
@@ -257,7 +257,6 @@ def time_to_overpass(
     # time to skip after window with insufficient overpass time before searching again
     skip_after_window = 2000
 
-    # TODO: is this correct?
     # Is this supposed to be the time when the filter was init'd or the current time?
     time = fsw_obj.skyfield_timescale.utc(fsw_obj.time_zero)
 

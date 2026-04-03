@@ -95,7 +95,7 @@ class ADCSManager(Service):
         self.guidance_mode: str = config["guidance_mode"]
         self.pointing_reference: str = config["pointing_reference"]
         # used for tracking mode to set static ground target with GPS coordinates in ECEF
-        self.ECEF_target: np.ndarray = guid.GPS_to_ECEF(
+        self.ECEF_target: np.ndarray = guid.gps_to_ecef(
             config["target_lat"], config["target_lon"], config["target_height"]
         )
         self.update_time: float = config["update_time"]
@@ -250,7 +250,7 @@ class ADCSManager(Service):
         self.EKF.reset(q, omega, init_time)
 
     def update_ECEF_target(self, target_lat, target_lon, target_height) -> None:
-        self.ECEF_target = guid.GPS_to_ECEF(target_lat, target_lon, target_height)
+        self.ECEF_target = guid.gps_to_ecef(target_lat, target_lon, target_height)
 
     def on_loop(self) -> None:
         if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT") and not self.filter_initialized:
@@ -283,7 +283,7 @@ class ADCSManager(Service):
             gps_data = self._sensor_data["gps"].data
             r_ecef = np.array(gps_data.position)
             v_ecef = np.array(gps_data.velocity)
-            dt: datetime = datetime.now(timezone.utc)
+            dt: datetime = datetime.now(timezone.utc) # TODO can use skyfield timelib.now
             t = self.skyfield_timescale.from_datetime(dt)  # set ephemeris calculation time
             eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
             # used to get correct facing for star tracker

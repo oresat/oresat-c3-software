@@ -213,22 +213,21 @@ class ADCSManager(Service):
         self._sensor_data_buffer: dict[str, TimestampedData] = {}
         self._sensor_data_valid_buffer: dict[str, dict[str, bool]] = {}
         
-        
         # constants for each magnetorquer axis used to convert desired torques to current [uA]
         # To be used in the format: Amps = tau[k]/(K[k]*B*windings[k]*area[k])
         rod_windings = 1700
-        OD = 10.5e-3 # outer diameter of windings
-        ID = 6.35e-3 # inner diameter of windings
+        OD = 10.5e-3  # outer diameter of windings
+        ID = 6.35e-3  # inner diameter of windings
         rod_area = np.pi*((OD+ID)/2)**2
         rod_length = 71e-3 
         rod_radius = 6.35e-3/2 # fmt: skip # [m] radius of just the core, used to determine the magnetic permeability of permalloy rod
-        rod_mu = 100000 # relative permeability of the core material
+        rod_mu = 100000  # relative permeability of the core material
         S = (4*(np.log(rod_length/rod_radius)-1))/((rod_length/rod_radius)**2-4*np.log(rod_length/rod_radius)) # fmt: skip
-        K_rod = 1+(rod_mu-1)/(1+(rod_mu-1)*S)  # magnetic permeability
+        K_rod = 1 + (rod_mu - 1) / (1 + (rod_mu - 1) * S)  # magnetic permeability
         
         ring_windings = 505
-        ring_area = .088**2-(2*((.0845-.0604)/2)**2)
-        K_ring = 1 # air-core magnetorquer has magnetic permeability of 1
+        ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
+        K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
         
         self.mag_constants = np.array(
             1e-6

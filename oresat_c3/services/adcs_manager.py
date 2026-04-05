@@ -212,6 +212,27 @@ class ADCSManager(Service):
         self._sensor_data: dict[str, TimestampedData] = {}
         self._sensor_data_buffer: dict[str, TimestampedData] = {}
         self._sensor_data_valid_buffer: dict[str, dict[str, bool]] = {}
+        
+        
+        # constants for each magnetorquer axis used to convert desired torques to current [uA]
+        # To be used in the format: Amps = tau[k]/(K[k]*B*windings[k]*area[k])
+        rod_windings = 1700
+        OD = 10.5e-3 # outer diameter of windings
+        ID = 6.35e-3 # inner diameter of windings
+        rod_area = np.pi*((OD+ID)/2)**2
+        rod_length = 71e-3 
+        rod_radius = 6.35e-3/2 # [m] radius of just the core, used to determine the magnetic permeability of permalloy rod
+        rod_mu = 100000 # relative permeability of the core material
+        S = (4*(np.log(rod_length/rod_radius)-1))/((rod_length/rod_radius)**2-4*np.log(rod_length/rod_radius))
+        K_rod = 1+(rod_mu-1)/(1+(rod_mu-1)*S)  # magnetic permeability
+        
+        ring_windings = 505
+        ring_area = .088**2-(2*((.0845-.0604)/2)**2)
+        K_ring = 1 # air-core magnetorquer has magnetic permeability of 1
+        
+        self.mag_constants = np.array(1e-6*[1/(K_rod*rod_windings*rod_area),
+                                            1/(K_rod*rod_windings*rod_area),
+                                            1/(K_ring*ring_windings*ring_area)]) # constants for each magnetorquer axis used to convert desired torques to current [uA]
 
     def on_start(self) -> None:
         # add SDO callbacks, which are also called for relevant PDOs
@@ -396,8 +417,9 @@ class ADCSManager(Service):
             b = self.get_magnetometer_data()
             # detumble controller as defined by Markley & Crassidis
             desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
+            m_cmd = desired_torque * self.mag_constants / b # convert magnetorquer commands from torque to uA
             # TODO: COMMAND MAGNETORQUERS
-            logger.debug("Command Magnetorquers: {}", desired_torque)
+            logger.debug("Command Magnetorquers: {}", m_cmd)
 
             if self.control_mode == "THERMAL_DETUMBLE" and np.all(np.abs(omega) < 1e-4):
                 # If angular velocity within threshold, switch to reorient
@@ -413,8 +435,9 @@ class ADCSManager(Service):
                 # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0, 0, 1]  # spin about the z axis
                 desired_torque = np.cross(b, tau_des) / (b @ b)
+                m_cmd = desired_torque * self.mag_constants / b # convert magnetorquer commands from torque to uA
                 # TODO: COMMAND MAGNETORQUERS
-                logger.debug("Command Magnetorquers: {}", desired_torque)
+                logger.debug("Command Magnetorquers: {}", m_cmd)
 
         elif self.control_mode == "MTB_POINTING":
             omega = self._sensor_data["adcs"].data.gyro
@@ -438,6 +461,7 @@ class ADCSManager(Service):
             bm = self._b_mat(b)
             k = 1e-8
             m_cmd = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
+            m_cmd = m_cmd * self.mag_constants / b # convert magnetorquer commands from torque to uA
             # TODO: COMMAND MAGNETORQUERS
             logger.debug("Command Magnetorquers: {}", m_cmd)
 

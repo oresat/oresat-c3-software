@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import numpy as np
 from olaf import logger
 from skyfield.framelib import itrs
+from skyfield.timelib import Timescale
 
 from . import quaternion as quat
 
@@ -219,7 +220,7 @@ def R3(theta: float) -> np.ndarray:
 
 
 def time_to_overpass(
-    fsw_obj: object,
+    skyfield_timescale: Timescale,
     time_range_hours: int,
     max_distance: int,
     r_ecef: np.ndarray,
@@ -258,7 +259,7 @@ def time_to_overpass(
     skip_after_window = 2000
 
     # Is this supposed to be the time when the filter was init'd or the current time?
-    time = fsw_obj.skyfield_timescale.utc(fsw_obj.time_zero)
+    time = skyfield_timescale.now()
 
     # itrs.rotation_at(t) returns the rotation matrix that maps ICRF/ECI -> ITRS/ECEF.
     r_ecef_from_eci = itrs.rotation_at(time)
@@ -337,7 +338,7 @@ def time_to_overpass(
 
 
 def find_nearest_ground_station(
-    fsw_obj: object,
+    skyfield_timescale: Timescale,
     time_range_hours: int,
     max_distance: int,
     r_ecef: np.ndarray,
@@ -368,7 +369,7 @@ def find_nearest_ground_station(
     for station in station_list:
         logger.debug(f"Scanning {station.name}")
         start, end = time_to_overpass(
-            fsw_obj, time_range_hours, max_distance, r_ecef, v_ecef, station.ecef
+            skyfield_timescale, time_range_hours, max_distance, r_ecef, v_ecef, station.ecef
         )
         if start == -1 or start == -2:
             start = None  # deal with error messages

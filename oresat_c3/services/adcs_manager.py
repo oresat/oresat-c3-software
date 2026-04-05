@@ -229,9 +229,8 @@ class ADCSManager(Service):
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
         K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
 
-        self.mag_constants = np.array(
-            1e-6
-            * [
+        self.mag_constants = 1e-6 * np.array(
+             [
                 1 / (K_rod * rod_windings * rod_area),
                 1 / (K_rod * rod_windings * rod_area),
                 1 / (K_ring * ring_windings * ring_area),

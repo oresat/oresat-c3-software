@@ -181,7 +181,7 @@ def build_config(mission: str) -> ADCSConfig:
         "gyro_noise": sigma_gyro,
         "gyro_bias_drift": sigma_bias,
         "use_variable_gain": False,
-        "max_input": 0.001,
+        "lqr_max_input": 0.001,
         "lqr_max_error": 1,
         "lqr_max_rate": 0.09,
     }

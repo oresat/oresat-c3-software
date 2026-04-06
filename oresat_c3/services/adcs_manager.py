@@ -120,19 +120,23 @@ class ADCSManager(Service):
 
         # Controller gains
         self.use_variable_gain: bool = config["use_variable_gain"]
-        max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
-        lqr_max_error: float = 1
-        lqr_max_rate: float = 0.2
+        # max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
+        # lqr_max_error: float = 1
+        # lqr_max_rate: float = 0.09
+        lqr_max_input: float = config["lqr_max_input"] # fmt: skip # QUALITATIVE value for max torque used by LQR tuning ONLY
+        lqr_max_error: float = config["lqr_max_error"]
+        lqr_max_rate: float = config["lqr_max_rate"]
+
         self.K_RW: np.ndarray = get_gain_matrix(
-            self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, max_input
+            self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, lqr_max_input
         )
         if self.use_variable_gain:
             self.gain_mode: int = 0  # start with "low" gain
-            max_input = 0.01  # QUALITATIVE value for max torque used by LQR tuning ONLY
+            lqr_max_input = 0.01  # QUALITATIVE value for max torque used by LQR tuning ONLY
             lqr_max_error = 0.05
             lqr_max_rate = 0.2
             self.K_RW_fine: np.ndarray = get_gain_matrix(
-                self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, max_input
+                self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, lqr_max_input
             )  # define a fine pointing controller with aggressive error gains
 
         max_input_mag: float = 3  # QUALITATIVE value for max torque used by LQR tuning ONLY
@@ -476,7 +480,7 @@ class ADCSManager(Service):
         if self.pointing_reference == "ST":
             # define target in body coordinates
             self.q_target = quat.quat_mult(self.q_90_rot, target_quat)
-        elif self.pointing_reference == "SC":
+        elif self.pointing_reference == "HELICAL" or self.pointing_reference == "SC":
             # target does not require rotation
             self.q_target = target_quat
         elif self.pointing_reference == "CFC":

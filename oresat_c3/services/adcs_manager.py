@@ -120,7 +120,7 @@ class ADCSManager(Service):
 
         # Controller gains
         self.use_variable_gain: bool = config["use_variable_gain"]
-        # max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
+        # lqr_max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
         # lqr_max_error: float = 1
         # lqr_max_rate: float = 0.09
         lqr_max_input: float = config["lqr_max_input"] # fmt: skip # QUALITATIVE value for max torque used by LQR tuning ONLY
@@ -226,8 +226,8 @@ class ADCSManager(Service):
         rod_length = 71e-3
         rod_radius = 6.35e-3/2 # fmt: skip # [m] radius of just the core, used to determine the magnetic permeability of permalloy rod
         rod_mu = 100000  # relative permeability of the core material
-        S = (4*(np.log(rod_length/rod_radius)-1))/((rod_length/rod_radius)**2-4*np.log(rod_length/rod_radius)) # fmt: skip
-        K_rod = 1 + (rod_mu - 1) / (1 + (rod_mu - 1) * S)  # magnetic permeability
+        S_mag = (4*(np.log(rod_length/rod_radius)-1))/((rod_length/rod_radius)**2-4*np.log(rod_length/rod_radius)) # fmt: skip
+        K_rod = 1 + (rod_mu - 1) / (1 + (rod_mu - 1) * S_mag)  # magnetic permeability
 
         ring_windings = 505
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)

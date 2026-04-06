@@ -64,6 +64,12 @@ class ADCSConfig(TypedDict):
         :math:`\sigma_{bias}`, the gyro bias drift / random walk
     use_variable_gain: bool
         Enable/disable gain scheduling for fine pointing
+    lqr_max_input: float
+        Qualitative value representing the maximum control input during tuning
+    lqr_max_error: float
+        Qualitative value representing the maximum quaternion error during controller tuning
+    lqr_max_rate: float
+        Qualitative value representing the maximum body rates during controller tuning
     """
 
     g: np.ndarray
@@ -175,6 +181,9 @@ def build_config(mission: str) -> ADCSConfig:
         "gyro_noise": sigma_gyro,
         "gyro_bias_drift": sigma_bias,
         "use_variable_gain": False,
+        "max_input": 0.001,
+        "lqr_max_error": 1,
+        "lqr_max_rate": 0.09,
     }
     logger.debug("Generated ADCS config: {}", config)
     return config

@@ -84,6 +84,9 @@ class ADCSConfig(TypedDict):
     gyro_noise: float
     gyro_bias_drift: float
     use_variable_gain: bool
+    lqr_max_input: float
+    lqr_max_error: float
+    lqr_max_rate: float
 
 
 def build_config(mission: str) -> ADCSConfig:

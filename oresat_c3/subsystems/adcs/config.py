@@ -49,9 +49,9 @@ class ADCSConfig(TypedDict):
     target_height: float
         Initial target height, in meters
     orbital_period: float
-        The orbital period
+        The orbital period, in seconds
     orbital_inclination: float
-        The orbital inclination
+        The orbital inclination, in degrees
     star_tracker_uncertainty: float
         :math:`P_{ST0}` , the initial uncertainty of the star tracker attitude, in :math:`rad^2`
     star_tracker_noise: float

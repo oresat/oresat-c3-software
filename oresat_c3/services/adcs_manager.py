@@ -157,7 +157,7 @@ class ADCSManager(Service):
             4
             * np.pi
             / config["orbital_period"]
-            * (1 + np.sin(config["orbital_inclination"] * 2 * np.pi / 180))
+            * (1 + np.sin(config["orbital_inclination"] * np.pi / 180))
             * j_min
         )
 

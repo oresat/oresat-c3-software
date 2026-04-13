@@ -253,7 +253,7 @@ def time_to_overpass(
     maximum_window = 3600  # large value to ensure exit boundary of overpass window is found
     exit_check_increment = 5  # search for window exit in increments
     # lead time before entering window to engage control system. Allows satellite to reorient in time.
-    lead_time = 100
+    lead_time = 120
     min_window_time = 300  # minimum overpass time
     # time to skip after window with insufficient overpass time before searching again
     skip_after_window = 2000
@@ -319,7 +319,7 @@ def time_to_overpass(
                 break
 
         # if an acceptable window has been found, return value
-        if (window_exit - window_start) >= min_window_time:
+        if (window_exit - window_start + lead_time) >= min_window_time:
             # ensure controller can't see negative activation time
             # (would work anyway in current implementation, but this avoids future bugs)
             controller_start = max(0, window_start - lead_time)
@@ -335,6 +335,29 @@ def time_to_overpass(
         max_distance / 1e3,
     )
     return 0, None
+
+
+def is_better_overpass(start, end, next_overpass):
+    # Reject invalid start
+    if start == -1 or start == -2:
+        return False
+
+    # Accept if no current candidate exists
+    if next_overpass is None:
+        return True
+
+    # extract current overpass for comparison
+    current_start, current_end = next_overpass
+
+    # Prefer earlier start
+    if start < current_start:
+        return True
+
+    # Prefer longer duration if the windows opens at the same time
+    if (start == current_start) and ((end - start) > (current_end - current_start)):
+        return True
+
+    return False
 
 
 def find_nearest_ground_station(
@@ -371,9 +394,7 @@ def find_nearest_ground_station(
         start, end = time_to_overpass(
             skyfield_timescale, time_range_hours, max_distance, r_ecef, v_ecef, station.ecef
         )
-        if start == -1 or start == -2:
-            start = None  # deal with error messages
-        if (start is not None) and ((next_overpass is None) or (start < next_overpass[0])):
+        if is_better_overpass(start, end, next_overpass):
             chosen_station = station
             next_overpass = [start, end]
 

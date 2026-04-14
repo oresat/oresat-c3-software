@@ -1,5 +1,9 @@
 from enum import IntEnum, StrEnum
-from typing import Union, Tuple
+from typing import Tuple, Callable
+
+from spacepackets.uslp import TransferFrame, BypassSequenceControlFlag, ProtocolCommandFlag
+
+from oresat_c3.protocols.edl_packet import EdlVcid
 
 
 class ControlWord:
@@ -28,12 +32,12 @@ class Farm1(CopService):
             nw: int,
             allow_retransmission: bool = True,
     ) -> None:
-        self.state: Farm1.FarmState
-        self.lockout_flag: bool
-        self.wait_flag: bool
-        self.retransmit_flag: bool = False
+        self.state: Farm1.FarmState = Farm1.FarmState.OPEN
+        self.lockout: bool = False
+        self.wait: bool = False
+        self.retransmit: bool = False
         self.receiver_frame_sequence_number: int = 0
-        self.b_counter: int
+        self.b_counter: int = 0
         self.positive_window_width: int
         self.negative_window_width: int
         # implementation dependent vars
@@ -55,6 +59,8 @@ class Farm1(CopService):
                 self.positive_window_width = pw
             if not 1 <= pw <= 256:
                 raise ValueError("1 <= PW <= 256 must be true if retransmission is disallowed")
+            if not nw >= 0:
+                raise ValueError("")
 
     def positive_window(self) -> Tuple[int, int]:
         # start, end
@@ -70,7 +76,11 @@ class Farm1(CopService):
                 )
 
     def is_outside_window(self, sequence_num: int) -> bool:
-        return (self.receiver_frame_sequence_number + self.positive_window_width - 1) < sequence_num < (self.receiver_frame_sequence_number - self.negative_window_width)
+        return (
+            (self.receiver_frame_sequence_number + self.positive_window_width - 1)
+            < sequence_num
+            < (self.receiver_frame_sequence_number - self.negative_window_width)
+        )
 
     def inside_window(self, sequence_num: int):
         if sequence_num == self.receiver_frame_sequence_number:
@@ -81,7 +91,7 @@ class Farm1(CopService):
             # second case
             # in the window, seq num is incorrect
             # discard and set retransmit_flag
-            self.retransmit_flag = True
+            self.retransmit = True
         elif self.receiver_frame_sequence_number > sequence_num >= self.receiver_frame_sequence_number - self.negative_window_width:
             pass
             # third case
@@ -90,28 +100,42 @@ class Farm1(CopService):
         else:
             pass  # TODO: ERROR!
 
-    @property
-    def positive_window_width(self) -> int:
-        """The positive_window_width property."""
-        if self._retransmission_allowed:
-            return self.sliding_window_width / 2
-        return self._positive_window_width
+    def process_frame(self, frame: TransferFrame) -> None:
+        if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
+            if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
+                pass  # Type-BD, bypass COP
+            else:
+                # Type-BC, check commands
+                data = frame.tfdf.tfdz
+                directive = data[0]
+                if directive == 0x00:
+                    # E7 valid unlock
+                    self.b_counter += 1
+                    self.retransmit = False
+                    if self.state == Farm1.FarmState.WAIT:
+                        self.wait = False
+                    if self.state == Farm1.FarmState.LOCKOUT:
+                        self.wait = False
+                        self.lockout = False
+                    self.state = Farm1.FarmState.OPEN
+                elif directive == 0x82 and data[1] == 0:
+                    # E8 valid Set V(R)
+                    self.b_counter += 1
+                    if self.state == Farm1.FarmState.OPEN:
+                        self.retransmit = False
+                        self.receiver_frame_sequence_number = data[2]
+                    elif self.state == Farm1.FarmState.WAIT:
+                        self.retransmit = False
+                        self.wait = False
+                        self.receiver_frame_sequence_number = data[2]
+                        self.state = Farm1.FarmState.OPEN
+                else:
+                    print("FARM-1: invalid Type-BC directive. Discarding frame")
 
-    @positive_window_width.setter
-    def positive_window_width(self, value):
-        self._positive_window_width = value
 
 class VirtualChannel:
-    def __init__(self, vcid: EdlVcid, cop_service):
-        self.vcid: EdlVcid = vcid
-        self.cop_service = cop_service
+    CHANNELS: dict[EdlVcid, Tuple[CopService, Callable]] = {}
 
-class EdlPacketError(Exception):
-    """Error with EdlPacket"""
-
-
-class EdlVcid(IntEnum):
-    """USLP virtual channel IDs for EDL packets"""
-
-    C3_COMMAND = 0
-    FILE_TRANSFER = 1
+    @classmethod
+    def register(cls, vcid: EdlVcid, service: CopService, callback) -> None:
+        cls.CHANNELS[vcid] = (service, callback)

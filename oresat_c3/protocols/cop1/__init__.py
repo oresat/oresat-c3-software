@@ -9,12 +9,6 @@ from spacepackets.uslp import TransferFrame, BypassSequenceControlFlag, Protocol
 from oresat_c3.protocols.edl_packet import EdlVcid
 
 
-class ControlWord:
-    pass
-
-class CopSignal:
-    pass
-
 class CopService:
 
     def __init__(self) -> None:
@@ -83,29 +77,32 @@ class Farm1(CopService):
                 self.sliding_window_width = w
             self.positive_window_width = self.negative_window_width = self.sliding_window_width / 2
         else:
-            if 1 <= w <= 256:
+            if not 1 <= w <= 256:
                 raise ValueError("1 <= W <= 256 must be true if retransmission is disallowed")
-            else:
-                self.sliding_window_width = w
             if not pw <= w:
                 raise ValueError("PW <= W must be true if retransmission is disallowed")
-            else:
-                self.positive_window_width = pw
             if not 1 <= pw <= 256:
                 raise ValueError("1 <= PW <= 256 must be true if retransmission is disallowed")
             if not nw >= 0:
                 raise ValueError("Negative window must be positive")
+
+            self.sliding_window_width = w
+            self.positive_window_width = pw
+            self.negative_window_width = nw
+
         self._thread.start()
 
     def worker(self) -> None:
-        try:
-            notif = self._signals.get_nowait()
-        except Empty:
-            return
-        if isinstance(notif, Farm1.ValidFrameArrivedIndication):
-            pass  # frame is available in receive queue
-        else:
-            raise TypeError("Unknown Farm1 signal indication type")
+        while True:
+            try:
+                notif = self._signals.get_nowait()
+            except Empty:
+                return
+            if isinstance(notif, Farm1.ValidFrameArrivedIndication):
+                frame = self._recv_buffer.get()
+                self._process_frame(frame)
+            else:
+                raise TypeError("Unknown Farm1 signal indication type")
 
     def positive_window(self) -> Tuple[int, int]:
         # start, end
@@ -145,7 +142,7 @@ class Farm1(CopService):
         else:
             pass  # TODO: ERROR!
 
-    def process_frame(self, frame: TransferFrame) -> None:
+    def _process_frame(self, frame: TransferFrame) -> None:
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
                 pass  # Type-BD, bypass COP
@@ -155,7 +152,7 @@ class Farm1(CopService):
                 directive = data[0]
                 if directive == 0x00:
                     # E7 valid unlock
-                    self.b_counter += 1
+                    self.b_counter = self.b_counter + 1 % 4
                     self.retransmit = False
                     if self.state == Farm1.FarmState.WAIT:
                         self.wait = False
@@ -165,7 +162,7 @@ class Farm1(CopService):
                     self.state = Farm1.FarmState.OPEN
                 elif directive == 0x82 and data[1] == 0:
                     # E8 valid Set V(R)
-                    self.b_counter += 1
+                    self.b_counter = self.b_counter + 1 % 4
                     if self.state == Farm1.FarmState.OPEN:
                         self.retransmit = False
                         self.receiver_frame_sequence_number = data[2]

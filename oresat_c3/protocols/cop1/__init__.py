@@ -1,4 +1,7 @@
+import threading
+from dataclasses import dataclass
 from enum import IntEnum, StrEnum
+from queue import SimpleQueue, Empty
 from typing import Tuple, Callable
 
 from spacepackets.uslp import TransferFrame, BypassSequenceControlFlag, ProtocolCommandFlag
@@ -9,8 +12,28 @@ from oresat_c3.protocols.edl_packet import EdlVcid
 class ControlWord:
     pass
 
-class CopService:
+class CopSignal:
     pass
+
+class CopService:
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread = threading.Thread(target=self.worker)
+        self._signals: SimpleQueue[object] = SimpleQueue()
+        # from lower procedures
+        self._recv_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+        # to higher procedures
+        self._out_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+
+    def notify(self, what: object) -> None:
+        self._signals.put(what)
+
+    def buffer_put(self, frame: TransferFrame) -> None:
+        self._recv_buffer.put(frame)
+
+    def worker(self) -> None:
+        raise NotImplemented
+
 
 class Farm1(CopService):
     class FarmState(StrEnum):
@@ -25,13 +48,24 @@ class Farm1(CopService):
         REPORT = 2
         IGNORE = 3
 
-    def __init__(
-            self,
-            w: int,
-            pw: int,
-            nw: int,
-            allow_retransmission: bool = True,
-    ) -> None:
+    @dataclass
+    class FduArrivedIndication:
+        gvcid: int
+
+    @dataclass
+    class ValidFrameArrivedIndication:
+        """Indicate from a lower procedure that a valid Transfer Frame has been placed in the
+        buffer.
+
+        Parameters
+        ----------
+        gvcid: int
+            The Global Virtual Channel Identifier for the frame
+        """
+        gvcid: int
+
+    def __init__(self, w: int, pw: int, nw: int, allow_retransmission: bool = True) -> None:
+        super().__init__()
         self.state: Farm1.FarmState = Farm1.FarmState.OPEN
         self.lockout: bool = False
         self.wait: bool = False
@@ -60,7 +94,18 @@ class Farm1(CopService):
             if not 1 <= pw <= 256:
                 raise ValueError("1 <= PW <= 256 must be true if retransmission is disallowed")
             if not nw >= 0:
-                raise ValueError("")
+                raise ValueError("Negative window must be positive")
+        self._thread.start()
+
+    def worker(self) -> None:
+        try:
+            notif = self._signals.get_nowait()
+        except Empty:
+            return
+        if isinstance(notif, Farm1.ValidFrameArrivedIndication):
+            pass  # frame is available in receive queue
+        else:
+            raise TypeError("Unknown Farm1 signal indication type")
 
     def positive_window(self) -> Tuple[int, int]:
         # start, end

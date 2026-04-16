@@ -91,6 +91,9 @@ class EdlService(Service):
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+        self._vc = dict[EdlVcid, CopService] = {}
+        self._vc[EdlVcid.C3_COMMAND] = Farm1(w=256, pw=256, nw=0, allow_retransmission=False)
+        self._vc[EdlVcid.FILE_TRANSFER] = None
 
     @property
     def _hmac_key(self) -> bytes:
@@ -123,6 +126,13 @@ class EdlService(Service):
             message = self._radios_service.recv_queue.get_nowait()
         except Empty:
             return None
+
+        frame = EdlPacket._unpack_frame(message)
+        srv = self._vc[frame.header.vcid]
+        if srv:
+            srv.buffer_put(frame)
+            gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+            srv.notify(Farm1.ValidFrameArrivedIndication(gvcid))
 
         try:
             packet = EdlPacket.unpack(message, self._hmac_key, not self._flight_mode)

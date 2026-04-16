@@ -164,6 +164,17 @@ class EdlPacket:
         return packet
 
     @classmethod
+    def _unpack_frame(cls, raw: bytes) -> TransferFrame:
+        try:
+            frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
+            return frame
+        except UslpInvalidRawPacketOrFrameLen as e:
+            raise EdlPacketError("USLP invalid packet or frame length") from e
+
+
+
+
+    @classmethod
     def unpack(cls, raw: bytes, hmac_key: bytes, ignore_hmac: bool = False):
         """
         Unpack the EDL packet.
@@ -186,10 +197,7 @@ class EdlPacket:
         if crc16_raw_calc != crc16_raw:
             raise EdlPacketError(f"invalid FECF: {crc16_raw.hex()} vs {crc16_raw_calc.hex()}")
 
-        try:
-            frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
-        except UslpInvalidRawPacketOrFrameLen as e:
-            raise EdlPacketError("USLP invalid packet or frame length") from e
+        frame = cls._unpack_frame(raw)
 
         payload_raw = frame.tfdf.tfdz[: -cls.HMAC_LEN]
         hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN :]

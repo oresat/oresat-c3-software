@@ -7,6 +7,7 @@ from typing import Tuple, Callable
 from spacepackets.uslp import TransferFrame, BypassSequenceControlFlag, ProtocolCommandFlag
 
 from oresat_c3.protocols.edl_packet import EdlVcid
+from oresat_c3.protocols.uslp import Gvcid
 
 
 class CopService:
@@ -18,6 +19,7 @@ class CopService:
         self._recv_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
         # to higher procedures
         self._out_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+        self._callbacks: list[Callable[[object], None]] = []
 
     def notify(self, what: object) -> None:
         self._signals.put(what)
@@ -27,6 +29,13 @@ class CopService:
 
     def worker(self) -> None:
         raise NotImplemented
+
+    def register_callback(self, cb: Callable[[object], None]) -> None:
+        self._callbacks.append(cb)
+
+    def _callback(self, indication: object) -> None:
+        for cb in self._callbacks:
+            cb(object)
 
 
 class Farm1(CopService):
@@ -146,6 +155,9 @@ class Farm1(CopService):
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
                 pass  # Type-BD, bypass COP
+                self._out_buffer.put(frame)
+                gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+                self._callback(self.FduArrivedIndication(gvcid))
             else:
                 # Type-BC, check commands
                 data = frame.tfdf.tfdz

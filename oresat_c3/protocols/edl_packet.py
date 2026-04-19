@@ -171,9 +171,6 @@ class EdlPacket:
         except UslpInvalidRawPacketOrFrameLen as e:
             raise EdlPacketError("USLP invalid packet or frame length") from e
 
-
-
-
     @classmethod
     def unpack(cls, raw: bytes, hmac_key: bytes, ignore_hmac: bool = False):
         """

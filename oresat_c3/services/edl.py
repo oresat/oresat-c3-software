@@ -50,6 +50,7 @@ from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
 from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
+from ..protocols.cop1 import Farm1, CopService
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -57,6 +58,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
+from ..protocols.uslp import Gvcid
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
@@ -91,9 +93,10 @@ class EdlService(Service):
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
-        self._vc = dict[EdlVcid, CopService] = {}
-        self._vc[EdlVcid.C3_COMMAND] = Farm1(w=256, pw=256, nw=0, allow_retransmission=False)
-        self._vc[EdlVcid.FILE_TRANSFER] = None
+        self._vc: dict[EdlVcid, CopService] = {
+            EdlVcid.C3_COMMAND: Farm1(w=256, pw=256, nw=0, allow_retransmission=False),
+            EdlVcid.FILE_TRANSFER: None,
+        }
 
     @property
     def _hmac_key(self) -> bytes:
@@ -128,8 +131,8 @@ class EdlService(Service):
             return None
 
         frame = EdlPacket._unpack_frame(message)
-        srv = self._vc[frame.header.vcid]
-        if srv:
+        if frame.header.vcid in self._vc:
+            srv = self._vc[frame.header.vcid]
             srv.buffer_put(frame)
             gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
             srv.notify(Farm1.ValidFrameArrivedIndication(gvcid))

@@ -119,45 +119,27 @@ class Farm1(CopService):
     def positive_window(self) -> Tuple[int, int]:
         # start, end
         return (
-                self.receiver_frame_sequence_number,
-                self.receiver_frame_sequence_number + (self.sliding_window_width / 2)
-                )
+            self.receiver_frame_sequence_number,
+            self.receiver_frame_sequence_number + (self.sliding_window_width / 2)
+        )
 
     def negative_window(self) -> Tuple[int, int]:
         return (
-                self.receiver_frame_sequence_number - 1,
-                self.receiver_frame_sequence_number - 1 - (self.negative_window_width / 2)
-                )
+            self.receiver_frame_sequence_number - 1,
+            self.receiver_frame_sequence_number - 1 - (self.negative_window_width / 2)
+        )
 
     def is_outside_window(self, sequence_num: int) -> bool:
         return (
-            (self.receiver_frame_sequence_number + self.positive_window_width - 1)
-            < sequence_num
-            < (self.receiver_frame_sequence_number - self.negative_window_width)
+                (self.receiver_frame_sequence_number + self.positive_window_width - 1)
+                < sequence_num
+                < (self.receiver_frame_sequence_number - self.negative_window_width)
         )
-
-    def inside_window(self, sequence_num: int):
-        if sequence_num == self.receiver_frame_sequence_number:
-            # first case
-            # accept the frame
-            pass
-        elif self.receiver_frame_sequence_number < sequence_num <= self.receiver_frame_sequence_number + self.positive_window_width - 1:
-            # second case
-            # in the window, seq num is incorrect
-            # discard and set retransmit_flag
-            self.retransmit = True
-        elif self.receiver_frame_sequence_number > sequence_num >= self.receiver_frame_sequence_number - self.negative_window_width:
-            pass
-            # third case
-            # transfer frame is discarded
-            # no other actions are taken
-        else:
-            pass  # TODO: ERROR!
 
     def _process_frame(self, frame: TransferFrame) -> None:
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
-                pass  # Type-BD, bypass COP
+                # E6 Type-BD, bypass COP
                 self._out_buffer.put(frame)
                 gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                 self._callback(self.FduArrivedIndication(gvcid))
@@ -188,6 +170,37 @@ class Farm1(CopService):
                         self.state = Farm1.FarmState.OPEN
                 else:
                     print("FARM-1: invalid Type-BC directive. Discarding frame")
+        elif frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS:
+            if frame.header.prot_ctrl_cmd_flag != ProtocolCommandFlag.USER_DATA:
+                print("Discarding frame (E9): invalid 'Type-AC' frame")
+            ns: int = frame.header.vcf_count
+            vr = self.receiver_frame_sequence_number
+            if frame.header.vcf_count == self.receiver_frame_sequence_number:
+                # E1 assume buffer is available FIXME: must be bounded for flight
+                if self.state == Farm1.FarmState.OPEN:
+                    self._out_buffer.put(frame)
+                    gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+                    self._callback(self.FduArrivedIndication(gvcid))
+                    self.receiver_frame_sequence_number = vr + 1 % 256
+                    self.retransmit = False
+                elif self.state == Farm1.FarmState.WAIT:
+                    raise Exception("Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON")
+                elif self.state == Farm1.FarmState.LOCKOUT:
+                    print("Discarding frame (E1,S3)")
+            elif vr < ns <= vr + self.positive_window_width - 1:
+                # E3 (second case): in the window, seq num is incorrect
+                print(f"Discarding frame (E3,{self.state})")
+                if self.state == Farm1.FarmState.OPEN:
+                    self.retransmit = True
+            elif vr > ns >= vr - self.negative_window_width:
+                # E4 (third case): in negative window. discard, no other actions.
+                print("Discarding frame (E4)")
+            elif self.is_outside_window(ns):
+                # E5 outside of window
+                print("Discarding frame (E5)")
+                if self.state != Farm1.FarmState.LOCKOUT:
+                    self.lockout = True
+                    self.state = Farm1.FarmState.LOCKOUT
 
 
 class VirtualChannel:

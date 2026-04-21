@@ -1,6 +1,6 @@
 import threading
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
+from enum import StrEnum, Enum, unique
 from queue import SimpleQueue, Empty
 from typing import Tuple, Callable
 
@@ -48,7 +48,8 @@ class Farm1(CopService):
         WAIT = "S2"
         LOCKOUT = "S3"
 
-    class FarmAction(IntEnum):
+    @unique
+    class FarmAction(Enum):
         ACCEPT = 0
         DISCARD = 1
         REPORT = 2
@@ -136,7 +137,23 @@ class Farm1(CopService):
                 < (self.receiver_frame_sequence_number - self.negative_window_width)
         )
 
-    def _process_frame(self, frame: TransferFrame) -> None:
+    def _process_frame(self, frame: TransferFrame) -> bool:
+        """Process a transfer frame.
+
+        It is assumed, as specified by CCSDS 232.1-B, that any frames
+        passed to this method have already passed validation (6.3.2.1 Transfer Frame Validation).
+
+        Parameters
+        ----------
+        frame : TransferFrame
+            The validated transfer frame to process.
+        Returns
+        -------
+        bool
+            True if the frame was successfully processed (either 'ACCEPT' action or no action),
+            False for 'DISCARD'
+        """
+
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
                 # E6 Type-BD, bypass COP
@@ -170,10 +187,11 @@ class Farm1(CopService):
                         self.state = Farm1.FarmState.OPEN
                 else:
                     print("FARM-1: invalid Type-BC directive. Discarding frame")
+                    return False
         elif frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS:
             if frame.header.prot_ctrl_cmd_flag != ProtocolCommandFlag.USER_DATA:
                 print("Discarding frame (E9): invalid 'Type-AC' frame")
-                return
+                return False
             ns: int = frame.header.vcf_count
             vr = self.receiver_frame_sequence_number
             if frame.header.vcf_count == self.receiver_frame_sequence_number:
@@ -185,23 +203,30 @@ class Farm1(CopService):
                     self.receiver_frame_sequence_number = vr + 1 % 256
                     self.retransmit = False
                 elif self.state == Farm1.FarmState.WAIT:
-                    raise Exception("Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON")
+                    raise Exception(
+                        "Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON"
+                    )
                 elif self.state == Farm1.FarmState.LOCKOUT:
                     print("Discarding frame (E1,S3)")
+                    return False
             elif vr < ns <= vr + self.positive_window_width - 1:
                 # E3 (second case): in the window, seq num is incorrect
                 print(f"Discarding frame (E3,{self.state})")
                 if self.state == Farm1.FarmState.OPEN:
                     self.retransmit = True
+                return False
             elif vr > ns >= vr - self.negative_window_width:
                 # E4 (third case): in negative window. discard, no other actions.
                 print("Discarding frame (E4)")
+                return False
             elif self.is_outside_window(ns):
                 # E5 outside of window
                 print("Discarding frame (E5)")
                 if self.state != Farm1.FarmState.LOCKOUT:
                     self.lockout = True
                     self.state = Farm1.FarmState.LOCKOUT
+                return False
+        return True
 
 
 class VirtualChannel:

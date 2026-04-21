@@ -126,19 +126,36 @@ class Farm1(CopService):
                 raise TypeError("Unknown Farm1 signal indication type")
 
     def is_in_positive_window(self, ns: int) -> bool:
+        """Check if the given sequence number is in the positive window, and does **not** contain
+        the expected Frame Sequence Number.
+
+        If it is desired to check if it contains the Frame Sequence Number,
+        check N(S) = V(R) directly::
+
+            if self.receiver_frame_sequence_number == ns:
+                print("The window contains this frame's sequence number")
+
+        Parameters
+        ----------
+        ns
+            The Transfer Frame's sequence number, N(S)
+
+        Returns
+        -------
+        bool
+            True if N(S) is in the positive window, False otherwise
+        """
+
         return (
-            self.receiver_frame_sequence_number
-            < ns
-            <= (self.receiver_frame_sequence_number + self.positive_window_width - 1)
-            % self._modulus
+            0
+            < (ns - self.receiver_frame_sequence_number) % self._modulus
+            < self.positive_window_width
         )
 
     def is_in_negative_window(self, ns: int) -> bool:
         return (
-            self.receiver_frame_sequence_number
-            > ns
-            >= (self.receiver_frame_sequence_number - self.negative_window_width) % self._modulus
-        )
+            self.receiver_frame_sequence_number - ns
+        ) % self._modulus <= self.negative_window_width
 
     def is_outside_window(self, ns: int) -> bool:
         return not self.is_in_positive_window(ns) and not self.is_in_negative_window(ns)

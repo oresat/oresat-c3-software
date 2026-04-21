@@ -21,6 +21,9 @@ class CopService:
         self._out_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
         self._callbacks: list[Callable[[object], None]] = []
 
+    def enable(self) -> None:
+        self._thread.start()
+
     def notify(self, what: object) -> None:
         self._signals.put(what)
 
@@ -67,7 +70,7 @@ class Farm1(CopService):
         """
         gvcid: int
 
-    def __init__(self, w: int, pw: int, nw: int, allow_retransmission: bool = True) -> None:
+    def __init__(self, w: int, pw: int = 0, nw: int = 0, allow_retransmission: bool = True) -> None:
         super().__init__()
         self.state: Farm1.FarmState = Farm1.FarmState.OPEN
         self.lockout: bool = False
@@ -80,11 +83,13 @@ class Farm1(CopService):
         # implementation dependent vars
         self._retransmission_allowed: bool = allow_retransmission
         if self._retransmission_allowed:
-            if 2 <= w <= 254:
+            if not 2 <= w <= 254:
                 raise ValueError("2 <= W <= 254 must be true if retransmission is allowed")
             else:
                 self.sliding_window_width = w
-            self.positive_window_width = self.negative_window_width = self.sliding_window_width / 2
+            self.positive_window_width = self.negative_window_width = int(
+                self.sliding_window_width / 2
+            )
         else:
             if not 1 <= w <= 256:
                 raise ValueError("1 <= W <= 256 must be true if retransmission is disallowed")
@@ -98,8 +103,6 @@ class Farm1(CopService):
             self.sliding_window_width = w
             self.positive_window_width = pw
             self.negative_window_width = nw
-
-        self._thread.start()
 
     def worker(self) -> None:
         while True:

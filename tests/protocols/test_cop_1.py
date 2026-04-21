@@ -1,0 +1,88 @@
+import unittest
+
+from spacepackets.uslp import (
+    TransferFrame,
+    TransferFrameDataField,
+    TfdzConstructionRules,
+    UslpProtocolIdentifier,
+    PrimaryHeader,
+    SourceOrDestField,
+    ProtocolCommandFlag,
+    BypassSequenceControlFlag,
+)
+
+from oresat_c3.protocols.cop1 import Farm1
+from oresat_c3.protocols.edl_packet import EdlPacket, EdlVcid
+from oresat_c3.protocols.uslp import Gvcid
+
+
+class TestFarm1(unittest.TestCase):
+    FRAME_TYPE_BC: TransferFrame
+    FRAME_TYPE_BD: TransferFrame
+
+    def setUp(self):
+        self.farm1 = Farm1(
+            w=254,
+            allow_retransmission=True
+        )
+        payload_raw = b"\x82\x00\x05"  # set V(R) = 5
+        tfdz = payload_raw
+
+        tfdf = TransferFrameDataField(
+            tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
+            uslp_ident=UslpProtocolIdentifier.COP_1_CTRL_COMMANDS,
+            tfdz=tfdz,
+        )
+
+        # USLP transfer frame total length - 1
+        frame_len = len(payload_raw) + EdlPacket.TC_MIN_LEN - 1
+
+        frame_header = PrimaryHeader(
+            scid=EdlPacket.SPACECRAFT_ID,
+            map_id=0,
+            vcid=EdlVcid.C3_COMMAND,
+            src_dest=SourceOrDestField.DEST,
+            frame_len=frame_len,
+            vcf_count_len=2,
+            vcf_count=0,
+            op_ctrl_flag=False,
+            prot_ctrl_cmd_flag=ProtocolCommandFlag.PROTOCOL_INFORMATION,
+            bypass_seq_ctrl_flag=BypassSequenceControlFlag.EXPEDITED_QOS,
+        )
+        self.FRAME_TYPE_BC = TransferFrame(header=frame_header, tfdf=tfdf)
+
+    def tearDown(self):
+        return
+        self.farm1._thread.join()
+
+    def test_init(self):
+        valid_w = 254
+        valid_w_no_re = 256
+        valid_pw = 256
+        valid_nw = 0
+        Farm1(valid_w, 0, 0, True)
+        Farm1(valid_w_no_re, valid_pw, valid_nw, False)
+        with self.assertRaises(ValueError):
+            Farm1(500, 0, 0, True)
+        with self.assertRaises(ValueError):
+            Farm1(0, 0, 0, False)
+        with self.assertRaises(ValueError):
+            Farm1(valid_w_no_re, 0, 0, False)
+        with self.assertRaises(ValueError):
+            Farm1(valid_w_no_re, valid_pw, -1, False)
+
+    def test_process(self):
+        self.farm1._process_frame(self.FRAME_TYPE_BC)
+        self.assertEqual(self.farm1.b_counter, 1)
+        self.assertFalse(self.farm1.retransmit)
+        self.assertEqual(self.farm1.receiver_frame_sequence_number, 5)
+        self.assertEqual(self.farm1.state, Farm1.FarmState.OPEN)
+
+    def test_buffer_put(self):
+        self.farm1.buffer_put(self.FRAME_TYPE_BC)
+        self.assertEqual(self.farm1._recv_buffer.qsize(), 1)
+
+    def test_notify(self):
+        gvcid = Gvcid(0b1100, self.FRAME_TYPE_BC.header.scid, self.FRAME_TYPE_BC.header.vcid)
+        self.farm1.notify(Farm1.ValidFrameArrivedIndication(gvcid))
+        self.assertEqual(self.farm1._signals.qsize(), 1)

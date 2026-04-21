@@ -38,7 +38,7 @@ class CopService:
 
     def _callback(self, indication: object) -> None:
         for cb in self._callbacks:
-            cb(object)
+            cb(indication)
 
 
 class Farm1(CopService):

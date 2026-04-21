@@ -173,6 +173,7 @@ class Farm1(CopService):
         elif frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS:
             if frame.header.prot_ctrl_cmd_flag != ProtocolCommandFlag.USER_DATA:
                 print("Discarding frame (E9): invalid 'Type-AC' frame")
+                return
             ns: int = frame.header.vcf_count
             vr = self.receiver_frame_sequence_number
             if frame.header.vcf_count == self.receiver_frame_sequence_number:

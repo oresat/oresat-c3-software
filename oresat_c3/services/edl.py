@@ -94,7 +94,9 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
         self._vc: dict[EdlVcid, CopService] = {
-            EdlVcid.C3_COMMAND: Farm1(w=256, pw=256, nw=0, allow_retransmission=False),
+            EdlVcid.C3_COMMAND: Farm1(
+                w=256, pw=256, nw=0, vcf_count_length=2, allow_retransmission=False
+            ),
             EdlVcid.FILE_TRANSFER: None,
         }
 

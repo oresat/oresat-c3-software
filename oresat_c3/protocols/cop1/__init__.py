@@ -71,7 +71,14 @@ class Farm1(CopService):
         """
         gvcid: int
 
-    def __init__(self, w: int, pw: int = 0, nw: int = 0, allow_retransmission: bool = True) -> None:
+    def __init__(
+        self,
+        w: int,
+        pw: int = 0,
+        nw: int = 0,
+        vcf_count_length: int = 1,
+        allow_retransmission: bool = True,
+    ) -> None:
         super().__init__()
         self.state: Farm1.FarmState = Farm1.FarmState.OPEN
         self.lockout: bool = False
@@ -83,6 +90,7 @@ class Farm1(CopService):
         self.negative_window_width: int
         # implementation dependent vars
         self._retransmission_allowed: bool = allow_retransmission
+        self._modulus = 1 << (vcf_count_length * 8)
         if self._retransmission_allowed:
             if not 2 <= w <= 254:
                 raise ValueError("2 <= W <= 254 must be true if retransmission is allowed")
@@ -117,25 +125,23 @@ class Farm1(CopService):
             else:
                 raise TypeError("Unknown Farm1 signal indication type")
 
-    def positive_window(self) -> Tuple[int, int]:
-        # start, end
+    def is_in_positive_window(self, ns: int) -> bool:
         return (
-            self.receiver_frame_sequence_number,
-            self.receiver_frame_sequence_number + (self.sliding_window_width / 2)
+            self.receiver_frame_sequence_number
+            < ns
+            <= (self.receiver_frame_sequence_number + self.positive_window_width - 1)
+            % self._modulus
         )
 
-    def negative_window(self) -> Tuple[int, int]:
+    def is_in_negative_window(self, ns: int) -> bool:
         return (
-            self.receiver_frame_sequence_number - 1,
-            self.receiver_frame_sequence_number - 1 - (self.negative_window_width / 2)
+            self.receiver_frame_sequence_number
+            > ns
+            >= (self.receiver_frame_sequence_number - self.negative_window_width) % self._modulus
         )
 
-    def is_outside_window(self, sequence_num: int) -> bool:
-        return (
-                (self.receiver_frame_sequence_number + self.positive_window_width - 1)
-                < sequence_num
-                < (self.receiver_frame_sequence_number - self.negative_window_width)
-        )
+    def is_outside_window(self, ns: int) -> bool:
+        return not self.is_in_positive_window(ns) and not self.is_in_negative_window(ns)
 
     def _process_frame(self, frame: TransferFrame) -> bool:
         """Process a transfer frame.
@@ -200,7 +206,7 @@ class Farm1(CopService):
                     self._out_buffer.put(frame)
                     gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                     self._callback(self.FduArrivedIndication(gvcid))
-                    self.receiver_frame_sequence_number = vr + 1 % 256
+                    self.receiver_frame_sequence_number = vr + 1 % self._modulus
                     self.retransmit = False
                 elif self.state == Farm1.FarmState.WAIT:
                     raise Exception(
@@ -209,17 +215,17 @@ class Farm1(CopService):
                 elif self.state == Farm1.FarmState.LOCKOUT:
                     print("Discarding frame (E1,S3)")
                     return False
-            elif vr < ns <= vr + self.positive_window_width - 1:
-                # E3 (second case): in the window, seq num is incorrect
+            elif self.is_in_positive_window(ns):
+                # E3 (second case): in the positive window, seq num is incorrect
                 print(f"Discarding frame (E3,{self.state})")
                 if self.state == Farm1.FarmState.OPEN:
                     self.retransmit = True
                 return False
-            elif vr > ns >= vr - self.negative_window_width:
+            elif self.is_in_negative_window(ns):
                 # E4 (third case): in negative window. discard, no other actions.
                 print("Discarding frame (E4)")
                 return False
-            elif self.is_outside_window(ns):
+            else:
                 # E5 outside of window
                 print("Discarding frame (E5)")
                 if self.state != Farm1.FarmState.LOCKOUT:

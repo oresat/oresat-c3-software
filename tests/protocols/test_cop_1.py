@@ -107,16 +107,16 @@ class TestFarm1(unittest.TestCase):
         valid_w_no_re = 256
         valid_pw = 256
         valid_nw = 0
-        Farm1(valid_w, 0, 0, True)
-        Farm1(valid_w_no_re, valid_pw, valid_nw, False)
+        Farm1(valid_w, 0, 0, vcf_count_length=2, allow_retransmission=True)
+        Farm1(valid_w_no_re, valid_pw, valid_nw, vcf_count_length=2, allow_retransmission=False)
         with self.assertRaises(ValueError):
-            Farm1(500, 0, 0, True)
+            Farm1(500, 0, 0, vcf_count_length=2, allow_retransmission=True)
         with self.assertRaises(ValueError):
-            Farm1(0, 0, 0, False)
+            Farm1(0, 0, 0, vcf_count_length=2, allow_retransmission=False)
         with self.assertRaises(ValueError):
-            Farm1(valid_w_no_re, 0, 0, False)
+            Farm1(valid_w_no_re, 0, 0, vcf_count_length=2, allow_retransmission=False)
         with self.assertRaises(ValueError):
-            Farm1(valid_w_no_re, valid_pw, -1, False)
+            Farm1(valid_w_no_re, valid_pw, -1, vcf_count_length=2, allow_retransmission=False)
 
     def test_process_bc(self):
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BC))
@@ -170,3 +170,10 @@ class TestFarm1(unittest.TestCase):
         self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))
         self.assertTrue(self.farm1.retransmit)
 
+    def test_large_vcf(self):
+        # weirdness may happen if modulo arithmetic is not respected
+        # see the note under CCSDS 232.1-B-2 6.2.1 GENERAL
+        # set V(R) to predictable value first
+        self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BC))
+        self.INVALID_SEQ_FRAME.header.vcf_count = 60000
+        self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))

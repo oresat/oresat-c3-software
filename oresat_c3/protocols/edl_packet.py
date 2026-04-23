@@ -46,7 +46,7 @@ class EdlVcid(IntEnum):
 def crc16_bytes(data: bytes) -> bytes:
     """Helper function to generate the CRC16 of a message as bytes"""
 
-    return binascii.crc_hqx(data, 0).to_bytes(2, "little")
+    return binascii.crc_hqx(data, 0xFFFF).to_bytes(2, "big")
 
 
 def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:

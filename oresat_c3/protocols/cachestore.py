@@ -1,12 +1,16 @@
 """Implements CacheStore, the merger of OreSatFileCache with a CFDP Filestore"""
 
 import os
+import struct
 from bisect import insort_left
 from pathlib import Path
 from typing import BinaryIO, Optional
 
+import fastcrc.crc32
+from cfdppy.exceptions import ChecksumNotImplemented, SourceFileDoesNotExist
 from cfdppy.filestore import FilestoreResult, VirtualFilestore
 from olaf import OreSatFile, OreSatFileCache
+from spacepackets.cfdp import NULL_CHECKSUM_U32, ChecksumType
 
 
 class CacheStore(VirtualFilestore, OreSatFileCache):
@@ -25,6 +29,9 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                         rf.seek(offset or 0)
                         return rf.read(read_len)
             raise FileNotFoundError(file)
+
+    def file_size(self, file: Path) -> int:
+        return self.stat(file).st_size
 
     def read_from_opened_file(self, bytes_io: BinaryIO, offset: int, read_len: int) -> bytes:
         with self._lock:
@@ -153,3 +160,55 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
             for line in os.walk(self._dir) if recursive else os.listdir(self._dir):
                 f.write(f"{line}\n")
             return FilestoreResult.SUCCESS
+
+    def calc_modular_checksum(self, file_path: Path) -> bytes:
+        """Calculates the modular checksum of the file in file_path.
+
+        This was a module level function in cfdp-py, but it accessed the filesystem directly
+        instead of going through a filestore. It needs to access the filestore.
+        """
+        checksum = 0
+        offset = 0
+        while True:
+            data = self.read_data(file_path, offset, 4)
+            offset += 4
+            if not data:
+                break
+            checksum += int.from_bytes(data.ljust(4, b"\0"), byteorder="big", signed=False)
+
+        checksum %= 2**32
+        return struct.pack("!I", checksum)
+
+    def calculate_checksum(
+        self,
+        checksum_type: ChecksumType,
+        file_path: Path,
+        size_to_verify: int,
+        segment_len: int = 4096,
+    ) -> bytes:
+        if checksum_type == ChecksumType.NULL_CHECKSUM:
+            return NULL_CHECKSUM_U32
+        if not self.file_exists(file_path):
+            raise SourceFileDoesNotExist(file_path)
+        if checksum_type == ChecksumType.MODULAR:
+            return self.calc_modular_checksum(file_path)
+        if segment_len == 0:
+            raise ValueError("Segment length can not be 0")
+        if checksum_type == ChecksumType.CRC_32:
+            crc_func = fastcrc.crc32.iso_hdlc
+        elif checksum_type == ChecksumType.CRC_32C:
+            crc_func = fastcrc.crc32.iscsi
+        else:
+            raise ChecksumNotImplemented(checksum_type)
+        current = crc_func(b"")
+        current_offset = 0
+        # Calculate the file CRC
+        while current_offset < size_to_verify:
+            if current_offset + segment_len > size_to_verify:
+                read_len = size_to_verify - current_offset
+            else:
+                read_len = segment_len
+            if read_len > 0:
+                current = crc_func(self.read_data(file_path, current_offset, read_len), current)
+            current_offset += read_len
+        return struct.pack("!I", current)

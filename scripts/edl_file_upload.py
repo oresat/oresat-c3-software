@@ -18,16 +18,16 @@ from threading import Lock, Thread
 from typing import Any
 
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import NoRemoteEntityCfgFound
+from cfdppy.exceptions import NoRemoteEntityConfigFound
 from cfdppy.handler.dest import DestHandler
 from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
-    IndicationCfg,
-    LocalEntityCfg,
-    RemoteEntityCfg,
-    RemoteEntityCfgTable,
+    IndicationConfig,
+    LocalEntityConfig,
+    RemoteEntityConfig,
+    RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
 from cfdppy.user import (
@@ -35,12 +35,11 @@ from cfdppy.user import (
     FileSegmentRecvdParams,
     MetadataRecvParams,
     TransactionFinishedParams,
-    TransactionId,
     TransactionParams,
 )
 from olaf import OreSatFile
 from spacepackets.cfdp import CfdpLv
-from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransmissionMode
+from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransactionId, TransmissionMode
 from spacepackets.cfdp.tlv import (
     DirectoryListingRequest,
     DirectoryParams,
@@ -52,6 +51,7 @@ from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
+from oresat_c3.protocols.uslp import unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -168,7 +168,8 @@ class Downlink(Thread):
 
         while True:
             message = downlink.recv(4096)
-            packet = EdlPacket.unpack(message, self._hmac_key, True).payload
+            frame = unpack_frame(message)
+            packet = EdlPacket.unpack(frame, self._hmac_key, True).payload
             if self._bad_connection and not random.randrange(5):
                 print("X--- DROPPED", packet)
                 continue  # simulate dropped packets
@@ -213,11 +214,10 @@ class Source(Thread):
         while packet := self.downlink.get():
             with self.lock:
                 try:
-                    self.src.insert_packet(packet)
-                except NoRemoteEntityCfgFound as e:
+                    self.src.state_machine(packet)
+                except NoRemoteEntityConfigFound as e:
                     print(e)
                     traceback.print_exc()
-                self.src.state_machine()
                 while self.src.packets_ready:
                     pdu = self.src.get_next_packet().pdu
                     self.uplink.put(pdu)
@@ -264,10 +264,10 @@ class Dest(Thread):
         while True:
             try:
                 packet = self.downlink.get_nowait()
-                self.dest.insert_packet(packet)
             except Empty:
+                packet = None
                 time.sleep(0.1)
-            self.dest.state_machine()
+            self.dest.state_machine(packet)
             while self.dest.packets_ready:
                 pdu = self.dest.get_next_packet().pdu
                 self.uplink.put(pdu)
@@ -417,15 +417,15 @@ def main():
     SOURCE_ID = ByteFieldU8(0)
     DEST_ID = ByteFieldU8(1)
 
-    localcfg = LocalEntityCfg(
+    localcfg = LocalEntityConfig(
         local_entity_id=SOURCE_ID,
-        indication_cfg=IndicationCfg(),
+        indication_cfg=IndicationConfig(),
         default_fault_handlers=PrintFaults(),
     )
 
-    remote_entities = RemoteEntityCfgTable(
+    remote_entities = RemoteEntityConfigTable(
         [
-            RemoteEntityCfg(
+            RemoteEntityConfig(
                 entity_id=DEST_ID,
                 max_file_segment_len=None,
                 max_packet_len=args.buffer_size,

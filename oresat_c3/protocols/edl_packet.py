@@ -2,7 +2,6 @@
 Anything dealing with packing and unpacking EDL (Engineering Data Link) packets.
 """
 
-import binascii
 import hashlib
 import hmac
 from enum import IntEnum
@@ -10,14 +9,12 @@ from typing import Union
 
 from spacepackets.cfdp.pdu import PduFactory
 from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
-from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLen  # type: ignore
 from spacepackets.uslp.frame import (  # type: ignore
     FrameType,
     TfdzConstructionRules,
     TransferFrame,
     TransferFrameDataField,
     UslpProtocolIdentifier,
-    VarFrameProperties,
 )
 from spacepackets.uslp.header import (  # type: ignore
     BypassSequenceControlFlag,
@@ -27,6 +24,7 @@ from spacepackets.uslp.header import (  # type: ignore
 )
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
+from .uslp import HMAC_LEN, SEQ_NUM_LEN, SPACECRAFT_ID, TC_MIN_LEN
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
@@ -43,12 +41,6 @@ class EdlVcid(IntEnum):
     FILE_TRANSFER = 1
 
 
-def crc16_bytes(data: bytes) -> bytes:
-    """Helper function to generate the CRC16 of a message as bytes"""
-
-    return binascii.crc_hqx(data, 0xFFFF).to_bytes(2, "big")
-
-
 def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:
     """Helper function to generate HMAC value from HMAC key and the message."""
 
@@ -61,23 +53,6 @@ class EdlPacket:
 
     Only packs and unpacks the packet (does not process/run it).
     """
-
-    SPACECRAFT_ID = 0x4F53  # aka "OS" in ASCII
-
-    PRIMARY_HEADER_LEN = 7
-    SEQ_NUM_LEN = 4
-    DFH_LEN = 1
-    HMAC_LEN = 32
-    FECF_LEN = 2
-    TC_MIN_LEN = PRIMARY_HEADER_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
-
-    FRAME_PROPS = VarFrameProperties(
-        has_insert_zone=True,
-        has_fecf=True,
-        truncated_frame_len=0,
-        insert_zone_len=SEQ_NUM_LEN,
-        fecf_len=FECF_LEN,
-    )
 
     def __init__(
         self,
@@ -142,10 +117,10 @@ class EdlPacket:
         )
 
         # USLP transfer frame total length - 1
-        frame_len = len(payload_raw) + self.TC_MIN_LEN - 1
+        frame_len = len(payload_raw) + TC_MIN_LEN - 1
 
         frame_header = PrimaryHeader(
-            scid=self.SPACECRAFT_ID,
+            scid=SPACECRAFT_ID,
             map_id=0,
             vcid=self.vcid.value,
             src_dest=self.src_dest,
@@ -156,48 +131,29 @@ class EdlPacket:
             bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
         )
 
-        seq_num_bytes = self.seq_num.to_bytes(self.SEQ_NUM_LEN, "little")
+        seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
         frame = TransferFrame(header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes)
         packet = frame.pack(frame_type=FrameType.VARIABLE)
-        packet += crc16_bytes(packet)
 
         return packet
 
     @classmethod
-    def _unpack_frame(cls, raw: bytes) -> TransferFrame:
-        try:
-            frame = TransferFrame.unpack(raw, FrameType.VARIABLE, cls.FRAME_PROPS)
-            return frame
-        except UslpInvalidRawPacketOrFrameLen as e:
-            raise EdlPacketError("USLP invalid packet or frame length") from e
-
-    @classmethod
-    def unpack(cls, raw: bytes, hmac_key: bytes, ignore_hmac: bool = False):
+    def unpack(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):
         """
         Unpack the EDL packet.
 
         Parameters
         ----------
-        raw: bytes
-            The raw data to unpack.
+        frame : TransferFrame
+            The frame to unpack.
         hmac_key: bytes
             The hmac key.
         ignore_hmac: bool
             Ignore the HMAC value.
         """
 
-        if len(raw) < cls.TC_MIN_LEN:
-            raise EdlPacketError(f"EDL packet too short: {len(raw)}")
-
-        crc16_raw = raw[-cls.FECF_LEN :]
-        crc16_raw_calc = crc16_bytes(raw[: -cls.FECF_LEN])
-        if crc16_raw_calc != crc16_raw:
-            raise EdlPacketError(f"invalid FECF: {crc16_raw.hex()} vs {crc16_raw_calc.hex()}")
-
-        frame = cls._unpack_frame(raw)
-
-        payload_raw = frame.tfdf.tfdz[: -cls.HMAC_LEN]
-        hmac_bytes = frame.tfdf.tfdz[-cls.HMAC_LEN :]
+        payload_raw = frame.tfdf.tfdz[:-HMAC_LEN]
+        hmac_bytes = frame.tfdf.tfdz[-HMAC_LEN:]
         hmac_bytes_calc = gen_hmac(hmac_key, payload_raw)
 
         if not ignore_hmac and hmac_bytes != hmac_bytes_calc:

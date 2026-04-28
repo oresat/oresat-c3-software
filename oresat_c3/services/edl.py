@@ -1,6 +1,5 @@
 """'EDL Service"""
 
-from collections.abc import Iterable
 from datetime import timedelta
 from pathlib import Path
 from queue import Empty, SimpleQueue
@@ -40,10 +39,7 @@ from spacepackets.cfdp.tlv import (
 )
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
-from spacepackets.uslp.defs import (
-    UslpChecksumError,
-    UslpInvalidRawPacketOrFrameLenError,
-)
+from spacepackets.uslp import TransferFrame
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
@@ -55,9 +51,9 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
-from ..protocols.uslp import UslpInvalidSpacecraftIdError, unpack_frame
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
+from .channel_router import ChannelRouterService
 from .node_manager import NodeManagerService
 from .radios import RadiosService
 
@@ -71,12 +67,15 @@ class EdlService(Service):
         radios_service: RadiosService,
         node_mgr_service: NodeManagerService,
         beacon_service: BeaconService,
+        channel_router_service: ChannelRouterService,
     ):
         super().__init__()
 
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
+        self._cmd_route = channel_router_service.request_route(EdlVcid.C3_COMMAND)
+        self._file_route = channel_router_service.request_route(EdlVcid.FILE_TRANSFER)
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
@@ -117,22 +116,7 @@ class EdlService(Service):
     def _rejected_count(self, value):
         self._edl_rejected_count_obj.value = value
 
-    def _upack_last_recv(self) -> Optional[EdlPacket]:
-        try:
-            message = self._radios_service.recv_queue.get_nowait()
-        except Empty:
-            return None
-
-        try:
-            frame = unpack_frame(message)
-        except (
-            UslpInvalidSpacecraftIdError,
-            UslpInvalidRawPacketOrFrameLenError,
-            UslpChecksumError,
-        ) as e:
-            logger.error(e)
-            return None
-
+    def _frame_to_packet(self, frame: TransferFrame) -> Optional[EdlPacket]:
         try:
             packet = EdlPacket.unpack(frame, self._hmac_key, not self._flight_mode)
         except EdlPacketError as e:
@@ -156,8 +140,39 @@ class EdlService(Service):
 
         return packet
 
-    def on_loop(self):
-        req_packet = self._upack_last_recv()
+    def _respond(self, payload) -> None:
+        try:
+            res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
+            res_message = res_packet.pack(self._hmac_key)
+        except (EdlCommandError, EdlPacketError, ValueError) as e:
+            logger.exception(f"EDL response generation raised: {e}")
+            return
+
+        self._radios_service.send_edl_response(res_message)
+
+    def _process_command(self) -> None:
+        try:
+            frame = self._cmd_route.get_nowait()
+        except Empty:
+            return
+        req_packet = self._frame_to_packet(frame)
+        if req_packet is None:
+            self.sleep_ms(50)
+        else:
+            try:
+                res_payload = self._run_cmd(req_packet.payload)
+                if not res_payload.values:
+                    return  # no response
+                self._respond(res_payload)
+            except Exception as e:  # pylint: disable=W0718
+                logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
+
+    def _process_cfdp(self) -> None:
+        try:
+            frame = self._file_route.get_nowait()
+        except Empty:
+            return
+        req_packet = self._frame_to_packet(frame)
 
         if req_packet is None:
             if self._file_receiver.state == CfdpState.BUSY:
@@ -165,35 +180,19 @@ class EdlService(Service):
             else:
                 self.sleep_ms(50)
                 return
-        elif req_packet.vcid == EdlVcid.C3_COMMAND:
-            try:
-                res_payload = self._run_cmd(req_packet.payload)
-                if not res_payload.values:
-                    return  # no response
-            except Exception as e:  # pylint: disable=W0718
-                logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
-                return
-        elif req_packet.vcid == EdlVcid.FILE_TRANSFER:
-            res_payload = self._file_receiver.loop(req_packet.payload)
         else:
-            logger.error(f"got an EDL packet with unknown VCID: {req_packet.vcid}")
-            return
+            res_payload = self._file_receiver.loop(req_packet.payload)
 
         if res_payload is None:
             self.sleep_ms(50)
             return
 
-        if not isinstance(res_payload, Iterable):
-            res_payload = (res_payload,)
         for payload in res_payload:
-            try:
-                res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
-                res_message = res_packet.pack(self._hmac_key)
-            except (EdlCommandError, EdlPacketError, ValueError) as e:
-                logger.exception(f"EDL response generation raised: {e}")
-                continue
+            self._respond(payload)
 
-            self._radios_service.send_edl_response(res_message)
+    def on_loop(self):
+        self._process_command()
+        self._process_cfdp()
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

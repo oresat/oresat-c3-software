@@ -189,7 +189,7 @@ class Farm1(CopService):
                 directive = data[0]
                 if directive == 0x00:
                     # E7 valid unlock
-                    self.b_counter = self.b_counter + 1 % 4
+                    self.b_counter = (self.b_counter + 1) % 4
                     self.retransmit = False
                     if self.state == Farm1.FarmState.WAIT:
                         self.wait = False
@@ -199,7 +199,7 @@ class Farm1(CopService):
                     self.state = Farm1.FarmState.OPEN
                 elif directive == 0x82 and data[1] == 0:
                     # E8 valid Set V(R)
-                    self.b_counter = self.b_counter + 1 % 4
+                    self.b_counter = (self.b_counter + 1) % 4
                     if self.state == Farm1.FarmState.OPEN:
                         self.retransmit = False
                         self.receiver_frame_sequence_number = data[2]

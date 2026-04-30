@@ -1,6 +1,6 @@
 import threading
 from dataclasses import dataclass
-from enum import StrEnum, Enum, unique
+from enum import Enum, unique
 from queue import SimpleQueue, Empty
 from typing import Tuple, Callable
 
@@ -42,11 +42,12 @@ class CopService:
 
 
 class Farm1(CopService):
-    class FarmState(StrEnum):
+    @unique
+    class FarmState(Enum):
         """The State of FARM-1"""
-        OPEN = "S1"
-        WAIT = "S2"
-        LOCKOUT = "S3"
+        OPEN = 1
+        WAIT = 2
+        LOCKOUT = 3
 
     @unique
     class FarmAction(Enum):

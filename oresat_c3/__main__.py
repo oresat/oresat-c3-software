@@ -23,6 +23,7 @@ from . import C3State, __version__
 from .protocols.cachestore import CacheStore
 from .services.beacon import BeaconService
 from .services.channel_router import ChannelRouterService
+from .services.cop_manager import CopManagerService
 from .services.edl import EdlService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
@@ -133,7 +134,8 @@ def main():
     radios_service = RadiosService(mock_hw)
     beacon_service = BeaconService(config.beacon_def, radios_service)
     node_mgr_service = NodeManagerService(config.cards, mock_hw=mock_hw)
-    channel_router_service = ChannelRouterService(radios_service)
+    cop_manager_service = CopManagerService()
+    channel_router_service = ChannelRouterService(radios_service, cop_manager_service)
     edl_service = EdlService(
         app.node, radios_service, node_mgr_service, beacon_service, channel_router_service
     )
@@ -141,6 +143,7 @@ def main():
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)
     app.add_service(beacon_service)
+    app.add_service(cop_manager_service)
     app.add_service(channel_router_service)
     app.add_service(edl_service)
     app.add_service(node_mgr_service)

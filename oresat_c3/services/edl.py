@@ -74,7 +74,8 @@ class EdlService(Service):
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
-        self._cmd_route = channel_router_service.request_route(EdlVcid.C3_COMMAND)
+        self._channel_router = channel_router_service
+        self._cmd_route = channel_router_service.request_route(EdlVcid.C3_COMMAND, cop=True)
         self._file_route = channel_router_service.request_route(EdlVcid.FILE_TRANSFER)
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
@@ -140,10 +141,10 @@ class EdlService(Service):
 
         return packet
 
-    def _respond(self, payload) -> None:
+    def _respond(self, payload, control_word: Optional[bytes] = None) -> None:
         try:
             res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
-            res_message = res_packet.pack(self._hmac_key)
+            res_message = res_packet.pack(self._hmac_key, control_word)
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.exception(f"EDL response generation raised: {e}")
             return
@@ -155,6 +156,7 @@ class EdlService(Service):
             frame = self._cmd_route.get_nowait()
         except Empty:
             return
+        logger.info("processing cmd packet")
         req_packet = self._frame_to_packet(frame)
         if req_packet is None:
             self.sleep_ms(50)
@@ -163,8 +165,9 @@ class EdlService(Service):
                 res_payload = self._run_cmd(req_packet.payload)
                 if not res_payload.values:
                     return  # no response
-                self._respond(res_payload)
-            except Exception as e:  # pylint: disable=W0718
+                clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
+                self._respond(res_payload, clcw.pack())
+            except Exception as e:
                 logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
 
     def _process_cfdp(self) -> None:

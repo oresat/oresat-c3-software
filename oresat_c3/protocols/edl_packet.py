@@ -5,7 +5,7 @@ Anything dealing with packing and unpacking EDL (Engineering Data Link) packets.
 import hashlib
 import hmac
 from enum import IntEnum
-from typing import Union
+from typing import Optional, Union
 
 from spacepackets.cfdp.pdu import PduFactory
 from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
@@ -93,12 +93,14 @@ class EdlPacket:
             and self.payload == other.payload
         )
 
-    def pack(self, hmac_key: bytes) -> bytes:
+    def pack(self, hmac_key: bytes, control_word: Optional[bytes] = None) -> bytes:
         """
         Pack the EDL packet.
 
         Parameters
         ----------
+        control_word : Optional[bytes]
+            Send a control word with the frame.
         hmac_key: bytes
             The HMAC key to use.
         """
@@ -119,6 +121,10 @@ class EdlPacket:
         # USLP transfer frame total length - 1
         frame_len = len(payload_raw) + TC_MIN_LEN - 1
 
+        has_clcw = bool(control_word)
+        if has_clcw:
+            frame_len += len(control_word)
+
         frame_header = PrimaryHeader(
             scid=SPACECRAFT_ID,
             map_id=0,
@@ -126,13 +132,15 @@ class EdlPacket:
             src_dest=self.src_dest,
             frame_len=frame_len,
             vcf_count_len=0,
-            op_ctrl_flag=False,
+            op_ctrl_flag=has_clcw,
             prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
             bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
         )
 
         seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
-        frame = TransferFrame(header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes)
+        frame = TransferFrame(
+            header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes, op_ctrl_field=control_word
+        )
         packet = frame.pack(frame_type=FrameType.VARIABLE)
 
         return packet

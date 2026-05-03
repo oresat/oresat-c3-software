@@ -1,13 +1,15 @@
 import threading
 from dataclasses import dataclass
 from enum import Enum, unique
-from queue import SimpleQueue, Empty
-from typing import Tuple, Callable
+from queue import Empty, SimpleQueue
+from typing import Callable, Tuple
 
-from spacepackets.uslp import TransferFrame, BypassSequenceControlFlag, ProtocolCommandFlag
+from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag, TransferFrame
 
-from oresat_c3.protocols.edl_packet import EdlVcid
-from oresat_c3.protocols.uslp import Gvcid
+from oresat_c3.protocols.cop1.control_word import ControlWord
+
+from ..edl_packet import EdlVcid
+from ..uslp import Gvcid
 
 
 class CopService:
@@ -16,19 +18,19 @@ class CopService:
         self._thread: threading.Thread = threading.Thread(target=self.worker)
         self._signals: SimpleQueue[object] = SimpleQueue()
         # from lower procedures
-        self._recv_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+        self.lower_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
         # to higher procedures
-        self._out_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+        self.higher_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
         self._callbacks: list[Callable[[object], None]] = []
 
     def enable(self) -> None:
         self._thread.start()
 
+    def disable(self) -> None:
+        self._thread.join()
+
     def notify(self, what: object) -> None:
         self._signals.put(what)
-
-    def buffer_put(self, frame: TransferFrame) -> None:
-        self._recv_buffer.put(frame)
 
     def worker(self) -> None:
         raise NotImplemented
@@ -45,6 +47,7 @@ class Farm1(CopService):
     @unique
     class FarmState(Enum):
         """The State of FARM-1"""
+
         OPEN = 1
         WAIT = 2
         LOCKOUT = 3
@@ -70,6 +73,7 @@ class Farm1(CopService):
         gvcid: int
             The Global Virtual Channel Identifier for the frame
         """
+
         gvcid: int
 
     def __init__(
@@ -115,13 +119,15 @@ class Farm1(CopService):
             self.negative_window_width = nw
 
     def worker(self) -> None:
+        print("worker started")
         while True:
             try:
-                notif = self._signals.get_nowait()
+                notif = self._signals.get(timeout=0.1)
             except Empty:
-                return
+                continue
             if isinstance(notif, Farm1.ValidFrameArrivedIndication):
-                frame = self._recv_buffer.get()
+                print("Received frame arrived")
+                frame = self.lower_buffer.get()
                 self._process_frame(frame)
             else:
                 raise TypeError("Unknown Farm1 signal indication type")
@@ -181,7 +187,7 @@ class Farm1(CopService):
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
                 # E6 Type-BD, bypass COP
-                self._out_buffer.put(frame)
+                self.higher_buffer.put(frame)
                 gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                 self._callback(self.FduArrivedIndication(gvcid))
             else:
@@ -221,7 +227,7 @@ class Farm1(CopService):
             if frame.header.vcf_count == self.receiver_frame_sequence_number:
                 # E1 assume buffer is available FIXME: must be bounded for flight
                 if self.state == Farm1.FarmState.OPEN:
-                    self._out_buffer.put(frame)
+                    self.higher_buffer.put(frame)
                     gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                     self._callback(self.FduArrivedIndication(gvcid))
                     self.receiver_frame_sequence_number = vr + 1 % self._modulus

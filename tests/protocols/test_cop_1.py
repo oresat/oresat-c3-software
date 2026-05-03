@@ -1,19 +1,20 @@
+import struct
 import unittest
 
 from spacepackets.uslp import (
+    BypassSequenceControlFlag,
+    PrimaryHeader,
+    ProtocolCommandFlag,
+    SourceOrDestField,
+    TfdzConstructionRules,
     TransferFrame,
     TransferFrameDataField,
-    TfdzConstructionRules,
     UslpProtocolIdentifier,
-    PrimaryHeader,
-    SourceOrDestField,
-    ProtocolCommandFlag,
-    BypassSequenceControlFlag,
 )
 
-from oresat_c3.protocols.cop1 import Farm1
-from oresat_c3.protocols.edl_packet import EdlPacket, EdlVcid
-from oresat_c3.protocols.uslp import Gvcid
+from oresat_c3.protocols.cop1 import ControlWord, Farm1
+from oresat_c3.protocols.edl_packet import EdlVcid
+from oresat_c3.protocols.uslp import SPACECRAFT_ID, TC_MIN_LEN, Gvcid
 
 
 class TestFarm1(unittest.TestCase):
@@ -26,10 +27,7 @@ class TestFarm1(unittest.TestCase):
     INVALID_SEQ_FRAME: TransferFrame
 
     def setUp(self):
-        self.farm1 = Farm1(
-            w=254,
-            allow_retransmission=True
-        )
+        self.farm1 = Farm1(w=254, allow_retransmission=True)
 
         def make_test_frame(
             payload,
@@ -38,10 +36,10 @@ class TestFarm1(unittest.TestCase):
             bypass_ctrl: BypassSequenceControlFlag,
         ) -> TransferFrame:
             # USLP transfer frame total length - 1
-            frame_len = len(payload) + EdlPacket.TC_MIN_LEN - 1
+            frame_len = len(payload) + TC_MIN_LEN - 1
             return TransferFrame(
                 header=PrimaryHeader(
-                    scid=EdlPacket.SPACECRAFT_ID,
+                    scid=SPACECRAFT_ID,
                     map_id=0,
                     vcid=EdlVcid.C3_COMMAND,
                     src_dest=SourceOrDestField.DEST,
@@ -131,21 +129,22 @@ class TestFarm1(unittest.TestCase):
     def test_process_bd(self):
         def cb(indication: object) -> None:
             self.assertIsInstance(indication, Farm1.FduArrivedIndication)
+
         self.farm1.register_callback(cb)
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BD))
-        self.farm1._out_buffer.get_nowait()
+        self.farm1.higher_buffer.get_nowait()
 
     def test_process_ad(self):
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_AD))
         self.assertEqual(self.farm1.receiver_frame_sequence_number, 1)
-        self.assertEqual(self.farm1._out_buffer.qsize(), 1)
+        self.assertEqual(self.farm1.higher_buffer.qsize(), 1)
 
     def test_process_ac(self):
         self.assertFalse(self.farm1._process_frame(self.INVALID_TYPE_AC))
 
     def test_buffer_put(self):
-        self.farm1.buffer_put(self.FRAME_TYPE_BC)
-        self.assertEqual(self.farm1._recv_buffer.qsize(), 1)
+        self.farm1.lower_buffer.put(self.FRAME_TYPE_BC)
+        self.assertEqual(self.farm1.lower_buffer.qsize(), 1)
 
     def test_notify(self):
         gvcid = Gvcid(0b1100, self.FRAME_TYPE_BC.header.scid, self.FRAME_TYPE_BC.header.vcid)
@@ -164,7 +163,7 @@ class TestFarm1(unittest.TestCase):
             self.farm1.receiver_frame_sequence_number
             < invalid_ns
             <= self.farm1.receiver_frame_sequence_number + self.farm1.positive_window_width - 1,
-            msg="Failed to calculate invalid N(S) sequence number for this test"
+            msg="Failed to calculate invalid N(S) sequence number for this test",
         )
         self.INVALID_SEQ_FRAME.header.vcf_count = invalid_ns
         self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))
@@ -177,3 +176,59 @@ class TestFarm1(unittest.TestCase):
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BC))
         self.INVALID_SEQ_FRAME.header.vcf_count = 60000
         self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))
+
+
+class TestClcw(unittest.TestCase):
+    def test_pack_length(self):
+        self.assertEqual(len(ControlWord().pack()), 4)
+
+    def test_default_roundtrip(self):
+        clcw = ControlWord()
+        self.assertEqual(ControlWord.unpack(clcw.pack()), clcw)
+
+    def test_field_roundtrip(self):
+        clcw = ControlWord(
+            status_field=0b101,
+            cop_in_effect=1,
+            vcid=0x3F,
+            no_rf_available=True,
+            no_bit_lock=True,
+            lockout=True,
+            wait=True,
+            retransmit=True,
+            farm_b_counter=3,
+            report_value=0xAB,
+        )
+        self.assertEqual(ControlWord.unpack(clcw.pack()), clcw)
+
+    def test_reserved_spares_are_zero(self):
+        # bits 16-17 and bit 8 must always be zero regardless of field values
+        clcw = ControlWord(vcid=0x3F, report_value=0xFF)
+        (word,) = struct.unpack(">I", clcw.pack())
+        self.assertEqual((word >> 16) & 0x3, 0)
+        self.assertEqual((word >> 8) & 0x1, 0)
+
+    def test_flags_isolated(self):
+        for attr, bit in [
+            ("no_rf_available", 15),
+            ("no_bit_lock", 14),
+            ("lockout", 13),
+            ("wait", 12),
+            ("retransmit", 11),
+        ]:
+            clcw = ControlWord(**{attr: True})
+            (word,) = struct.unpack(">I", clcw.pack())
+            self.assertEqual((word >> bit) & 0x1, 1, msg=f"{attr} not set at bit {bit}")
+            other_flags = 0x1F & ~(1 << (bit - 11))
+            self.assertEqual((word >> 11) & other_flags, 0, msg=f"extra flag bits set for {attr}")
+
+    def test_unpack_too_short_raises(self):
+        with self.assertRaises(ValueError):
+            ControlWord.unpack(b"\x00\x00\x00")
+
+    def test_unpack_ignores_reserved_spare_bits(self):
+        # reserved spare bits set in raw bytes should not bleed into named fields
+        raw = struct.pack(">I", 0x0003_0100)  # spare bits 16-17 and bit 8 all set
+        clcw = ControlWord.unpack(raw)
+        self.assertEqual(clcw.report_value, 0)
+        self.assertFalse(clcw.retransmit)

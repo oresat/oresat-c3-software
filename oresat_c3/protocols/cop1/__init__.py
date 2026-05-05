@@ -227,14 +227,15 @@ class Farm1(CopService):
                 logger.error("Discarding frame (E9): invalid 'Type-AC' frame")
                 return False
             ns: int = frame.header.vcf_count
-            vr = self.receiver_frame_sequence_number
             if frame.header.vcf_count == self.receiver_frame_sequence_number:
                 # E1 assume buffer is available FIXME: must be bounded for flight
                 if self.state == Farm1.FarmState.OPEN:
                     self.higher_buffer.put(frame)
                     gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                     self._callback(self.FduArrivedIndication(gvcid))
-                    self.receiver_frame_sequence_number = vr + 1 % self._modulus
+                    self.receiver_frame_sequence_number = (
+                        self.receiver_frame_sequence_number + 1
+                    ) % self._modulus
                     self.retransmit = False
                 elif self.state == Farm1.FarmState.WAIT:
                     raise Exception(

@@ -15,10 +15,9 @@ class CopManagerService(Service):
         super().__init__()
         self._services: dict[EdlVcid, CopService] = {}
 
-    def on_stop_before(self) -> None:
-        logger.info("Stopping COP services")
-        for service in self._services.values():
-            service.disable()
+    def on_loop(self) -> None:
+        for srv in self._services.values():
+            srv.tick()
 
     def create_service(
         self, vcid: EdlVcid
@@ -26,7 +25,6 @@ class CopManagerService(Service):
         logger.info(f"Creating Cop Service for VCID {vcid}")
         srv = Farm1(w=254)
         self._services[vcid] = srv
-        srv.enable()
         return srv.lower_buffer, srv.higher_buffer
 
     def get_service(self, vcid: EdlVcid) -> Optional[CopService]:

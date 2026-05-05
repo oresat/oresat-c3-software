@@ -1,5 +1,4 @@
 import logging
-import threading
 from dataclasses import dataclass
 from enum import Enum, unique
 from queue import Empty, SimpleQueue
@@ -18,7 +17,6 @@ logger.addHandler(logging.NullHandler())
 class CopService:
 
     def __init__(self) -> None:
-        self._thread: threading.Thread = threading.Thread(target=self.worker)
         self._signals: SimpleQueue[object] = SimpleQueue()
         # from lower procedures
         self.lower_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
@@ -26,16 +24,10 @@ class CopService:
         self.higher_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
         self._callbacks: list[Callable[[object], None]] = []
 
-    def enable(self) -> None:
-        self._thread.start()
-
-    def disable(self) -> None:
-        self._thread.join()
-
     def notify(self, what: object) -> None:
         self._signals.put(what)
 
-    def worker(self) -> None:
+    def tick(self) -> None:
         raise NotImplemented
 
     def register_callback(self, cb: Callable[[object], None]) -> None:
@@ -121,19 +113,17 @@ class Farm1(CopService):
             self.positive_window_width = pw
             self.negative_window_width = nw
 
-    def worker(self) -> None:
-        logger.debug("FARM-1 worker started")
-        while True:
-            try:
-                notif = self._signals.get(timeout=0.1)
-            except Empty:
-                continue
-            if isinstance(notif, Farm1.ValidFrameArrivedIndication):
-                logger.debug(f"Received ValidFrameArrived, {notif.gvcid}")
-                frame = self.lower_buffer.get()
-                self._process_frame(frame)
-            else:
-                raise TypeError("Unknown Farm1 signal indication type")
+    def tick(self) -> None:
+        try:
+            notif = self._signals.get(timeout=0.1)
+        except Empty:
+            return
+        if isinstance(notif, Farm1.ValidFrameArrivedIndication):
+            logger.debug(f"Received ValidFrameArrived, {notif.gvcid}")
+            frame = self.lower_buffer.get()
+            self._process_frame(frame)
+        else:
+            raise TypeError("Unknown Farm1 signal indication type")
 
     def is_in_positive_window(self, ns: int) -> bool:
         """Check if the given sequence number is in the positive window, and does **not** contain
@@ -227,7 +217,7 @@ class Farm1(CopService):
                 logger.error("Discarding frame (E9): invalid 'Type-AC' frame")
                 return False
             ns: int = frame.header.vcf_count
-            if frame.header.vcf_count == self.receiver_frame_sequence_number:
+            if ns == self.receiver_frame_sequence_number:
                 # E1 assume buffer is available FIXME: must be bounded for flight
                 if self.state == Farm1.FarmState.OPEN:
                     self.higher_buffer.put(frame)

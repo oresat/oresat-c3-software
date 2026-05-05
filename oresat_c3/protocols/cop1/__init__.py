@@ -1,3 +1,4 @@
+import logging
 import threading
 from dataclasses import dataclass
 from enum import Enum, unique
@@ -10,6 +11,9 @@ from oresat_c3.protocols.cop1.control_word import ControlWord
 
 from ..edl_packet import EdlVcid
 from ..uslp import Gvcid
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 
 class CopService:
@@ -119,14 +123,14 @@ class Farm1(CopService):
             self.negative_window_width = nw
 
     def worker(self) -> None:
-        print("worker started")
+        logger.debug("FARM-1 worker started")
         while True:
             try:
                 notif = self._signals.get(timeout=0.1)
             except Empty:
                 continue
             if isinstance(notif, Farm1.ValidFrameArrivedIndication):
-                print("Received frame arrived")
+                logger.debug(f"Received ValidFrameArrived, {notif.gvcid}")
                 frame = self.lower_buffer.get()
                 self._process_frame(frame)
             else:
@@ -195,7 +199,7 @@ class Farm1(CopService):
                 data = frame.tfdf.tfdz
                 directive = data[0]
                 if directive == 0x00:
-                    # E7 valid unlock
+                    logger.debug("Received Unlock directive (E7)")
                     self.b_counter = (self.b_counter + 1) % 4
                     self.retransmit = False
                     if self.state == Farm1.FarmState.WAIT:
@@ -205,6 +209,7 @@ class Farm1(CopService):
                         self.lockout = False
                     self.state = Farm1.FarmState.OPEN
                 elif directive == 0x82 and data[1] == 0:
+                    logger.debug(f"Received Set V(R) directive (E8), value={data[2]}")
                     # E8 valid Set V(R)
                     self.b_counter = (self.b_counter + 1) % 4
                     if self.state == Farm1.FarmState.OPEN:
@@ -216,11 +221,11 @@ class Farm1(CopService):
                         self.receiver_frame_sequence_number = data[2]
                         self.state = Farm1.FarmState.OPEN
                 else:
-                    print("FARM-1: invalid Type-BC directive. Discarding frame")
+                    logger.error("Invalid Type-BC directive. Discarding frame")
                     return False
         elif frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS:
             if frame.header.prot_ctrl_cmd_flag != ProtocolCommandFlag.USER_DATA:
-                print("Discarding frame (E9): invalid 'Type-AC' frame")
+                logger.error("Discarding frame (E9): invalid 'Type-AC' frame")
                 return False
             ns: int = frame.header.vcf_count
             vr = self.receiver_frame_sequence_number
@@ -237,21 +242,21 @@ class Farm1(CopService):
                         "Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON"
                     )
                 elif self.state == Farm1.FarmState.LOCKOUT:
-                    print("Discarding frame (E1,S3)")
+                    logger.warning("Discarding frame (E1,S3)")
                     return False
             elif self.is_in_positive_window(ns):
                 # E3 (second case): in the positive window, seq num is incorrect
-                print(f"Discarding frame (E3,{self.state})")
+                logger.warning(f"Discarding frame (E3,{self.state})")
                 if self.state == Farm1.FarmState.OPEN:
                     self.retransmit = True
                 return False
             elif self.is_in_negative_window(ns):
                 # E4 (third case): in negative window. discard, no other actions.
-                print("Discarding frame (E4)")
+                logger.warning("Discarding frame (E4)")
                 return False
             else:
                 # E5 outside of window
-                print("Discarding frame (E5)")
+                logger.warning("Discarding frame (E5)")
                 if self.state != Farm1.FarmState.LOCKOUT:
                     self.lockout = True
                     self.state = Farm1.FarmState.LOCKOUT

@@ -1,5 +1,6 @@
 """OreSat C3 app main."""
 
+import logging
 import os
 import socket
 import time
@@ -29,6 +30,23 @@ from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
 from .subsystems.rtc import set_system_time_to_rtc_time
+
+
+class InterceptHandler(logging.Handler):
+    def emit(self, record):
+        # Map the logging level to loguru's level
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Find the correct call depth so loguru reports the right source location
+        frame, depth = logging.currentframe(), 0
+        while frame and (depth == 0 or frame.f_code.co_filename == logging.__file__):
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
 
 
 @rest_api.app.route("/beacon")
@@ -118,6 +136,15 @@ def main():
     args, config = olaf_setup("c3")
     mock_args = [i.lower() for i in args.mock_hw]
     mock_hw = len(mock_args) != 0
+
+    cop1_logger = logging.getLogger("oresat_c3.protocols.cop1")
+    cop1_logger.handlers = [InterceptHandler()]
+    if args.verbose:
+        level = "DEBUG"
+    else:
+        level = "INFO"
+    cop1_logger.setLevel(level)
+    cop1_logger.propagate = False
 
     # start watchdog thread ASAP
     thread = Thread(target=watchdog, daemon=True)

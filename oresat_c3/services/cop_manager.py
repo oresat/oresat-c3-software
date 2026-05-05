@@ -23,7 +23,7 @@ class CopManagerService(Service):
         self, vcid: EdlVcid
     ) -> Tuple[SimpleQueue[TransferFrame], SimpleQueue[TransferFrame]]:
         logger.info(f"Creating Cop Service for VCID {vcid}")
-        srv = Farm1(w=254)
+        srv = Farm1(w=254, vcf_count_length=2)
         self._services[vcid] = srv
         return srv.lower_buffer, srv.higher_buffer
 

@@ -96,10 +96,6 @@ class TestFarm1(unittest.TestCase):
             BypassSequenceControlFlag.SEQ_CTRLD_QOS,
         )
 
-    def tearDown(self):
-        return
-        self.farm1._thread.join()
-
     def test_init(self):
         valid_w = 254
         valid_w_no_re = 256
@@ -168,6 +164,12 @@ class TestFarm1(unittest.TestCase):
         self.INVALID_SEQ_FRAME.header.vcf_count = invalid_ns
         self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))
         self.assertTrue(self.farm1.retransmit)
+
+    def test_lockout(self):
+        self.farm1.receiver_frame_sequence_number = 0
+        self.INVALID_SEQ_FRAME.header.vcf_count = self.farm1.sliding_window_width // 2
+        self.assertFalse(self.farm1._process_frame(self.INVALID_SEQ_FRAME))
+        self.assertTrue(self.farm1.lockout)
 
     def test_large_vcf(self):
         # weirdness may happen if modulo arithmetic is not respected

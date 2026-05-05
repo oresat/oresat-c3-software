@@ -3,13 +3,12 @@ import threading
 from dataclasses import dataclass
 from enum import Enum, unique
 from queue import Empty, SimpleQueue
-from typing import Callable, Tuple
+from typing import Callable
 
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag, TransferFrame
 
 from oresat_c3.protocols.cop1.control_word import ControlWord
 
-from ..edl_packet import EdlVcid
 from ..uslp import Gvcid
 
 logger = logging.getLogger(__name__)
@@ -262,11 +261,3 @@ class Farm1(CopService):
                     self.state = Farm1.FarmState.LOCKOUT
                 return False
         return True
-
-
-class VirtualChannel:
-    CHANNELS: dict[EdlVcid, Tuple[CopService, Callable]] = {}
-
-    @classmethod
-    def register(cls, vcid: EdlVcid, service: CopService, callback) -> None:
-        cls.CHANNELS[vcid] = (service, callback)

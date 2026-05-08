@@ -51,6 +51,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
+from ..protocols.uslp import pack
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .channel_router import ChannelRouterService
@@ -196,6 +197,12 @@ class EdlService(Service):
     def on_loop(self):
         self._process_command()
         self._process_cfdp()
+        # FIXME: This should be temporary to promptly and consistently send CLCWs
+        #  The plan is to send CLCWs in a new VC "telemetry" (different than beacon).
+        #  There is no payload yet for this channel, it will only need CLCWs
+        self.sleep_ms(2500)
+        clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
+        self._radios_service.send_edl_response(pack(b"\x00", self._sequence_count, clcw.pack()))
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

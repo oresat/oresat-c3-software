@@ -1,9 +1,13 @@
 from dataclasses import dataclass
 
+from spacepackets.uslp import BypassSequenceControlFlag, PrimaryHeader, ProtocolCommandFlag
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
 from spacepackets.uslp.frame import (
     FrameType,
+    TfdzConstructionRules,
     TransferFrame,
+    TransferFrameDataField,
+    UslpProtocolIdentifier,
     VarFrameProperties,
 )
 
@@ -26,6 +30,7 @@ FRAME_PROPS = VarFrameProperties(
 
 class UslpInvalidSpacecraftIdError(Exception):
     pass
+
 
 @dataclass
 class Gvcid:
@@ -63,8 +68,8 @@ class Gvcid:
     def from_int(cls, value: int) -> "Gvcid":
         return cls(
             tfvn=(value >> 22) & 0xF,
-            scid=(value >> 6)  & 0xFFFF,
-            vcid= value        & 0x3F,
+            scid=(value >> 6) & 0xFFFF,
+            vcid=value & 0x3F,
         )
 
 
@@ -108,3 +113,40 @@ def unpack_frame(raw: bytes) -> TransferFrame:
         raise UslpInvalidSpacecraftIdError
 
     return frame
+
+
+def pack(payload: bytes, seq_num: int, control_word: bytes) -> bytes:
+    tfdz = payload
+
+    tfdf = TransferFrameDataField(
+        tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
+        uslp_ident=UslpProtocolIdentifier.MISSION_SPECIFIC_INFO_1_MAPA_SDU,
+        tfdz=tfdz,
+    )
+
+    # USLP transfer frame total length - 1
+    frame_len = len(payload) + TC_MIN_LEN - 1 - HMAC_LEN
+
+    has_clcw = bool(control_word)
+    if has_clcw:
+        frame_len += len(control_word)
+
+    frame_header = PrimaryHeader(
+        scid=SPACECRAFT_ID,
+        map_id=0,
+        vcid=0,
+        src_dest=0,
+        frame_len=frame_len,
+        vcf_count_len=0,
+        op_ctrl_flag=has_clcw,
+        prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
+        bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
+    )
+
+    seq_num_bytes = seq_num.to_bytes(SEQ_NUM_LEN, "little")
+    frame = TransferFrame(
+        header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes, op_ctrl_field=control_word
+    )
+    packet = frame.pack(frame_type=FrameType.VARIABLE)
+
+    return packet

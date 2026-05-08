@@ -1,10 +1,8 @@
-from queue import SimpleQueue
 from typing import Optional, Tuple
 
 from olaf import Service, logger
-from spacepackets.uslp import TransferFrame
 
-from ..protocols.cop1 import CopService, Farm1
+from ..protocols.cop1 import CopService, Farm1, FarmHigherServiceInterface, ServiceInterface
 from ..protocols.edl_packet import EdlVcid
 
 
@@ -19,13 +17,11 @@ class CopManagerService(Service):
         for srv in self._services.values():
             srv.tick()
 
-    def create_service(
-        self, vcid: EdlVcid
-    ) -> Tuple[SimpleQueue[TransferFrame], SimpleQueue[TransferFrame]]:
+    def create_service(self, vcid: EdlVcid) -> Tuple[ServiceInterface, FarmHigherServiceInterface]:
         logger.info(f"Creating Cop Service for VCID {vcid}")
-        srv = Farm1(w=254, vcf_count_length=2)
+        srv = Farm1(w=20, vcf_count_length=2)
         self._services[vcid] = srv
-        return srv.lower_buffer, srv.higher_buffer
+        return srv.lower_interface, srv.higher_interface
 
     def get_service(self, vcid: EdlVcid) -> Optional[CopService]:
         return self._services.get(vcid)

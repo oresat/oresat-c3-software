@@ -1,3 +1,4 @@
+import logging
 import struct
 import unittest
 
@@ -123,29 +124,27 @@ class TestFarm1(unittest.TestCase):
         self.assertFalse(self.farm1._process_frame(self.INVALID_TYPE_BC))
 
     def test_process_bd(self):
-        def cb(indication: object) -> None:
-            self.assertIsInstance(indication, Farm1.FduArrivedIndication)
-
-        self.farm1.register_callback(cb)
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BD))
-        self.farm1.higher_buffer.get_nowait()
+        indication = self.farm1.higher_interface.signal.pop()
+        self.assertIsInstance(indication, Farm1.FduArrivedIndication)
+        self.farm1.higher_interface.buffer.pop()
 
     def test_process_ad(self):
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_AD))
         self.assertEqual(self.farm1.receiver_frame_sequence_number, 1)
-        self.assertEqual(self.farm1.higher_buffer.qsize(), 1)
+        self.assertEqual(len(self.farm1.higher_interface.buffer), 1)
 
     def test_process_ac(self):
         self.assertFalse(self.farm1._process_frame(self.INVALID_TYPE_AC))
 
     def test_buffer_put(self):
-        self.farm1.lower_buffer.put(self.FRAME_TYPE_BC)
-        self.assertEqual(self.farm1.lower_buffer.qsize(), 1)
+        self.farm1.lower_interface.buffer.append(self.FRAME_TYPE_BC)
+        self.assertEqual(len(self.farm1.lower_interface.buffer), 1)
 
     def test_notify(self):
         gvcid = Gvcid(0b1100, self.FRAME_TYPE_BC.header.scid, self.FRAME_TYPE_BC.header.vcid)
-        self.farm1.notify(Farm1.ValidFrameArrivedIndication(gvcid))
-        self.assertEqual(self.farm1._signals.qsize(), 1)
+        self.farm1.lower_interface.signal.append(Farm1.ValidFrameArrivedIndication(gvcid))
+        self.assertEqual(len(self.farm1.lower_interface.signal), 1)
 
     def test_trigger_retransmit(self):
         # set V(R) to predictable value first

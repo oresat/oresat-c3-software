@@ -44,6 +44,7 @@ from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
 from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
+from ..protocols.cop1 import FarmHigherServiceInterface
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -76,8 +77,12 @@ class EdlService(Service):
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
         self._channel_router = channel_router_service
-        self._cmd_route = channel_router_service.request_route(EdlVcid.C3_COMMAND, cop=True)
-        self._file_route = channel_router_service.request_route(EdlVcid.FILE_TRANSFER)
+        self._cmd_route: FarmHigherServiceInterface = channel_router_service.request_route(
+            EdlVcid.C3_COMMAND, cop=True
+        )
+        self._file_route: SimpleQueue[TransferFrame] = channel_router_service.request_route(
+            EdlVcid.FILE_TRANSFER
+        )
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
@@ -154,8 +159,9 @@ class EdlService(Service):
 
     def _process_command(self) -> None:
         try:
-            frame = self._cmd_route.get_nowait()
-        except Empty:
+            frame = self._cmd_route.buffer.pop()
+            self._cmd_route.buffer_release.set()
+        except IndexError:
             return
         logger.info("processing cmd packet")
         req_packet = self._frame_to_packet(frame)

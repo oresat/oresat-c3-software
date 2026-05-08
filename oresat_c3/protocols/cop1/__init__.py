@@ -1,41 +1,115 @@
 import logging
+import threading
 from dataclasses import dataclass
 from enum import Enum, unique
-from queue import Empty, SimpleQueue
-from typing import Callable
+from math import ceil
 
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag, TransferFrame
 
 from oresat_c3.protocols.cop1.control_word import ControlWord
 
 from ..uslp import Gvcid
+from .util import BoundedDeque
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
+@dataclass
+class Indication:
+    """This is the base for COP indications. Sometimes referred to as requests, directives, signals,
+    notifications, or indications depending on the context.
+
+    Parameters
+    ----------
+    gvcid: Gvcid
+        The Global Virtual Channel Identifier for the frame
+    """
+
+    gvcid: Gvcid
+
+
+class ServiceInterface:
+    """A generic interface to a COP service.
+
+    For example, in an interface to a lower procedure, the lower procedure would insert a frame into
+    the buffer and notify the service by inserting a `ValidFrameArrivedIndication`. The COP service
+    can then check the signal buffer for signals, and if signaled to process a new frame, fetch from
+    the buffer.
+
+    Attributes
+    ----------
+    buffer : BoundedDeque[TransferFrame]
+        The USLP frame buffer for this interface. For example, in an interface to a lower procedure,
+        the lower procedure would insert frames and COP would receive them.
+    signal : BoundedDeque[Indication]
+        The COP-1 standard interchangeably calls these signals, indications, or notifications
+        depending on the context.
+    """
+
+    def __init__(self, buffer_size: int, signal_size: int = 0) -> None:
+        """
+
+        Parameters
+        ----------
+        buffer_size
+            The size of the frame buffer.
+        signal_size
+            The size of the signal queue. If <= 0, the signal queue will automatically be sized
+            as 1.25x the buffer size, to accommodate both frame indications for a full buffer, and
+            leave some room for any additional signals (such as aborted indications).
+        """
+
+        self.buffer: BoundedDeque[TransferFrame] = BoundedDeque(buffer_size)
+        self.signal: BoundedDeque[Indication] = BoundedDeque(
+            signal_size if signal_size > 0 else ceil(buffer_size * 1.25)
+        )
+
+
+class FarmHigherServiceInterface(ServiceInterface):
+    """A ServiceInterface specifically for FARM-1 higher procedures.
+
+    Attributes
+    ----------
+    buffer_release
+        A threading event that, if set, triggers FARM-1 E10, "Buffer release signal."
+        This transitions the FARM-1 state machine out of the wait state on the next tick.
+    """
+
+    def __init__(self, buffer_size: int, signal_size: int = 0) -> None:
+        super().__init__(buffer_size, signal_size)
+        self.buffer_release = threading.Event()
+
+
 class CopService:
+    """An abstraction for COP-1 services (FARM and FOP).
 
-    def __init__(self) -> None:
-        self._signals: SimpleQueue[object] = SimpleQueue()
+    Attributes
+    ----------
+    lower_interface: ServiceInterface
+        The interface from the lower procedures ("inputs"). The COP service is only expected to
+        fetch from this interface.
+    higher_interface: ServiceInterface
+        The interface to the higher procedures ("outputs"). A COP service is only expected to insert
+        into this interface.
+    """
+
+    def __init__(self, buffer_size: int = 10) -> None:
+        """
+
+        Parameters
+        ----------
+        buffer_size
+            The size of the procedure interface buffers. Given a FOP_SLIDING_WINDOW_WIDTH *K*,
+            it is recommended to set `buffer_size` >= K. By default, K=10 in YAMCS.
+        """
         # from lower procedures
-        self.lower_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
+        self.lower_interface: ServiceInterface = ServiceInterface(buffer_size)
         # to higher procedures
-        self.higher_buffer: SimpleQueue[TransferFrame] = SimpleQueue()
-        self._callbacks: list[Callable[[object], None]] = []
-
-    def notify(self, what: object) -> None:
-        self._signals.put(what)
+        self.higher_interface: FarmHigherServiceInterface = FarmHigherServiceInterface(buffer_size)
 
     def tick(self) -> None:
         raise NotImplemented
-
-    def register_callback(self, cb: Callable[[object], None]) -> None:
-        self._callbacks.append(cb)
-
-    def _callback(self, indication: object) -> None:
-        for cb in self._callbacks:
-            cb(indication)
 
 
 class Farm1(CopService):
@@ -55,21 +129,16 @@ class Farm1(CopService):
         IGNORE = 3
 
     @dataclass
-    class FduArrivedIndication:
-        gvcid: int
+    class FduArrivedIndication(Indication):
+        pass
 
     @dataclass
-    class ValidFrameArrivedIndication:
+    class ValidFrameArrivedIndication(Indication):
         """Indicate from a lower procedure that a valid Transfer Frame has been placed in the
         buffer.
-
-        Parameters
-        ----------
-        gvcid: int
-            The Global Virtual Channel Identifier for the frame
         """
 
-        gvcid: int
+        pass
 
     def __init__(
         self,
@@ -114,16 +183,23 @@ class Farm1(CopService):
             self.negative_window_width = nw
 
     def tick(self) -> None:
+        if self.higher_interface.buffer_release.is_set():
+            # E10 Buffer release signal
+            if self.state != Farm1.FarmState.OPEN:
+                self.wait = False
+                if self.state != Farm1.FarmState.LOCKOUT:
+                    self.state = Farm1.FarmState.OPEN
+            self.higher_interface.buffer_release.clear()
         try:
-            notif = self._signals.get(timeout=0.1)
-        except Empty:
+            notif = self.lower_interface.signal.pop()
+        except IndexError:
             return
         if isinstance(notif, Farm1.ValidFrameArrivedIndication):
             logger.debug(f"Received ValidFrameArrived, {notif.gvcid}")
-            frame = self.lower_buffer.get()
+            frame = self.lower_interface.buffer.pop()
             self._process_frame(frame)
         else:
-            raise TypeError("Unknown Farm1 signal indication type")
+            raise TypeError(f"Unknown Farm1 signal indication type {type(notif)}")
 
     def is_in_positive_window(self, ns: int) -> bool:
         """Check if the given sequence number is in the positive window, and does **not** contain
@@ -180,9 +256,10 @@ class Farm1(CopService):
         if frame.header.bypass_seq_ctrl_flag == BypassSequenceControlFlag.EXPEDITED_QOS:
             if frame.header.prot_ctrl_cmd_flag == ProtocolCommandFlag.USER_DATA:
                 # E6 Type-BD, bypass COP
-                self.higher_buffer.put(frame)
+                self.higher_interface.buffer.append(frame, force=True)
                 gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
-                self._callback(self.FduArrivedIndication(gvcid))
+                self.higher_interface.signal.append(self.FduArrivedIndication(gvcid), force=True)
+                self.b_counter = (self.b_counter + 1) % 4
             else:
                 # Type-BC, check commands
                 data = frame.tfdf.tfdz
@@ -218,22 +295,30 @@ class Farm1(CopService):
                 return False
             ns: int = frame.header.vcf_count
             if ns == self.receiver_frame_sequence_number:
-                # E1 assume buffer is available FIXME: must be bounded for flight
-                if self.state == Farm1.FarmState.OPEN:
-                    self.higher_buffer.put(frame)
-                    gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
-                    self._callback(self.FduArrivedIndication(gvcid))
-                    self.receiver_frame_sequence_number = (
-                        self.receiver_frame_sequence_number + 1
-                    ) % self._modulus
-                    self.retransmit = False
-                elif self.state == Farm1.FarmState.WAIT:
-                    raise Exception(
-                        "Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON"
-                    )
-                elif self.state == Farm1.FarmState.LOCKOUT:
-                    logger.warning("Discarding frame (E1,S3)")
+                if not self.higher_interface.buffer.appendleft(frame):
+                    # E2 No buffer is available
+                    self.retransmit = True
+                    self.wait = True
                     return False
+                else:
+                    # E1 buffer is available
+                    gvcid = Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+                    if not self.higher_interface.signal.appendleft(
+                        self.FduArrivedIndication(gvcid)
+                    ):
+                        logger.error("Unable to append Arrived Indication")
+                    if self.state == Farm1.FarmState.OPEN:
+                        self.receiver_frame_sequence_number = (
+                            self.receiver_frame_sequence_number + 1
+                        ) % self._modulus
+                        self.retransmit = False
+                    elif self.state == Farm1.FarmState.WAIT:
+                        raise Exception(
+                            "Invalid state WAIT for E1: Type-AD received despite Wait_Flag ON"
+                        )
+                    elif self.state == Farm1.FarmState.LOCKOUT:
+                        logger.warning("Discarding frame (E1,S3)")
+                        return False
             elif self.is_in_positive_window(ns):
                 # E3 (second case): in the positive window, seq num is incorrect
                 logger.warning(f"Discarding frame (E3,{self.state})")

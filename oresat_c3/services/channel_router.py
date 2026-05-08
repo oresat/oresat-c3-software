@@ -1,9 +1,10 @@
-from queue import Empty, Full, Queue
+from queue import Empty, Queue, SimpleQueue
+from typing import Union
 
 from olaf import Service, logger
 from spacepackets.uslp import TransferFrame
 
-from ..protocols.cop1 import ControlWord, Farm1
+from ..protocols.cop1 import ControlWord, Farm1, FarmHigherServiceInterface, ServiceInterface
 from ..protocols.edl_packet import EdlVcid
 from ..protocols.uslp import Gvcid, unpack_frame
 from .cop_manager import CopManagerService
@@ -23,7 +24,7 @@ class ChannelRouterService(Service):
         super().__init__()
         self._radios_service = radios_service
         self._cop_service = cop_service
-        self._routes: dict[EdlVcid, Queue[TransferFrame]] = {}
+        self._routes: dict[EdlVcid, Union[SimpleQueue[TransferFrame], ServiceInterface]] = {}
 
     def on_loop(self) -> None:
         try:
@@ -35,26 +36,27 @@ class ChannelRouterService(Service):
             frame = unpack_frame(message)
             vcid = frame.header.vcid
             if vcid in self._routes:
-                try:
-                    logger.info("routing packet")
-                    self._routes[vcid].put_nowait(frame)
-                except Full:
-                    logger.warning(f"{vcid} queue full: frame discarded")
-                cop = self._cop_service.get_service(vcid)
-                if cop is not None:
-                    logger.info("VCID has COP")
-                    cop.notify(
-                        Farm1.ValidFrameArrivedIndication(
-                            Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+                route = self._routes[vcid]
+                if isinstance(route, ServiceInterface):
+                    if route.buffer.appendleft(frame):
+                        route.signal.appendleft(
+                            Farm1.ValidFrameArrivedIndication(
+                                Gvcid(0b1100, frame.header.scid, frame.header.vcid)
+                            )
                         )
-                    )
+                    else:
+                        logger.error(f"{vcid} lower queue full: frame discarded")
+                else:
+                    route.put_nowait(frame)
             else:
                 logger.error(f"No route for VCID {frame.header.vcid}")
 
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
 
-    def request_route(self, vcid: EdlVcid, cop: bool = False) -> Queue[TransferFrame]:
+    def request_route(
+        self, vcid: EdlVcid, cop: bool = False
+    ) -> Union[SimpleQueue[TransferFrame], FarmHigherServiceInterface]:
         """Request the creation of a route from the radios.
 
         Parameters
@@ -66,8 +68,11 @@ class ChannelRouterService(Service):
 
         Returns
         -------
-        Queue[TransferFrame]
-            A Queue acting as a buffer through which all valid USLP Transfer Frames exit the route.
+        Union[SimpleQueue[TransferFrame], ServiceInterface]
+            Access to a Queue through which all valid USLP frames exit the route.
+            If `cop` is `False`, frames are directly forwarded to the returned SimpleQueue.
+            Otherwise, the COP service's higher ServiceInterface is returned, allowing access to the
+            service's buffer and signal queue.
 
         Raises
         ------
@@ -78,15 +83,14 @@ class ChannelRouterService(Service):
 
         if vcid in self._routes:
             raise KeyError(f"Route already exists: {vcid}")
-        out_queue: Queue[TransferFrame]
         if cop:
-            low_buf, out_queue = self._cop_service.create_service(vcid)
-            self._routes[vcid] = low_buf
+            low_interface, out = self._cop_service.create_service(vcid)
+            self._routes[vcid] = low_interface
         else:
-            out_queue = Queue(ChannelRouterService.QUEUE_SIZE)
-            self._routes[vcid] = out_queue
+            out: Queue[TransferFrame] = Queue(ChannelRouterService.QUEUE_SIZE)
+            self._routes[vcid] = out
         logger.info(f"Created route for VCID {vcid}, cop={cop}")
-        return out_queue
+        return out
 
     def get_control_word(self, vcid: EdlVcid) -> ControlWord:
         service = self._cop_service.get_service(vcid)

@@ -25,6 +25,7 @@ dependencies = [
     "oresat-olaf>=3.6.5",
     "smbus2",
     "spacepackets",
+    "spidev",
 ]
 dynamic = ["version"]
 

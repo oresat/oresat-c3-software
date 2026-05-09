@@ -2,10 +2,15 @@
 SI41xx RF Synthesizer driver.
 """
 
+import math
+from gpiod.line import Value
 from enum import IntEnum
-from typing import Union
 
-from olaf import Gpio
+from typing import TYPE_CHECKING
+from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
+
+if TYPE_CHECKING:
+    import gpiod
 
 
 class Si41xxRegister(IntEnum):
@@ -54,7 +59,16 @@ class Si41xxError(Exception):
 
 
 class Si41xx:
-    """SI41xx RF Synthesizer driver."""
+    """
+    Si41xx RF Synthesizer driver.
+
+    The Si41xx synthesizer is part of the radio subsystem and
+    enables wireless communication with the earth (uplink) on L-band.
+
+    References
+    ----------
+    Nasa, SmallSat Communications: https://www.nasa.gov/smallsat-institute/sst-soa/soa-communications/
+    """
 
     MAX_PHASEDET = 1_000_000
     MIN_PHASEDET = 10_000
@@ -99,11 +113,18 @@ class Si41xx:
         """
 
         self._state = Si41xxState.UNINIT
-
-        self._sen_gpio = Gpio(sen_pin, mock)
-        self._sclk_gpio = Gpio(sclk_pin, mock)
-        self._sdata_gpio = Gpio(sdata_pin, mock)
-        self._auxout_gpio = Gpio(auxout_pin, mock)
+        self._sen_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip2", 9, sen_pin
+        )
+        self._sclk_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip3", 28, sclk_pin
+        )
+        self._sdata_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip3", 21, sdata_pin
+        )
+        self._auxout_gpio: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip3", 29, auxout_pin
+        )
         self._ref_freq = ref_freq
         self._if_div = if_div
         self._if_n = if_n
@@ -115,7 +136,7 @@ class Si41xx:
 
     def _write_reg(self, reg: Si41xxRegister, data: int):
         """
-        Bit bang the register over serial
+        Write a value to a register using a bit banged version of SPI.
 
         Parameters
         ----------
@@ -123,30 +144,64 @@ class Si41xx:
             The register to write to.
         data: int
             the data to write. Should
+
+        Notes
+        -----
+        The Si41xx datasheet uses a slightly different terminology from what's typical.
+
+        SEN <=> Chip Select (CS)
+        SDATA <=> Master Out Slave In (MOSI)
+        SCLK <=> Serial Clock (SCLK)
+
+        A typical transation, SEN is asserted low to begin the transaction.
+        Each bit of data is shifted in on the raising edge of SCLK,
+        so the SDATA line needs to be asserted slightly before the transition.
+
+        SEN    ‾‾‾‾‾‾\\________________________________________________________________/‾‾‾‾‾‾‾‾‾‾‾‾
+
+        SCLK   ‾‾‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾
+
+        SDATA  -----------<    bit0   ><    bit1   ><    bit2   ><    bit3   ><    bit4   >---------
+
+        References
+        ----------
+        Skyworks, Si4133 Datasheet Rev. 1.61: https://www.mouser.com/datasheet/2/472/si4133-2507422.pdf
+        Wikipedia, Serial Peripheral Interface: https://en.wikipedia.org/wiki/Serial_Peripheral_Interface
         """
 
         if data > self._DATA_MASK:
-            raise Si41xxError(f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}")
+            raise Si41xxError(
+                f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}"
+            )
 
+        """
+        Pack the bits
+        MSB                      LSB
+        21     4,3                 0
+        [ data ][ register address ]
+        """
         word = reg.value | ((data & self._DATA_MASK) << 4)
 
-        self._sen_gpio.low()
+        # Pull serial enable line low to start transaction
+        self._sen_gpio.set_value(self._sen_gpio.offsets[0], Value.INACTIVE)
 
-        # bit bang from MSB down
+        # Bit bang from MSB from to LSB
         for _ in range(self._MSG_SIZE, 0, -1):
-            self._sclk_gpio.low()
+            self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.INACTIVE)
 
+            # Put the data on the interface
             if word & self._MSG_MSB:
-                self._sdata_gpio.high()
+                self._sdata_gpio.set_value(self._sdata_gpio.offsets[0], Value.ACTIVE)
             else:
-                self._sdata_gpio.low()
+                self._sdata_gpio.set_value(self._sdata_gpio.offsets[0], Value.INACTIVE)
 
-            self._sclk_gpio.high()
+            self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.ACTIVE)
             word <<= 1
 
-        self._sclk_gpio.low()
-        self._sen_gpio.high()
-        self._sclk_gpio.high()
+        # Release the interface
+        self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.INACTIVE)
+        self._sen_gpio.set_value(self._sen_gpio.offsets[0], Value.ACTIVE)
+        self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.ACTIVE)
 
     def calc_div(self, freq: int) -> tuple[int, int]:
         """
@@ -167,28 +222,24 @@ class Si41xx:
         if freq == 0:
             raise Si41xxError("freq must be a non-zero value")
 
-        phasedet = self._ref_freq
-        gcd = freq
-
-        # Find GCD of both frequencies
-        while phasedet != gcd:
-            if phasedet > gcd:
-                phasedet -= gcd
-            else:
-                gcd -= phasedet
+        phasedet = math.gcd(self._ref_freq, freq)
 
         # Divide until frequency is less than the maximum
         while phasedet >= self.MAX_PHASEDET:
             phasedet //= 2
         if phasedet < self.MIN_PHASEDET:
-            raise Si41xxError("failed to find values within phase detector frequency bounds")
+            raise Si41xxError(
+                "failed to find values within phase detector frequency bounds"
+            )
 
         # Calculate needed N and R values
         ndiv = freq // phasedet
         rdiv = self._ref_freq // phasedet
 
         if ndiv > 0xFF_FF or rdiv > 0x1F_FF:
-            raise Si41xxError("calc_div values are not within bounds of programmable values")
+            raise Si41xxError(
+                "calc_div values are not within bounds of programmable values"
+            )
 
         return ndiv, rdiv
 
@@ -201,7 +252,9 @@ class Si41xx:
         self._pbib = False
         self._pbrb = False
 
-        self._set_config_reg(False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET)
+        self._set_config_reg(
+            False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET
+        )
         self._write_reg(Si41xxRegister.PHASE_GAIN, 0)
         self._set_phase_pwrdown_reg(self._pbrb, self._pbib)
 
@@ -231,8 +284,8 @@ class Si41xx:
         autokp: bool,
         autopdb: bool,
         lprw: bool,
-        if_div: Union[Si41xxIfdiv, int],
-        aux_sel: Union[Si41xxAuxSel, int],
+        if_div: Si41xxIfdiv | int,
+        aux_sel: Si41xxAuxSel | int,
     ):
         """Set the Config register"""
 

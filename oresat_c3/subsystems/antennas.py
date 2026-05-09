@@ -2,7 +2,11 @@
 
 from time import sleep
 
-from olaf import GPIO_IN, GPIO_OUT, Adc, Gpio
+import gpiod
+from gpiod.line import Direction, Value
+from olaf import Adc
+
+from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
 
 
 class Antennas:
@@ -16,13 +20,29 @@ class Antennas:
             Mock the hardware.
         """
 
-        self._gpio_monopole_1 = Gpio("FIRE_ANTENNAS_1", mock)
-        self._gpio_monopole_2 = Gpio("FIRE_ANTENNAS_2", mock)
-        self._gpio_helical_1 = Gpio("FIRE_HELICAL_1", mock)
-        self._gpio_helical_2 = Gpio("FIRE_HELICAL_2", mock)
+        self._gpio_monopole_1: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip3", 20, "FIRE_ANTENNAS_1"
+        )
 
-        self._gpio_test_monopole = Gpio("TEST_ANTENNAS", mock)
-        self._gpio_test_helical = Gpio("TEST_HELICAL", mock)
+        self._gpio_monopole_2: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip2", 21, "FIRE_ANTENNAS_2"
+        )
+
+        self._gpio_helical_1: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip2", 16, "FIRE_HELICAL_1"
+        )
+
+        self._gpio_helical_2: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip2", 14, "FIRE_HELICAL_2"
+        )
+
+        self._gpio_test_helical: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip2", 15, "TEST_HELICAL"
+        )
+
+        self._gpio_test_monopole: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip2", 17, "TEST_ANTENNAS"
+        )
 
         self._adc_monopole = Adc(4, mock)
         self._adc_helical = Adc(5, mock)
@@ -55,17 +75,43 @@ class Antennas:
             How long the gpio lines are set high.
         """
 
-        self._gpio_helical_1.mode = GPIO_OUT
-        self._gpio_helical_2.mode = GPIO_OUT
+        self._gpio_helical_1.reconfigure_lines(
+            config={
+                self._gpio_helical_1.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.OUTPUT, output_value=Value.INACTIVE
+                )
+            }
+        )
 
-        self._gpio_helical_1.high()
-        self._gpio_helical_2.high()
+        self._gpio_helical_2.reconfigure_lines(
+            config={
+                self._gpio_helical_2.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.OUTPUT, output_value=Value.INACTIVE
+                )
+            }
+        )
+
+        self._gpio_helical_1.set_value(self._gpio_helical_1.offsets[0], Value.ACTIVE)
+        self._gpio_helical_2.set_value(self._gpio_helical_2.offsets[0], Value.ACTIVE)
         sleep(timeout)
-        self._gpio_helical_1.low()
-        self._gpio_helical_2.low()
+        self._gpio_helical_1.set_value(self._gpio_helical_1.offsets[0], Value.INACTIVE)
+        self._gpio_helical_2.set_value(self._gpio_helical_2.offsets[0], Value.INACTIVE)
 
-        self._gpio_helical_1.mode = GPIO_IN
-        self._gpio_helical_2.mode = GPIO_IN
+        self._gpio_helical_1.reconfigure_lines(
+            config={
+                self._gpio_helical_1.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.INPUT
+                )
+            }
+        )
+
+        self._gpio_helical_2.reconfigure_lines(
+            config={
+                self._gpio_helical_2.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.INPUT
+                )
+            }
+        )
 
     def deploy_monopole(self, timeout: int):
         """
@@ -77,17 +123,47 @@ class Antennas:
             How long the gpio lines are set high.
         """
 
-        self._gpio_monopole_1.mode = GPIO_OUT
-        self._gpio_monopole_2.mode = GPIO_OUT
+        self._gpio_monopole_1.reconfigure_lines(
+            config={
+                self._gpio_monopole_1.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.OUTPUT, output_value=Value.INACTIVE
+                )
+            }
+        )
 
-        self._gpio_monopole_1.high()
-        self._gpio_monopole_2.high()
+        self._gpio_monopole_2.reconfigure_lines(
+            config={
+                self._gpio_monopole_2.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.OUTPUT, output_value=Value.INACTIVE
+                )
+            }
+        )
+
+        self._gpio_monopole_1.set_value(self._gpio_monopole_1.offsets[0], Value.ACTIVE)
+        self._gpio_monopole_2.set_value(self._gpio_monopole_2.offsets[0], Value.ACTIVE)
         sleep(timeout)
-        self._gpio_monopole_1.low()
-        self._gpio_monopole_2.low()
+        self._gpio_monopole_1.set_value(
+            self._gpio_monopole_1.offsets[0], Value.INACTIVE
+        )
+        self._gpio_monopole_2.set_value(
+            self._gpio_monopole_2.offsets[0], Value.INACTIVE
+        )
 
-        self._gpio_monopole_1.mode = GPIO_IN
-        self._gpio_monopole_2.mode = GPIO_IN
+        self._gpio_monopole_1.reconfigure_lines(
+            config={
+                self._gpio_monopole_1.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.INPUT
+                )
+            }
+        )
+
+        self._gpio_monopole_2.reconfigure_lines(
+            config={
+                self._gpio_monopole_2.offsets[0]: gpiod.LineSettings(
+                    direction=Direction.INPUT
+                )
+            }
+        )
 
     def is_helical_good(self, good_threshold: int) -> bool:
         """
@@ -105,9 +181,13 @@ class Antennas:
             Helical is good.
         """
 
-        self._gpio_test_helical.high()
+        self._gpio_test_helical.set_value(
+            self._gpio_test_helical.offsets[0], Value.ACTIVE
+        )
         value = self._adc_helical.value
-        self._gpio_test_helical.low()
+        self._gpio_test_helical.set_value(
+            self._gpio_test_helical.offsets[0], Value.INACTIVE
+        )
         return value >= good_threshold
 
     def is_monopole_good(self, good_threshold: int) -> bool:
@@ -126,7 +206,11 @@ class Antennas:
             Monopole is good.
         """
 
-        self._gpio_test_monopole.high()
+        self._gpio_test_monopole.set_value(
+            self._gpio_test_monopole.offsets[0], Value.ACTIVE
+        )
         value = self._adc_monopole.value
-        self._gpio_test_monopole.low()
+        self._gpio_test_monopole.set_value(
+            self._gpio_test_monopole.offsets[0], Value.INACTIVE
+        )
         return value >= good_threshold

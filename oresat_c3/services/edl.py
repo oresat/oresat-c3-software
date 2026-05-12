@@ -44,7 +44,7 @@ from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
 from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
-from ..protocols.cop1 import FarmHigherServiceInterface
+from ..protocols.cop1.farm import FarmHigherServiceInterface
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,

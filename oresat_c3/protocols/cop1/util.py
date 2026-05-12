@@ -1,5 +1,9 @@
+import logging
 from collections import deque
 from typing import TypeVar
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 T = TypeVar("T")
 

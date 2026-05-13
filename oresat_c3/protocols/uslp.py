@@ -121,7 +121,7 @@ def pack(payload: bytes, seq_num: int, control_word: bytes) -> bytes:
 
     tfdf = TransferFrameDataField(
         tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
-        uslp_ident=UslpProtocolIdentifier.MISSION_SPECIFIC_INFO_1_MAPA_SDU,
+        uslp_ident=UslpProtocolIdentifier.SPACE_PACKETS_ENCAPSULATION_PACKETS,
         tfdz=tfdz,
     )
 

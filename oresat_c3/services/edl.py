@@ -207,8 +207,8 @@ class EdlService(Service):
         #  The plan is to send CLCWs in a new VC "telemetry" (different than beacon).
         #  There is no payload yet for this channel, it will only need CLCWs
         self.sleep_ms(2500)
-        clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
-        self._radios_service.send_edl_response(pack(b"\x00", self._sequence_count, clcw.pack()))
+        # clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
+        # self._radios_service.send_edl_response(pack(b"\x00", self._sequence_count, clcw.pack()))
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

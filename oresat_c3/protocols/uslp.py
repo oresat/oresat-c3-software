@@ -14,17 +14,18 @@ from spacepackets.uslp.frame import (
 SPACECRAFT_ID = 0x4F53  # aka "OS" in ASCII
 
 PRIMARY_HEADER_LEN = 7
+SPI_LEN = 2
 SEQ_NUM_LEN = 4
 DFH_LEN = 1
 HMAC_LEN = 32
 FECF_LEN = 2
-TC_MIN_LEN = PRIMARY_HEADER_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
+TC_MIN_LEN = PRIMARY_HEADER_LEN + SPI_LEN + SEQ_NUM_LEN + DFH_LEN + HMAC_LEN + FECF_LEN
 
 FRAME_PROPS = VarFrameProperties(
     has_insert_zone=True,
     has_fecf=True,
     truncated_frame_len=0,
-    insert_zone_len=SEQ_NUM_LEN,
+    insert_zone_len=0,#SPI_LEN + SEQ_NUM_LEN,
 )
 
 
@@ -125,7 +126,7 @@ def pack(payload: bytes, seq_num: int, control_word: bytes) -> bytes:
     )
 
     # USLP transfer frame total length - 1
-    frame_len = len(payload) + TC_MIN_LEN - 1 - HMAC_LEN
+    frame_len = len(payload) + TC_MIN_LEN - 1 - HMAC_LEN - 6
 
     has_clcw = bool(control_word)
     if has_clcw:
@@ -143,9 +144,10 @@ def pack(payload: bytes, seq_num: int, control_word: bytes) -> bytes:
         bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
     )
 
-    seq_num_bytes = seq_num.to_bytes(SEQ_NUM_LEN, "little")
+    # sdls_header_bytes = int(1).to_bytes(2, "big")
+    # sdls_header_bytes += seq_num.to_bytes(SEQ_NUM_LEN, "big")
     frame = TransferFrame(
-        header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes, op_ctrl_field=control_word
+        header=frame_header, tfdf=tfdf, op_ctrl_field=control_word
     )
     packet = frame.pack(frame_type=FrameType.VARIABLE)
 

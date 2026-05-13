@@ -24,7 +24,7 @@ from spacepackets.uslp.header import (  # type: ignore
 )
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
-from .uslp import HMAC_LEN, SEQ_NUM_LEN, SPACECRAFT_ID, TC_MIN_LEN
+from .uslp import HMAC_LEN, SEQ_NUM_LEN, make_frame
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
@@ -112,38 +112,15 @@ class EdlPacket:
 
         tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
 
-        tfdf = TransferFrameDataField(
-            tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
-            uslp_ident=UslpProtocolIdentifier.MISSION_SPECIFIC_INFO_1_MAPA_SDU,
-            tfdz=tfdz,
-        )
-
-        # USLP transfer frame total length - 1
-        frame_len = len(payload_raw) + TC_MIN_LEN - 1
-
-        has_clcw = bool(control_word)
-        if has_clcw:
-            frame_len += len(control_word)
-
-        frame_header = PrimaryHeader(
-            scid=SPACECRAFT_ID,
-            map_id=0,
+        seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
+        frame = make_frame(
+            payload=tfdz,
             vcid=self.vcid.value,
             src_dest=self.src_dest,
-            frame_len=frame_len,
-            vcf_count_len=0,
-            op_ctrl_flag=has_clcw,
-            prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
-            bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
+            control_word=control_word,
+            insert_zone=seq_num_bytes,
         )
-
-        seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
-        frame = TransferFrame(
-            header=frame_header, tfdf=tfdf, insert_zone=seq_num_bytes, op_ctrl_field=control_word
-        )
-        packet = frame.pack(frame_type=FrameType.VARIABLE)
-
-        return packet
+        return frame.pack(frame_type=FrameType.VARIABLE)
 
     @classmethod
     def unpack(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):

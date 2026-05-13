@@ -39,7 +39,8 @@ from spacepackets.cfdp.tlv import (
 )
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
-from spacepackets.uslp import TransferFrame
+from spacepackets.uslp import SourceOrDestField, TransferFrame
+from spacepackets.uslp.frame import FrameType
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
@@ -52,7 +53,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
-from ..protocols.uslp import pack
+from ..protocols.uslp import make_frame
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .channel_router import ChannelRouterService
@@ -206,9 +207,16 @@ class EdlService(Service):
         # FIXME: This should be temporary to promptly and consistently send CLCWs
         #  The plan is to send CLCWs in a new VC "telemetry" (different than beacon).
         #  There is no payload yet for this channel, it will only need CLCWs
-        self.sleep_ms(2500)
+        self.sleep_ms(1500)
         clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
-        self._radios_service.send_edl_response(pack(b"\x00", self._sequence_count, clcw.pack()))
+        self._radios_service.send_edl_response(
+            make_frame(
+                b"\x00" * 4,
+                0,
+                SourceOrDestField.SOURCE,
+                control_word=clcw.pack(),
+            ).pack(FrameType.VARIABLE)
+        )
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

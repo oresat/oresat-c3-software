@@ -4,7 +4,8 @@ from typing import Union
 from olaf import Service, logger
 from spacepackets.uslp import TransferFrame
 
-from ..protocols.cop1 import ControlWord, Farm1, FarmHigherServiceInterface, ServiceInterface
+from ..protocols.cop1 import ControlWord, ServiceInterface
+from ..protocols.cop1.farm import Farm1, FarmHigherServiceInterface, ValidFrameArrivedIndication
 from ..protocols.edl_packet import EdlVcid
 from ..protocols.uslp import Gvcid, unpack_frame
 from .cop_manager import CopManagerService
@@ -40,7 +41,7 @@ class ChannelRouterService(Service):
                 if isinstance(route, ServiceInterface):
                     if route.buffer.appendleft(frame):
                         route.signal.appendleft(
-                            Farm1.ValidFrameArrivedIndication(
+                            ValidFrameArrivedIndication(
                                 Gvcid(0b1100, frame.header.scid, frame.header.vcid)
                             )
                         )

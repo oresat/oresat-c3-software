@@ -2,7 +2,8 @@ from typing import Optional, Tuple
 
 from olaf import Service, logger
 
-from ..protocols.cop1 import CopService, Farm1, FarmHigherServiceInterface, ServiceInterface
+from ..protocols.cop1 import CopService, ServiceInterface
+from ..protocols.cop1.farm import Farm1, FarmHigherServiceInterface
 from ..protocols.edl_packet import EdlVcid
 
 

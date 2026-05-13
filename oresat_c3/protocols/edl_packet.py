@@ -24,7 +24,7 @@ from spacepackets.uslp.header import (  # type: ignore
 )
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
-from .uslp import HMAC_LEN, SEQ_NUM_LEN, SPACECRAFT_ID, TC_MIN_LEN
+from .uslp import HMAC_LEN, SEQ_NUM_LEN, make_frame
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
@@ -110,72 +110,17 @@ class EdlPacket:
         except Exception as e:
             raise EdlPacketError(e) from e
 
-        tfdz = payload_raw
+        tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
 
-        tfdf = TransferFrameDataField(
-            tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
-            uslp_ident=UslpProtocolIdentifier.SPACE_PACKETS_ENCAPSULATION_PACKETS,
-            tfdz=tfdz,
-        )
-
-        # USLP transfer frame total length - 1
-        frame_len = len(payload_raw) + TC_MIN_LEN - 1
-        trailer_end = frame_len
-
-        has_clcw = bool(control_word)
-        if has_clcw:
-            frame_len += len(control_word)
-
-        frame_header = PrimaryHeader(
-            scid=SPACECRAFT_ID,
-            map_id=0,
+        seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
+        frame = make_frame(
+            payload=tfdz,
             vcid=self.vcid.value,
             src_dest=self.src_dest,
-            frame_len=frame_len,
-            vcf_count_len=0,
-            op_ctrl_flag=has_clcw,
-            prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
-            bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
+            control_word=control_word,
+            insert_zone=seq_num_bytes,
         )
-
-        
-        sdls_header_bytes = bytes(b"\x00\x01")
-        sdls_header_bytes += self.seq_num.to_bytes(SEQ_NUM_LEN, "big")
-
-        ### COMPUTE HMAC HERE
-
-        authenticated_payload = frame_header.pack() + sdls_header_bytes + tfdf.pack()
-        
-
-        header_mask = bytearray(b"\x00\x00\x07\xfe\x00\x00\x00")
-        # TODO: when the vc frame count lengths are not 0, this will need to change. this should not 
-        # be a surprise, as there is probably a much better way to do this.
-        for i in range(7):
-            authenticated_payload[i] = authenticated_payload[i] & header_mask[i]
-
-        print(hmac_key.hex())
-        print(authenticated_payload.hex())
-
-        # 00000000000000000100000000E51101000000
-        # 00000000000000000100000000e51101000000
-
-        hmac_val = gen_hmac(hmac_key, authenticated_payload)
-        tfdz = tfdz + hmac_val
-
-        tfdf = TransferFrameDataField(
-            tfdz_cnstr_rules=TfdzConstructionRules.VpNoSegmentation,
-            uslp_ident=UslpProtocolIdentifier.SPACE_PACKETS_ENCAPSULATION_PACKETS,
-            tfdz=tfdz,
-        )
-
-        frame = TransferFrame(
-            header=frame_header, tfdf=tfdf, insert_zone=sdls_header_bytes, op_ctrl_field=control_word
-        )
-
-        packet = frame.pack(frame_type=FrameType.VARIABLE)
-
-
-        return packet
+        return frame.pack(frame_type=FrameType.VARIABLE)
 
     @classmethod
     def unpack(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):

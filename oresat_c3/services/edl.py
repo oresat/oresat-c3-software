@@ -215,6 +215,7 @@ class EdlService(Service):
                 0,
                 SourceOrDestField.SOURCE,
                 control_word=clcw.pack(),
+				hmac_key=self._hmac_key
             ).pack(FrameType.VARIABLE)
         )
 

@@ -2,8 +2,6 @@
 Anything dealing with packing and unpacking EDL (Engineering Data Link) packets.
 """
 
-import hashlib
-import hmac
 from enum import IntEnum
 from typing import Optional, Union
 
@@ -25,6 +23,7 @@ from spacepackets.uslp.header import (  # type: ignore
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
 from .uslp import HMAC_LEN, SEQ_NUM_LEN, make_frame
+from .sdls import verify_sdls
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
@@ -40,11 +39,6 @@ class EdlVcid(IntEnum):
     C3_COMMAND = 0
     FILE_TRANSFER = 1
 
-
-def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:
-    """Helper function to generate HMAC value from HMAC key and the message."""
-
-    return hmac.digest(hmac_key, message, hashlib.sha3_256)
 
 
 class EdlPacket:
@@ -110,15 +104,13 @@ class EdlPacket:
         except Exception as e:
             raise EdlPacketError(e) from e
 
-        tfdz = payload_raw + gen_hmac(hmac_key, payload_raw)
-
-        seq_num_bytes = self.seq_num.to_bytes(SEQ_NUM_LEN, "little")
         frame = make_frame(
-            payload=tfdz,
+            payload=payload_raw,
             vcid=self.vcid.value,
             src_dest=self.src_dest,
             control_word=control_word,
-            insert_zone=seq_num_bytes,
+            sequence_number=self.seq_num,
+            hmac_key=hmac_key
         )
         return frame.pack(frame_type=FrameType.VARIABLE)
 
@@ -137,13 +129,8 @@ class EdlPacket:
             Ignore the HMAC value.
         """
 
+        seq_num = verify_sdls(frame, hmac_key)
         payload_raw = frame.tfdf.tfdz[:-HMAC_LEN]
-        hmac_bytes = frame.tfdf.tfdz[-HMAC_LEN:]
-        hmac_bytes_calc = gen_hmac(hmac_key, payload_raw)
-
-        if not ignore_hmac and hmac_bytes != hmac_bytes_calc:
-            raise EdlPacketError(f"invalid HMAC {hmac_bytes.hex()} vs {hmac_bytes_calc.hex()}")
-
         if frame.header.vcid == EdlVcid.C3_COMMAND:
             try:
                 if frame.header.src_dest == SRC_DEST_ORESAT:
@@ -159,7 +146,5 @@ class EdlPacket:
                 raise EdlPacketError(e) from e
         else:
             raise EdlPacketError(f"unknown vcid {frame.header.vcid}")
-
-        seq_num = int.from_bytes(frame.insert_zone, "little")
 
         return EdlPacket(payload, seq_num, frame.header.src_dest)

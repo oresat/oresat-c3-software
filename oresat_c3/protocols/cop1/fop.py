@@ -1,17 +1,18 @@
-from enum import unique, Enum
+from enum import unique
 from typing import Optional
 
 from spacepackets.uslp import TransferFrame
 
-from .common import CopService
+from .common import CopEvent, CopService, CopState, StateMachine
 
 
 @unique
-class FopState(Enum):
+class FopState(CopState):
     """The state of FOP-1
 
     CCSDS 232.1-B-2 § 5.1.2
     """
+
     ACTIVE = 1
     RETRANSMIT_NO_WAIT = 2
     RETRANSMIT_WITH_WAIT = 3
@@ -20,8 +21,17 @@ class FopState(Enum):
     INITIAL = 6
 
 
+class FopEvent(CopEvent):
+    pass
+
+
+# redefinition for type checker parsing
+FopEvent = CopEvent("FopEvent", {f"E{i}" for i in range(1, 47)})
+
+
 class Fop1(CopService):
     """Frame Operation Procedure-1 (FOP-1), CCSDS 323.1-B-2"""
+
     def __init__(
         self,
         k: int = 10,
@@ -46,3 +56,5 @@ class Fop1(CopService):
         self.sliding_window_width: int  # 'K'
         self.timeout_type: int
         self.suspend_state: int
+
+        self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)

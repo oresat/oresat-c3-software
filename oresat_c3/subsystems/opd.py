@@ -8,12 +8,19 @@ from collections.abc import Generator
 from contextlib import suppress
 from enum import Enum, unique
 from time import sleep
-from typing import Union
+from typing import TYPE_CHECKING, Optional
 
-from olaf import Adc, Gpio, logger
+from gpiod import LineRequest
+from gpiod.line import Value
+from olaf import Adc, logger
 from oresat_configs import Card
 
+from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
+
 from ..drivers.max7310 import Max7310, Max7310Error, MockMax7310
+
+if TYPE_CHECKING:
+    import gpiod
 
 
 class OpdError(Exception):
@@ -187,7 +194,9 @@ class OpdNode:
         """
 
         for i in range(attempts):
-            logger.debug(f"resetting OPD node {self.name} (0x{self.addr:02X}), try {i + 1}")
+            logger.debug(
+                f"resetting OPD node {self.name} (0x{self.addr:02X}), try {i + 1}"
+            )
             try:
                 self._max7310.output_set(self._CB_RESET_PIN)
                 sleep(self._RESET_DELAY_S)
@@ -281,7 +290,9 @@ class OpdStm32Node(OpdNode):
             Mock the OPD subsystem.
         """
         super().__init__(bus, name, addr, mock=mock)
-        self._inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
+        self._inputs = (
+            1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
+        )
 
     def enable(self, *, bootloader_mode: bool = False) -> OpdNodeState:
         """
@@ -327,7 +338,9 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
+            logger.debug(
+                f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART"
+            )
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -336,7 +349,9 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
+            logger.debug(
+                f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART"
+            )
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -385,7 +400,9 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
+            logger.debug(
+                f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART"
+            )
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -394,7 +411,9 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
+            logger.debug(
+                f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART"
+            )
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -431,6 +450,10 @@ class Opd:
     _R_SET = 23_700  # ohms
     _MAX982L_CUR_RATIO = 965  # current ratio
 
+    # opd hardware constants
+    _ADC_CURRENT_PIN = 2
+    _I2C_BUS_NUM = 2
+
     def __init__(
         self,
         not_enable_pin: str,
@@ -440,29 +463,37 @@ class Opd:
         mock: bool = False,
     ) -> None:
         """
+        Request gpio, analog input, and set initial state.
+
         Parameters
         ----------
-        not_enable_pin: str
+        not_enable_pin : str
             Output pin that enables/disables the OPD subsystem.
-        not_fault_pin: str
+        not_fault_pin : str
             Input pin for faults.
-        current_pin: int
+        current_pin : int
             ADC pin number to get OPD current.
-        mock: bool
+        mock : bool
             Mock the OPD subsystem.
         """
 
         self._mock = mock
-        self._not_enable_pin = Gpio(not_enable_pin, mock)
-        self._not_fault_pin = Gpio(not_fault_pin, mock)
-        self._not_fault_pin._mock_value = 1  # fix default for mocking
-        self._adc = Adc(current_pin, mock)
-        self._not_enable_pin.high()  # make sure OPD disable initially
+        self._not_enable_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip2", 20, "OPD_nENABLE"
+        )
+        self._not_fault_pin: gpiod.LineRequest = request_gpio_input(
+            "/dev/gpiochip2", 19, "OPD_nFAULT"
+        )
+        self._adc = Adc(self._ADC_CURRENT_PIN, mock)
+        # FIXME: Should this line get a pullup in the device tree?
+        self._not_enable_gpio.set_value(
+            self._not_enable_gpio.offsets[0], Value.ACTIVE
+        )  # make sure OPD disabled initially
 
         self._nodes: dict[str, OpdNode] = {}
-        self._status = OpdState.DISABLED
-        self._uart_node: Union[str, None] = None
+        self._uart_node: Optional[str] = None
         self._resets = 0
+        self._status = OpdState.DISABLED
 
     def __getitem__(self, name: str) -> OpdNode:
         return self._nodes[name]
@@ -490,7 +521,9 @@ class Opd:
             return  # already enabled
 
         logger.info("starting OPD subsystem")
-        self._not_enable_pin.low()
+        self._not_enable_gpio.set_value(
+            self._not_enable_gpio.offsets[0], Value.INACTIVE
+        )
         self._status = OpdState.ENABLED
 
         self.scan(reset=True)
@@ -505,7 +538,7 @@ class Opd:
                 node.disable()
 
         self._uart_disconnect()
-        self._not_enable_pin.high()
+        self._not_enable_gpio.set_value(self._not_enable_gpio.offsets[0], Value.ACTIVE)
         self._status = OpdState.DISABLED
         self._resets = 0
 
@@ -515,9 +548,9 @@ class Opd:
 
         Parameters
         ----------
-        tries: int
+        tries : int
             Number of tries in a row to try to reset the OPD subsystem.
-        disable_delay: float
+        disable_delay : float
             Number of seconds betwen try to disabling and enabling the subsystem to reset it.
         """
 
@@ -528,7 +561,7 @@ class Opd:
             self.disable()
             sleep(disable_delay)
             self.enable()
-            if self.has_fault:
+            if self.check_for_fault():
                 self._status = OpdState.FAULT
 
         if self._status == OpdState.FAULT:
@@ -545,13 +578,12 @@ class Opd:
 
         Parameters
         ----------
-        reset: bool
+        reset : bool
             Optional flag to reset any node that is found.
 
         Returns
         -------
-        int
-            The number of nodes found.
+        int : The number of nodes found.
         """
 
         count = 0
@@ -561,15 +593,25 @@ class Opd:
 
         return count
 
-    @property
-    def has_fault(self) -> bool:
-        """bool: OPD circuit has a fault."""
+    def check_for_fault(self) -> bool:
+        """
+        Check OPD for fault.
 
-        return not self._not_fault_pin.is_high
+        Returns
+        -------
+        bool : True if OPD circuit has a fault.
+        """
 
-    @property
-    def current(self) -> int:
-        """int: OPD current in milliamps."""
+        return not bool(self._not_fault_pin.get_value(self._not_enable_gpio.offsets[0]))
+
+    def measure_current(self) -> int:
+        """
+        Return a measure of the current through the OPD.
+
+        Returns
+        -------
+        int : OPD current in milliamps.
+        """
 
         return int(self._adc.value * self._MAX982L_CUR_RATIO / self._R_SET * 1000)
 
@@ -585,8 +627,8 @@ class Opd:
             self._uart_node = None
 
     @property
-    def uart_node(self) -> Union[str, None]:
-        """str: The selected UART node name or an empty string for no node."""
+    def uart_node(self) -> Optional[str]:
+        """str : The selected UART node name or an empty string for no node."""
         if (
             self._uart_node is not None
             and self._nodes[self._uart_node].status == OpdNodeState.NOT_FOUND
@@ -595,7 +637,7 @@ class Opd:
         return self._uart_node
 
     @uart_node.setter
-    def uart_node(self, name: Union[str, None]) -> None:
+    def uart_node(self, name: Optional[str]) -> None:
 
         self._uart_disconnect()
         if name is None or self._nodes[name].status == OpdNodeState.NOT_FOUND:

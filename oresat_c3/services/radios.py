@@ -1,20 +1,20 @@
 """
 Radios Service
 
-Handles interfacing with the AX5043 radio driver app.
+Handles interfacing with the radio driver app.
 """
 
-from abc import ABC, abstractmethod
 import socket
+import time
 from queue import SimpleQueue
-from gpiod.line import Value
+from typing import TYPE_CHECKING
 
+from gpiod.line import Value
 from olaf import Service, logger
-from oresat_c3.subsystems._gpio import request_gpio_output
+
+from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
 
 from ..drivers.si41xx import Si41xx, Si41xxIfdiv
-
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import gpiod
@@ -27,80 +27,225 @@ class RadiosService(Service):
     EDL_UPLINK_ADDR = ("localhost", 10025)
     EDL_DOWNLINK_ADDR = ("localhost", 10016)
     BUFFER_LEN = 1024
-    TOT_CLEAR_DELAY_MS = 10
 
     def __init__(self, mock_hw: bool = False):
+        """
+        Request gpio, initialize radios, add daemons, and create message queue.
+
+        Parameters
+        ----------
+        mock_hw : bool
+            Flag to enable hardware mocking. True if enabled.
+        """
         super().__init__()
 
         self._mock_hw = mock_hw
         if mock_hw:
-            self.radios = MockRadios(runtime=self)
+            self.uhf = Radio()
+            self.lband = Radio()
         else:
-            self.radios = Radios(runtime=self)
+            self._radio_enable_gpio: gpiod.LineRequest = request_gpio_output(
+                "/dev/gpiochip1", 22, "RADIO_ENABLE"
+            )
+            self.uhf = UHFRadio()
+            self.lband = LBandRadio()
+
+        self.node.add_daemon("lband")
+        self.node.add_daemon("uhf")
+
+        self.recv_queue: SimpleQueue[bytes] = SimpleQueue()
 
     def on_start(self):
-        self.radios.enable()
+        """Provide uninterruptible power-on sequence, and bring up radio daemons."""
+        logger.info("enabling radio power domain")
+        if not self._mock_hw:
+            self._radio_enable_gpio.set_value(
+                self._radio_enable_gpio.offsets[0], Value.ACTIVE
+            )
+            time.sleep(0.1)
+
+            logger.info("enabling uhf radio")
+            self.uhf.enable()
+            time.sleep(0.1)
+
+            logger.info("enabling lband radio")
+            self.lband.enable()
+        else:
+            logger.info("enabling radio power domain")
+            logger.info("enabling uhf radio")
+            self.uhf.enable()
+            logger.info("enabling lband radio")
+            self.lband.enable()
+
+        self.node.od["lband"]["synth_relock_count"].value = self.lband.rf_reset_count
+
+        # FIXME: add an OD for UHF TOT clear count
+
+        # beacon downlink: UDP client
+        logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
+        self._beacon_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        # EDL uplink: UDP server
+        logger.info(f"EDL uplink socket: {self.EDL_UPLINK_ADDR}")
+        self._edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._edl_uplink_socket.bind(self.EDL_UPLINK_ADDR)
+        self._edl_uplink_socket.settimeout(1)
+
+        # EDL downlink: UDP client
+        logger.info(f"EDL downlink socket: {self.EDL_DOWNLINK_ADDR}")
+        self._edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        self.node.daemons["uhf"].start()
+        self.node.daemons["lband"].start()
 
     def on_loop(self):
-        self.radios.maintain_health()
-        self.radios.receive_data()
+        """Maintain radio health and receive edl requests."""
+        if not self.uhf.is_rf_ok():
+            logger.error("tot okay was low, resetting radios")
+            self.uhf.rf_reset()
+            # FIXME: Add OD TOT counter
+
+        lBandOk = self.lband.is_rf_ok()
+        self.node.od["lband"]["synth_lock"].value = lBandOk
+
+        if not lBandOk:
+            logger.error("si41xx unlocked, resetting lband synth")
+            self.lband.rf_reset()
+            self.node.od["lband"][
+                "synth_relock_count"
+            ].value = self.lband.rf_reset_count
+
+        if recv := self._recv_edl_request():
+            self.recv_queue.put(recv)
 
     def on_stop(self):
-        self.radios.disable()
+        """Power down radios and stop daemons."""
+        logger.info("disabling radios")
+        self.node.daemons["uhf"].stop()
+        self.node.daemons["lband"].stop()
+
+        self._beacon_downlink_socket.close()
+        self._edl_downlink_socket.close()
+        self._edl_uplink_socket.close()
+
+        if not self._mock_hw:
+            # power down sequence
+            logger.info("disabling uhf radio")
+            self.uhf.disable()
+            time.sleep(0.1)
+
+            logger.info("disabling lband radio")
+            self.lband.disable()
+            time.sleep(0.1)
+
+            logger.info("disabling radio power domain")
+            self._radio_enable_gpio.set_value(
+                self._radio_enable_gpio.offsets[0], Value.INACTIVE
+            )
+        else:
+            logger.info("disabling uhf radio")
+            self.uhf.disable()
+
+            logger.info("disabling lband radio")
+            self.lband.disable()
+
+            logger.info("disabling radio power domain")
+
+    def send_edl_response(self, message: bytes):
+        """
+        Send an EDL packet.
+
+        Parameters
+        ----------
+        message : bytes
+            The message to send as a byte string.
+        """
+        try:
+            self._edl_downlink_socket.sendto(message, self.EDL_DOWNLINK_ADDR)
+        except Exception as e:  # pylint: disable=W0718
+            logger.error(f"failed to send mess over EDL downlink: {e}")
+
+        logger.debug(f"sent EDL downlink packet: {message.hex(sep=' ')}")
+
+    def send_beacon(self, message: bytes):
+        """
+        Send a beacon.
+
+        Parameters
+        ----------
+        message : bytes
+            The beacon to beacon.
+        """
+        try:
+            self._beacon_downlink_socket.sendto(message, self.BEACON_DOWNLINK_ADDR)
+        except Exception as e:  # pylint: disable=W0718
+            logger.error(f"failed to send beacon message: {e}")
+
+        logger.debug(f"Sent beacon downlink packet: {message.hex(sep=' ')}")
+
+    def _recv_edl_request(self) -> bytes:
+        """
+        Recieve an EDL packet.
+
+        Returns
+        -------
+        bytes
+            The EDL packet or empty byte string if nothing is received.
+        """
+        try:
+            message, src = self._edl_uplink_socket.recvfrom(self.BUFFER_LEN)
+        except socket.timeout:
+            return b""
+
+        logger.debug(f"received EDL uplink packet: {message.hex(sep=' ')} from {src}")
+
+        return message
 
 
-class RadioBase(ABC):
-    def __init__(self, runtime: RadiosService):
-        self._runtime = runtime
+class Radio:
+    def __init__(self):
+        self.rf_reset_count = 0
 
-    @abstractmethod
     def enable(self):
         pass
 
-    @abstractmethod
     def disable(self):
         pass
 
-    @abstractmethod
-    def maintain_health(self):
-        pass
+    def is_rf_ok(self) -> bool:
+        return True
 
-    @abstractmethod
-    def receive_data(self):
-        pass
+    def rf_reset(self):
+        self.rf_reset_count += 1
 
 
-class Radios(RadioBase):
-    def __init__(self, runtime: RadiosService) -> None:
-        super().__init__(runtime)
+class LBandRadio(Radio):
+    """Provides production implmentation of the L-band radio subsystem."""
 
+    def __init__(self) -> None:
+        """
+        Initialize L-band synth and request gpio.
+
+        See Also
+        --------
+        oresat_c3.drivers.si41xx : Driver for the L-band synth.
+        """
+        super().__init__()
         self._si41xx = Si41xx(
-            "LBAND_LO_nSEN",
-            "LBAND_LO_SCLK",
-            "LBAND_LO_SDATA",
-            "LBAND_LO_nLOCKED",
-            16_000_000,  # Hz
-            Si41xxIfdiv.DIV1,
-            1616,
-            32,
+            sen_pin="LBAND_LO_nSEN",
+            sclk_pin="LBAND_LO_SCLK",
+            sdata_pin="LBAND_LO_SDATA",
+            auxout_pin="LBAND_LO_nLOCKED",
+            ref_freq=16_000_000,  # Hz
+            if_div=Si41xxIfdiv.DIV1,
+            if_n=1616,
+            if_r=32,
             mock=False,
         )
 
         # request gpio pins
-        self._si41xx_nlock_gpio: gpiod.LineRequest = request_gpio_output(
+        self._si41xx_nlock_gpio: gpiod.LineRequest = request_gpio_input(
             "/dev/gpiochip3", 29, "LBAND_LO_nLOCKED"
-        )
-        self._uhf_tot_ok_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip0", 25, "UHF_TOT_OK"
-        )
-        self._uhf_tot_clear_gpio = request_gpio_output(
-            "/dev/gpiochip0", 26, "UHF_TOT_CLEAR"
-        )
-        self._radio_enable_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip1", 22, "RADIO_ENABLE"
-        )
-        self._uhf_enable_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip0", 16, "UHF_ENABLE"
         )
         self._lband_enable_gpio: gpiod.LineRequest = request_gpio_output(
             "/dev/gpiochip0", 19, "LBAND_ENABLE"
@@ -109,166 +254,136 @@ class Radios(RadioBase):
         # si41xx synth info
         self._relock_count = 0
 
-        # beacon downlink: UDP client
-        logger.info(f"Beacon socket: {self._runtime.BEACON_DOWNLINK_ADDR}")
-        self._beacon_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        # EDL uplink: UDP server
-        logger.info(f"EDL uplink socket: {self._runtime.EDL_UPLINK_ADDR}")
-        self._edl_uplink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._edl_uplink_socket.bind(self._runtime.EDL_UPLINK_ADDR)
-        self._edl_uplink_socket.settimeout(1)
-
-        # EDL downlink: UDP client
-        logger.info(f"EDL downlink socket: {self._runtime.EDL_DOWNLINK_ADDR}")
-        self._edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        self.recv_queue: SimpleQueue[bytes] = SimpleQueue()
-
     def enable(self):
-        """Enable the radios."""
-        self._runtime.node.add_daemon("lband")
-        self._runtime.node.add_daemon("uhf")
+        """
+        Enable L-band power domain and start L-band synth.
 
-        logger.info("enabling radio power domain")
-        self._radio_enable_gpio.set_value(
-            self._radio_enable_gpio.offsets[0], Value.ACTIVE
-        )
-        self._runtime.sleep_ms(100)
-
-        logger.info("enabling uhf radio")
-        self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.ACTIVE)
-        self._runtime.sleep_ms(100)
-
-        logger.info("enabling lband radio")
+        Notes
+        -----
+        The radio power domain must be enabled first.
+        """
         self._lband_enable_gpio.set_value(
             self._lband_enable_gpio.offsets[0], Value.ACTIVE
         )
 
-        self._uhf_tot_clear()
         self._si41xx.start()
         self._relock_count += 1
-        self._runtime.node.od["lband"][
-            "synth_relock_count"
-        ].value = self._relock_count.bit_length()
-
-        self._runtime.node.daemons["uhf"].start()
-        self._runtime.node.daemons["lband"].start()
 
     def disable(self):
-        """Disable radio power domain, UHF, and lband"""
-
-        logger.info("disabling radios")
-        self._runtime.node.daemons["uhf"].stop()
-        self._runtime.node.daemons["lband"].stop()
-
+        """Stop L-band synth and disable L-band power domain."""
         self._si41xx.stop()
 
-        logger.info("disabling lband radio")
         self._lband_enable_gpio.set_value(
             self._lband_enable_gpio.offsets[0], Value.INACTIVE
         )
-        self._runtime.sleep_ms(100)
 
-        logger.info("disabling uhf radio")
+    def is_rf_ok(self) -> bool:
+        """
+        Report if the L-band radio is ok.
+
+        Returns
+        -------
+        bool
+            True if L-band radio is ok.
+        """
+        return self._si41xx_locked()
+
+    def rf_reset(self):
+        """Reset the L-band synth."""
+        # increment reset counter
+        super().rf_reset()
+        self._si41xx.stop()
+        self._si41xx.start()
+
+    def _si41xx_locked(self) -> bool:
+        """Check if the L-band synth is locked.
+
+        Returns
+        -------
+        bool
+            True if the L-band is locked.
+        """
+        # si41xx_nlock is active low
+        state = not bool(
+            self._si41xx_nlock_gpio.get_value(self._si41xx_nlock_gpio.offsets[0])
+        )
+        return state
+
+
+class UHFRadio(Radio):
+    """Provides production implmentation of the UHF radio subsystem."""
+
+    # in seconds
+    TOT_CLEAR_DELAY = 0.01
+
+    def __init__(self):
+        """Request gpio."""
+        super().__init__()
+        self._uhf_tot_ok_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip0", 25, "UHF_TOT_OK"
+        )
+        self._uhf_tot_clear_gpio = request_gpio_output(
+            "/dev/gpiochip0", 26, "UHF_TOT_CLEAR"
+        )
+        self._uhf_enable_gpio: gpiod.LineRequest = request_gpio_output(
+            "/dev/gpiochip0", 16, "UHF_ENABLE"
+        )
+
+    def enable(self):
+        """
+        Enable UHF power domain and clear hardware time out timer (TOT).
+
+        Notes
+        -----
+        The radio power domain must be enabled first.
+        """
+        self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.ACTIVE)
+
+        # clear timeout timer
+        self._uhf_tot_clear()
+
+    def disable(self):
+        """Disable the UHF power domain."""
         self._uhf_enable_gpio.set_value(
             self._uhf_enable_gpio.offsets[0], Value.INACTIVE
         )
 
-        logger.info("disabling radio power domain")
-        self._runtime.sleep_ms(100)
-        self._radio_enable_gpio.set_value(
-            self._radio_enable_gpio.offsets[0], Value.INACTIVE
-        )
+    def is_rf_ok(self) -> bool:
+        """
+        Report if UHF radio is ok.
 
-    def maintain_health(self):
-        """Check health of UHF and lband radios, resetting if necessary"""
-        if not self._uhf_tot_ok():
-            logger.error("tot okay was low, resetting radios")
-            self.disable()
-            self.enable()
+        Returns
+        -------
+        bool
+            True if UHF radio is ok.
+        """
+        return self._uhf_tot_ok()
 
-        if not self._si41xx_locked():
-            logger.error("si41xx unlocked, resetting lband synth")
-            self._relock_count += 1
-            self._runtime.node.od["lband"][
-                "synth_relock_count"
-            ].value = self._relock_count.bit_length()
-            self._si41xx.stop()
-            self._si41xx.start()
+    def rf_reset(self):
+        """Reset the UHF radio."""
+        # increment reset counter
+        super().rf_reset()
+        self.disable()
+        self.enable()
 
     def _uhf_tot_ok(self) -> bool:
-        """bool: check if the UHF TOT is okay."""
+        """
+        Check if the hardware timeout timer (TOT) is ok.
 
+        Returns
+        -------
+        bool
+            True if the UHF TOT is ok
+        """
         return bool(self._uhf_tot_ok_gpio.get_value(self._uhf_tot_ok_gpio.offsets[0]))
-
-    def _si41xx_locked(self) -> bool:
-        """bool: check if the si41xx is locked."""
-
-        # si41xx_nlock is active low
-        state = not bool(self._si41xx_nlock_gpio.value)
-        self._runtime.node.od["lband"]["synth_lock"].value = state
-        return state
-
-    def send_edl_response(self, message: bytes):
-        """Send an EDL packet."""
-
-        try:
-            self._edl_downlink_socket.sendto(message, self._runtime.EDL_DOWNLINK_ADDR)
-        except Exception as e:  # pylint: disable=W0718
-            logger.error(f"failed to send mess over EDL downlink: {e}")
-
-        logger.debug(f"sent EDL downlink packet: {message.hex(sep=' ')}")
 
     def _uhf_tot_clear(self):
         """Clear TOT."""
-
         self._uhf_tot_clear_gpio.set_value(
             self._uhf_tot_clear_gpio.offsets[0], Value.ACTIVE
         )
-        self._runtime.sleep_ms(self._runtime.TOT_CLEAR_DELAY_MS)
+        time.sleep(self.TOT_CLEAR_DELAY)
+
         self._uhf_tot_clear_gpio.set_value(
             self._uhf_tot_clear_gpio.offsets[0], Value.INACTIVE
         )
-
-    def send_beacon(self, message: bytes):
-        """Send a beacon."""
-
-        try:
-            self._beacon_downlink_socket.sendto(
-                message, self._runtime.BEACON_DOWNLINK_ADDR
-            )
-        except Exception as e:  # pylint: disable=W0718
-            logger.error(f"failed to send beacon message: {e}")
-
-        logger.debug(f"Sent beacon downlink packet: {message.hex(sep=' ')}")
-
-    def receive_data(self):
-        if recv := self._recv_edl_request():
-            self.recv_queue.put(recv)
-
-    def _recv_edl_request(self) -> bytes:
-        """Recieve an EDL packet."""
-
-        try:
-            message, _ = self._edl_uplink_socket.recvfrom(self._runtime.BUFFER_LEN)
-        except socket.timeout:
-            return b""
-
-        logger.debug(f"received EDL uplink packet: {message.hex(sep=' ')}")
-
-        return message
-
-
-class MockRadios(RadioBase):
-    def enable(self):
-        return super().enable()
-
-    def disable(self):
-        return super().disable()
-
-    def maintain_health(self):
-        return super().maintain_health()
-
-    def receive_data(self):
-        return super().receive_data()

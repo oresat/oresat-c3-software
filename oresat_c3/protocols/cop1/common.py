@@ -37,8 +37,8 @@ class StateMachine(Generic[T, U]):
         self.transition_to(transition.to_state)
         self._current_state = transition.to_state
 
-    def add_transition(self, from_state: T, event: U, to_state: T, actions: list[Callable]) -> None:
-        self._transition_map[from_state, event] = (to_state, actions)
+    def add_transition(self, t_from: TRANSITION_FROM, t_to: TRANSITION_TO) -> None:
+        self._transition_map[t_from] = t_to
 
     def transition_to(self, state: T) -> None:
         self._current_state = state

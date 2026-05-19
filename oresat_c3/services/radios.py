@@ -7,17 +7,12 @@ Handles interfacing with the radio driver app.
 import socket
 import time
 from queue import SimpleQueue
-from typing import TYPE_CHECKING
 
 from gpiod.line import Value
 from olaf import Service, logger
 
-from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
-
-from oresat_c3.drivers.si41xx import Si41xx, Si41xxIfdiv
-
-if TYPE_CHECKING:
-    import gpiod
+from ..drivers.si41xx import Si41xx, Si41xxIfdiv
+from ..subsystems._gpio import request_gpio_input, request_gpio_output
 
 
 class RadiosService(Service):
@@ -44,13 +39,9 @@ class RadiosService(Service):
             self.uhf = Radio()
             self.lband = Radio()
         else:
-            self._radio_enable_gpio: gpiod.LineRequest = request_gpio_output(
-                "/dev/gpiochip1", 22, "RADIO_ENABLE"
-            )
+            self._radio_enable_gpio = request_gpio_output("/dev/gpiochip1", 22, "RADIO_ENABLE")
             self.uhf = UHFRadio()
             self.lband = LBandRadio()
-
-        if not mock_hw:
             self.node.add_daemon("lband")
             self.node.add_daemon("uhf")
 
@@ -60,23 +51,13 @@ class RadiosService(Service):
         """Provide uninterruptible power-on sequence, and bring up radio daemons."""
         logger.info("enabling radio power domain")
         if not self._mock_hw:
-            self._radio_enable_gpio.set_value(
-                self._radio_enable_gpio.offsets[0], Value.ACTIVE
-            )
+            self._radio_enable_gpio.set_value(self._radio_enable_gpio.offsets[0], Value.ACTIVE)
             time.sleep(0.1)
 
-            logger.info("enabling uhf radio")
-            self.uhf.enable()
-            time.sleep(0.1)
-
-            logger.info("enabling lband radio")
-            self.lband.enable()
-        else:
-            logger.info("enabling radio power domain")
-            logger.info("enabling uhf radio")
-            self.uhf.enable()
-            logger.info("enabling lband radio")
-            self.lband.enable()
+        logger.info("enabling uhf radio")
+        self.uhf.enable()
+        logger.info("enabling lband radio")
+        self.lband.enable()
 
         self.node.od["lband"]["synth_relock_count"].value = self.lband.rf_reset_count
 
@@ -113,9 +94,7 @@ class RadiosService(Service):
         if not lBandOk:
             logger.error("si41xx unlocked, resetting lband synth")
             self.lband.rf_reset()
-            self.node.od["lband"][
-                "synth_relock_count"
-            ].value = self.lband.rf_reset_count
+            self.node.od["lband"]["synth_relock_count"].value = self.lband.rf_reset_count
 
         if recv := self._recv_edl_request():
             self.recv_queue.put(recv)
@@ -131,28 +110,16 @@ class RadiosService(Service):
         self._edl_downlink_socket.close()
         self._edl_uplink_socket.close()
 
+        # power down sequence
+        logger.info("disabling uhf radio")
+        self.uhf.disable()
+
+        logger.info("disabling lband radio")
+        self.lband.disable()
+
+        logger.info("disabling radio power domain")
         if not self._mock_hw:
-            # power down sequence
-            logger.info("disabling uhf radio")
-            self.uhf.disable()
-            time.sleep(0.1)
-
-            logger.info("disabling lband radio")
-            self.lband.disable()
-            time.sleep(0.1)
-
-            logger.info("disabling radio power domain")
-            self._radio_enable_gpio.set_value(
-                self._radio_enable_gpio.offsets[0], Value.INACTIVE
-            )
-        else:
-            logger.info("disabling uhf radio")
-            self.uhf.disable()
-
-            logger.info("disabling lband radio")
-            self.lband.disable()
-
-            logger.info("disabling radio power domain")
+            self._radio_enable_gpio.set_value(self._radio_enable_gpio.offsets[0], Value.INACTIVE)
 
     def send_edl_response(self, message: bytes):
         """
@@ -207,7 +174,7 @@ class RadiosService(Service):
 
 class Radio:
     def __init__(self):
-        self.rf_reset_count = 0
+        self._rf_reset_count = 0
 
     def enable(self):
         pass
@@ -220,6 +187,10 @@ class Radio:
 
     def rf_reset(self):
         self.rf_reset_count += 1
+
+    @property
+    def rf_reset_count(self):
+        return self._rf_reset_count
 
 
 class LBandRadio(Radio):
@@ -247,15 +218,8 @@ class LBandRadio(Radio):
         )
 
         # request gpio pins
-        self._si41xx_nlock_gpio: gpiod.LineRequest = request_gpio_input(
-            "/dev/gpiochip3", 29, "LBAND_LO_nLOCKED"
-        )
-        self._lband_enable_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip0", 19, "LBAND_ENABLE"
-        )
-
-        # si41xx synth info
-        self._relock_count = 0
+        self._si41xx_nlock_gpio = request_gpio_input("/dev/gpiochip3", 29, "LBAND_LO_nLOCKED")
+        self._lband_enable_gpio = request_gpio_output("/dev/gpiochip0", 19, "LBAND_ENABLE")
 
     def enable(self):
         """
@@ -265,40 +229,18 @@ class LBandRadio(Radio):
         -----
         The radio power domain must be enabled first.
         """
-        self._lband_enable_gpio.set_value(
-            self._lband_enable_gpio.offsets[0], Value.ACTIVE
-        )
-
+        self._lband_enable_gpio.set_value(self._lband_enable_gpio.offsets[0], Value.ACTIVE)
+        time.sleep(0.1)
         self._si41xx.start()
-        self._relock_count += 1
 
     def disable(self):
         """Stop L-band synth and disable L-band power domain."""
         self._si41xx.stop()
 
-        self._lband_enable_gpio.set_value(
-            self._lband_enable_gpio.offsets[0], Value.INACTIVE
-        )
+        self._lband_enable_gpio.set_value(self._lband_enable_gpio.offsets[0], Value.INACTIVE)
+        time.sleep(0.1)
 
     def is_rf_ok(self) -> bool:
-        """
-        Report if the L-band radio is ok.
-
-        Returns
-        -------
-        bool
-            True if L-band radio is ok.
-        """
-        return self._si41xx_locked()
-
-    def rf_reset(self):
-        """Reset the L-band synth."""
-        # increment reset counter
-        super().rf_reset()
-        self._si41xx.stop()
-        self._si41xx.start()
-
-    def _si41xx_locked(self) -> bool:
         """Check if the L-band synth is locked.
 
         Returns
@@ -307,10 +249,14 @@ class LBandRadio(Radio):
             True if the L-band is locked.
         """
         # si41xx_nlock is active low
-        state = not bool(
-            self._si41xx_nlock_gpio.get_value(self._si41xx_nlock_gpio.offsets[0])
-        )
-        return state
+        return not bool(self._si41xx_nlock_gpio.get_value(self._si41xx_nlock_gpio.offsets[0]))
+
+    def rf_reset(self):
+        """Reset the L-band synth."""
+        # increment reset counter
+        super().rf_reset()
+        self._si41xx.stop()
+        self._si41xx.start()
 
 
 class UHFRadio(Radio):
@@ -322,15 +268,9 @@ class UHFRadio(Radio):
     def __init__(self):
         """Request gpio."""
         super().__init__()
-        self._uhf_tot_ok_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip0", 25, "UHF_TOT_OK"
-        )
-        self._uhf_tot_clear_gpio = request_gpio_output(
-            "/dev/gpiochip0", 26, "UHF_TOT_CLEAR"
-        )
-        self._uhf_enable_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip0", 16, "UHF_ENABLE"
-        )
+        self._uhf_tot_ok_gpio = request_gpio_output("/dev/gpiochip0", 25, "UHF_TOT_OK")
+        self._uhf_tot_clear_gpio = request_gpio_output("/dev/gpiochip0", 26, "UHF_TOT_CLEAR")
+        self._uhf_enable_gpio = request_gpio_output("/dev/gpiochip0", 16, "UHF_ENABLE")
 
     def enable(self):
         """
@@ -341,35 +281,17 @@ class UHFRadio(Radio):
         The radio power domain must be enabled first.
         """
         self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.ACTIVE)
+        time.sleep(0.1)
 
         # clear timeout timer
         self._uhf_tot_clear()
 
     def disable(self):
         """Disable the UHF power domain."""
-        self._uhf_enable_gpio.set_value(
-            self._uhf_enable_gpio.offsets[0], Value.INACTIVE
-        )
+        self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.INACTIVE)
+        time.sleep(0.1)
 
     def is_rf_ok(self) -> bool:
-        """
-        Report if UHF radio is ok.
-
-        Returns
-        -------
-        bool
-            True if UHF radio is ok.
-        """
-        return self._uhf_tot_ok()
-
-    def rf_reset(self):
-        """Reset the UHF radio."""
-        # increment reset counter
-        super().rf_reset()
-        self.disable()
-        self.enable()
-
-    def _uhf_tot_ok(self) -> bool:
         """
         Check if the hardware timeout timer (TOT) is ok.
 
@@ -380,13 +302,16 @@ class UHFRadio(Radio):
         """
         return bool(self._uhf_tot_ok_gpio.get_value(self._uhf_tot_ok_gpio.offsets[0]))
 
+    def rf_reset(self):
+        """Reset the UHF radio."""
+        # increment reset counter
+        super().rf_reset()
+        self.disable()
+        self.enable()
+
     def _uhf_tot_clear(self):
         """Clear TOT."""
-        self._uhf_tot_clear_gpio.set_value(
-            self._uhf_tot_clear_gpio.offsets[0], Value.ACTIVE
-        )
+        self._uhf_tot_clear_gpio.set_value(self._uhf_tot_clear_gpio.offsets[0], Value.ACTIVE)
         time.sleep(self.TOT_CLEAR_DELAY)
 
-        self._uhf_tot_clear_gpio.set_value(
-            self._uhf_tot_clear_gpio.offsets[0], Value.INACTIVE
-        )
+        self._uhf_tot_clear_gpio.set_value(self._uhf_tot_clear_gpio.offsets[0], Value.INACTIVE)

@@ -8,18 +8,14 @@ from collections.abc import Generator
 from contextlib import suppress
 from enum import Enum, unique
 from time import sleep
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from gpiod.line import Value
 from olaf import Adc, logger
 from oresat_configs import Card
 
-from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
-
 from ..drivers.max7310 import Max7310, Max7310Error, MockMax7310
-
-if TYPE_CHECKING:
-    import gpiod
+from ..subsystems._gpio import request_gpio_input, request_gpio_output
 
 
 class OpdError(Exception):
@@ -193,9 +189,7 @@ class OpdNode:
         """
 
         for i in range(attempts):
-            logger.debug(
-                f"resetting OPD node {self.name} (0x{self.addr:02X}), try {i + 1}"
-            )
+            logger.debug(f"resetting OPD node {self.name} (0x{self.addr:02X}), try {i + 1}")
             try:
                 self._max7310.output_set(self._CB_RESET_PIN)
                 sleep(self._RESET_DELAY_S)
@@ -289,9 +283,7 @@ class OpdStm32Node(OpdNode):
             Mock the OPD subsystem.
         """
         super().__init__(bus, name, addr, mock=mock)
-        self._inputs = (
-            1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
-        )
+        self._inputs = 1 << self._I2C_SCL_PIN | 1 << self._I2C_SDA_PIN | 1 << self._NOT_FAULT_PIN
 
     def enable(self, *, bootloader_mode: bool = False) -> OpdNodeState:
         """
@@ -337,9 +329,7 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.debug(
-                f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART"
-            )
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -348,9 +338,7 @@ class OpdStm32Node(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.debug(
-                f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART"
-            )
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -399,9 +387,7 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_set(self._UART_PIN)
-            logger.debug(
-                f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART"
-            )
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was connected to UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -410,9 +396,7 @@ class OpdOctavoNode(OpdNode):
 
         try:
             self._max7310.output_clear(self._UART_PIN)
-            logger.debug(
-                f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART"
-            )
+            logger.debug(f"OPD node {self.name} (0x{self.addr:02X}) was disconnected from UART")
         except Max7310Error:
             self._status = OpdNodeState.FAULT
 
@@ -478,12 +462,8 @@ class Opd:
 
         self._mock = mock
         if not mock:
-            self._not_enable_gpio: gpiod.LineRequest = request_gpio_output(
-                "/dev/gpiochip2", 20, "OPD_nENABLE"
-            )
-            self._not_fault_pin: gpiod.LineRequest = request_gpio_input(
-                "/dev/gpiochip2", 19, "OPD_nFAULT"
-            )
+            self._not_enable_gpio = request_gpio_output("/dev/gpiochip2", 20, "OPD_nENABLE")
+            self._not_fault_pin = request_gpio_input("/dev/gpiochip2", 19, "OPD_nFAULT")
             # FIXME: Should this line get a pullup in the device tree?
             self._not_enable_gpio.set_value(
                 self._not_enable_gpio.offsets[0], Value.ACTIVE
@@ -523,9 +503,7 @@ class Opd:
 
         logger.info("starting OPD subsystem")
         if not self._mock:
-            self._not_enable_gpio.set_value(
-                self._not_enable_gpio.offsets[0], Value.INACTIVE
-            )
+            self._not_enable_gpio.set_value(self._not_enable_gpio.offsets[0], Value.INACTIVE)
         self._status = OpdState.ENABLED
 
         self.scan(reset=True)
@@ -541,9 +519,7 @@ class Opd:
 
         self._uart_disconnect()
         if not self._mock:
-            self._not_enable_gpio.set_value(
-                self._not_enable_gpio.offsets[0], Value.ACTIVE
-            )
+            self._not_enable_gpio.set_value(self._not_enable_gpio.offsets[0], Value.ACTIVE)
         self._status = OpdState.DISABLED
         self._resets = 0
 

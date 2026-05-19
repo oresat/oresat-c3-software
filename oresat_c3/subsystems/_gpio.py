@@ -34,9 +34,7 @@ def request_gpio_output(
     # Check if the given gpiochip device has the expected line name at the given offset
     with gpiod.Chip(chip_path) as chip:
         if chip.get_line_info(offset).name != line_name:
-            raise RuntimeError(
-                f"Line {line_name} not found at offset {offset} on chip {chip_path}"
-            )
+            raise RuntimeError(f"Line {line_name} not found at offset {offset} on chip {chip_path}")
         return chip.request_lines(
             consumer="oresat-c3",
             config={
@@ -78,9 +76,7 @@ def request_gpio_input(
     # Check if the given gpiochip device has the expected line name at the given offset
     with gpiod.Chip(chip_path) as chip:
         if chip.get_line_info(offset).name != line_name:
-            raise RuntimeError(
-                f"Line {line_name} not found at offset {offset} on chip {chip_path}"
-            )
+            raise RuntimeError(f"Line {line_name} not found at offset {offset} on chip {chip_path}")
         return chip.request_lines(
             consumer="oresat-c3",
             config={

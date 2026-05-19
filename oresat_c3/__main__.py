@@ -6,8 +6,6 @@ import time
 from threading import Thread
 
 from olaf import (
-    Gpio,
-    GpioError,
     ServiceState,
     UpdaterState,
     app,
@@ -51,23 +49,6 @@ def node_mgr_template():
 def keys_template():
     """Render keys template."""
     return render_olaf_template("keys.html", name="Keys")
-
-
-def get_hw_id(mock: bool) -> int:
-    """
-    Get the hardware ID of the C3 card.
-
-    There are 5 gpio pins used to get the unique hardware of the card.
-    """
-
-    hw_id = 0
-    try:
-        for i in range(5):
-            hw_id |= Gpio(f"HW_ID_BIT_{i}", mock).value << i
-    except GpioError:
-        pass
-    logger.info(f"hardware id is 0x{hw_id:X}")
-    return hw_id
 
 
 def watchdog():
@@ -125,8 +106,6 @@ def main():
     app.node._fwrite_cache = CacheStore(app.node.fwrite_cache.dir)  # pylint: disable=W0212
 
     app.od["versions"]["sw_version"].value = __version__
-    if app.od["versions"]["hw_version"].value == "6.0":
-        app.od["hw_id"].value = get_hw_id(mock_hw)
 
     state_service = StateService(config.fram_def, mock_hw)
     radios_service = RadiosService(mock_hw)

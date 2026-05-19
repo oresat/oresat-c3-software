@@ -3,14 +3,11 @@ SI41xx RF Synthesizer driver.
 """
 
 import math
-from gpiod.line import Value
 from enum import IntEnum
 
-from typing import TYPE_CHECKING
-from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
+from gpiod.line import Value
 
-if TYPE_CHECKING:
-    import gpiod
+from ..subsystems._gpio import request_gpio_input, request_gpio_output
 
 
 class Si41xxRegister(IntEnum):
@@ -62,12 +59,9 @@ class Si41xx:
     """
     Si41xx RF Synthesizer driver.
 
-    The Si41xx synthesizer is part of the radio subsystem and
-    enables wireless communication with the earth (uplink) on L-band.
-
-    References
-    ----------
-    Nasa, SmallSat Communications: https://www.nasa.gov/smallsat-institute/sst-soa/soa-communications/
+    Part of the radio subsystem, the Si41xx acts as a local oscillator that
+    down-converts the incoming L-band Earth uplink to a UHF intermediate
+    frequency, shifting the signal down to a manageable level for the radio.
     """
 
     MAX_PHASEDET = 1_000_000
@@ -113,18 +107,10 @@ class Si41xx:
         """
 
         self._state = Si41xxState.UNINIT
-        self._sen_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip2", 9, sen_pin
-        )
-        self._sclk_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip3", 28, sclk_pin
-        )
-        self._sdata_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip3", 21, sdata_pin
-        )
-        self._auxout_gpio: gpiod.LineRequest = request_gpio_input(
-            "/dev/gpiochip3", 29, auxout_pin
-        )
+        self._sen_gpio = request_gpio_output("/dev/gpiochip2", 9, sen_pin)
+        self._sclk_gpio = request_gpio_output("/dev/gpiochip3", 28, sclk_pin)
+        self._sdata_gpio = request_gpio_output("/dev/gpiochip3", 21, sdata_pin)
+        self._auxout_gpio = request_gpio_input("/dev/gpiochip3", 29, auxout_pin)
         self._ref_freq = ref_freq
         self._if_div = if_div
         self._if_n = if_n
@@ -147,9 +133,10 @@ class Si41xx:
 
         Notes
         -----
-        The Si41xx datasheet uses a slightly different terminology from what's typical.
+        While there is no official standard for SPI, Motorola (now NXP) AN991 serves as a de facto standard [1]_.
+        The Si41xx serial interface differs slightly from the informal standard [2]_.
 
-        SEN <=> Chip Select (CS)
+        SEN <=> Slave Select or Chip Select (SS, CS)
         SDATA <=> Master Out Slave In (MOSI)
         SCLK <=> Serial Clock (SCLK)
 
@@ -165,14 +152,14 @@ class Si41xx:
 
         References
         ----------
-        Skyworks, Si4133 Datasheet Rev. 1.61: https://www.mouser.com/datasheet/2/472/si4133-2507422.pdf
-        Wikipedia, Serial Peripheral Interface: https://en.wikipedia.org/wiki/Serial_Peripheral_Interface
+        .. [1] NXP, Appl. Note 991, pp.2.
+        .. [2] Skyworks,
+               "Dual-Band RF Synthesizer With Integrated VCOs For Wireless Communication,"
+               Si41xx datasheet, Revision 1.61.
         """
 
         if data > self._DATA_MASK:
-            raise Si41xxError(
-                f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}"
-            )
+            raise Si41xxError(f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}")
 
         """
         Pack the bits
@@ -185,11 +172,11 @@ class Si41xx:
         # Pull serial enable line low to start transaction
         self._sen_gpio.set_value(self._sen_gpio.offsets[0], Value.INACTIVE)
 
-        # Bit bang from MSB from to LSB
+        # Bit bang from MSB down to LSB
         for _ in range(self._MSG_SIZE, 0, -1):
             self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.INACTIVE)
 
-            # Put the data on the interface
+            # Write a single bit to the serial data line
             if word & self._MSG_MSB:
                 self._sdata_gpio.set_value(self._sdata_gpio.offsets[0], Value.ACTIVE)
             else:
@@ -228,18 +215,14 @@ class Si41xx:
         while phasedet >= self.MAX_PHASEDET:
             phasedet //= 2
         if phasedet < self.MIN_PHASEDET:
-            raise Si41xxError(
-                "failed to find values within phase detector frequency bounds"
-            )
+            raise Si41xxError("failed to find values within phase detector frequency bounds")
 
         # Calculate needed N and R values
         ndiv = freq // phasedet
         rdiv = self._ref_freq // phasedet
 
         if ndiv > 0xFF_FF or rdiv > 0x1F_FF:
-            raise Si41xxError(
-                "calc_div values are not within bounds of programmable values"
-            )
+            raise Si41xxError("calc_div values are not within bounds of programmable values")
 
         return ndiv, rdiv
 
@@ -252,9 +235,7 @@ class Si41xx:
         self._pbib = False
         self._pbrb = False
 
-        self._set_config_reg(
-            False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET
-        )
+        self._set_config_reg(False, True, False, False, self._if_div, Si41xxAuxSel.LOCKDET)
         self._write_reg(Si41xxRegister.PHASE_GAIN, 0)
         self._set_phase_pwrdown_reg(self._pbrb, self._pbib)
 

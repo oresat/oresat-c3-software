@@ -3,6 +3,7 @@ black
 build
 cfdp-py==0.1.2
 dataclasses-json
+gpiod
 isort
 oresat-configs==0.8.*
 oresat-olaf>=3.6.5

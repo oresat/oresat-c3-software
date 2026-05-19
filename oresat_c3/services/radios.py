@@ -14,7 +14,7 @@ from olaf import Service, logger
 
 from oresat_c3.subsystems._gpio import request_gpio_input, request_gpio_output
 
-from ..drivers.si41xx import Si41xx, Si41xxIfdiv
+from oresat_c3.drivers.si41xx import Si41xx, Si41xxIfdiv
 
 if TYPE_CHECKING:
     import gpiod
@@ -50,8 +50,9 @@ class RadiosService(Service):
             self.uhf = UHFRadio()
             self.lband = LBandRadio()
 
-        self.node.add_daemon("lband")
-        self.node.add_daemon("uhf")
+        if not mock_hw:
+            self.node.add_daemon("lband")
+            self.node.add_daemon("uhf")
 
         self.recv_queue: SimpleQueue[bytes] = SimpleQueue()
 
@@ -95,8 +96,9 @@ class RadiosService(Service):
         logger.info(f"EDL downlink socket: {self.EDL_DOWNLINK_ADDR}")
         self._edl_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.node.daemons["uhf"].start()
-        self.node.daemons["lband"].start()
+        if not self._mock_hw:
+            self.node.daemons["uhf"].start()
+            self.node.daemons["lband"].start()
 
     def on_loop(self):
         """Maintain radio health and receive edl requests."""
@@ -121,8 +123,9 @@ class RadiosService(Service):
     def on_stop(self):
         """Power down radios and stop daemons."""
         logger.info("disabling radios")
-        self.node.daemons["uhf"].stop()
-        self.node.daemons["lband"].stop()
+        if not self._mock_hw:
+            self.node.daemons["uhf"].stop()
+            self.node.daemons["lband"].stop()
 
         self._beacon_downlink_socket.close()
         self._edl_downlink_socket.close()

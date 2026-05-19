@@ -10,7 +10,6 @@ from enum import Enum, unique
 from time import sleep
 from typing import TYPE_CHECKING, Optional
 
-from gpiod import LineRequest
 from gpiod.line import Value
 from olaf import Adc, logger
 from oresat_configs import Card
@@ -478,17 +477,19 @@ class Opd:
         """
 
         self._mock = mock
-        self._not_enable_gpio: gpiod.LineRequest = request_gpio_output(
-            "/dev/gpiochip2", 20, "OPD_nENABLE"
-        )
-        self._not_fault_pin: gpiod.LineRequest = request_gpio_input(
-            "/dev/gpiochip2", 19, "OPD_nFAULT"
-        )
+        if not mock:
+            self._not_enable_gpio: gpiod.LineRequest = request_gpio_output(
+                "/dev/gpiochip2", 20, "OPD_nENABLE"
+            )
+            self._not_fault_pin: gpiod.LineRequest = request_gpio_input(
+                "/dev/gpiochip2", 19, "OPD_nFAULT"
+            )
+            # FIXME: Should this line get a pullup in the device tree?
+            self._not_enable_gpio.set_value(
+                self._not_enable_gpio.offsets[0], Value.ACTIVE
+            )  # make sure OPD disabled initially
+
         self._adc = Adc(self._ADC_CURRENT_PIN, mock)
-        # FIXME: Should this line get a pullup in the device tree?
-        self._not_enable_gpio.set_value(
-            self._not_enable_gpio.offsets[0], Value.ACTIVE
-        )  # make sure OPD disabled initially
 
         self._nodes: dict[str, OpdNode] = {}
         self._uart_node: Optional[str] = None
@@ -521,9 +522,10 @@ class Opd:
             return  # already enabled
 
         logger.info("starting OPD subsystem")
-        self._not_enable_gpio.set_value(
-            self._not_enable_gpio.offsets[0], Value.INACTIVE
-        )
+        if not self._mock:
+            self._not_enable_gpio.set_value(
+                self._not_enable_gpio.offsets[0], Value.INACTIVE
+            )
         self._status = OpdState.ENABLED
 
         self.scan(reset=True)
@@ -538,7 +540,10 @@ class Opd:
                 node.disable()
 
         self._uart_disconnect()
-        self._not_enable_gpio.set_value(self._not_enable_gpio.offsets[0], Value.ACTIVE)
+        if not self._mock:
+            self._not_enable_gpio.set_value(
+                self._not_enable_gpio.offsets[0], Value.ACTIVE
+            )
         self._status = OpdState.DISABLED
         self._resets = 0
 
@@ -601,6 +606,8 @@ class Opd:
         -------
         bool : True if OPD circuit has a fault.
         """
+        if self._mock:
+            return False
 
         return not bool(self._not_fault_pin.get_value(self._not_enable_gpio.offsets[0]))
 

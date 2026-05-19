@@ -1,4 +1,3 @@
-import logging
 import struct
 import unittest
 
@@ -13,7 +12,13 @@ from spacepackets.uslp import (
     UslpProtocolIdentifier,
 )
 
-from oresat_c3.protocols.cop1 import ControlWord, Farm1
+from oresat_c3.protocols.cop1 import ControlWord
+from oresat_c3.protocols.cop1.farm import (
+    Farm1,
+    FarmState,
+    FduArrivedIndication,
+    ValidFrameArrivedIndication,
+)
 from oresat_c3.protocols.edl_packet import EdlVcid
 from oresat_c3.protocols.uslp import SPACECRAFT_ID, TC_MIN_LEN, Gvcid
 
@@ -118,7 +123,7 @@ class TestFarm1(unittest.TestCase):
         self.assertEqual(self.farm1.b_counter, 1)
         self.assertFalse(self.farm1.retransmit)
         self.assertEqual(self.farm1.receiver_frame_sequence_number, 5)
-        self.assertEqual(self.farm1.state, Farm1.FarmState.OPEN)
+        self.assertEqual(self.farm1.state, FarmState.OPEN)
 
     def test_process_invalid_bc(self):
         self.assertFalse(self.farm1._process_frame(self.INVALID_TYPE_BC))
@@ -126,7 +131,7 @@ class TestFarm1(unittest.TestCase):
     def test_process_bd(self):
         self.assertTrue(self.farm1._process_frame(self.FRAME_TYPE_BD))
         indication = self.farm1.higher_interface.signal.pop()
-        self.assertIsInstance(indication, Farm1.FduArrivedIndication)
+        self.assertIsInstance(indication, FduArrivedIndication)
         self.farm1.higher_interface.buffer.pop()
 
     def test_process_ad(self):
@@ -143,7 +148,7 @@ class TestFarm1(unittest.TestCase):
 
     def test_notify(self):
         gvcid = Gvcid(0b1100, self.FRAME_TYPE_BC.header.scid, self.FRAME_TYPE_BC.header.vcid)
-        self.farm1.lower_interface.signal.append(Farm1.ValidFrameArrivedIndication(gvcid))
+        self.farm1.lower_interface.signal.append(ValidFrameArrivedIndication(gvcid))
         self.assertEqual(len(self.farm1.lower_interface.signal), 1)
 
     def test_trigger_retransmit(self):

@@ -16,7 +16,7 @@ from spacepackets.uslp.frame import (
     UslpProtocolIdentifier,
     VarFrameProperties,
 )
-from .sdls import get_sdls_len, apply_sdls
+from .sdls import get_sdls_len, get_sdls_header_len, apply_sdls
 
 SPACECRAFT_ID = 0x4F53  # aka "OS" in ASCII
 
@@ -27,12 +27,6 @@ HMAC_LEN = 32 # no longer relevant to this, as it is handled instead by SDLS.
 FECF_LEN = 2
 TC_MIN_LEN = PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN
 
-FRAME_PROPS = VarFrameProperties(
-    has_insert_zone=True,
-    has_fecf=True,
-    truncated_frame_len=0,
-    insert_zone_len=6, #hardcoded for now. Bad. Fix.
-)
 
 
 class UslpInvalidSpacecraftIdError(Exception):
@@ -112,6 +106,16 @@ def unpack_frame(raw: bytes) -> TransferFrame:
     # d) Consistent number of octets: length check short-circuit with TC_MIN_LEN
     #    Individual frame fields are check by unpack
     # e) Computed CRC matches FECF: CRC is checked by unpack
+
+    # gets the VCID so that we know how to unpack the frame
+    vcid = ((raw[2] & 0b111) << 3) | ((raw[3] >> 5) & 0b111)
+
+    FRAME_PROPS = VarFrameProperties(
+		has_insert_zone=True,
+		has_fecf=True,
+		truncated_frame_len=0,
+		insert_zone_len=get_sdls_header_len(vcid),
+	)
 
     if len(raw) < TC_MIN_LEN:
         raise UslpInvalidRawPacketOrFrameLenError(f"Packet too short: {len(raw)}")

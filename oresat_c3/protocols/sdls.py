@@ -1,12 +1,12 @@
 import hashlib
 import hmac
 
-from olaf import logger
-
 from spacepackets.uslp import (
     PrimaryHeader,
+    TransferFrameDataField,
+    TransferFrame,
 )
-import spacepackets.uslp.frame
+
 
 HMAC_LEN = 32
 SPI_LEN = 2
@@ -14,6 +14,9 @@ SEQ_NUM_LEN = 4
 
 SPI_LIST = [1, 1, 0] # spi definition.
 # There should be some VC parameters class that COP-1 and SDLS reference when determining how to handle VCs.
+
+class SdlsInvalidHmacError(Exception):
+    pass
 
 def gen_hmac(hmac_key: bytes, message: bytes) -> bytes:
     """Helper function to generate HMAC value from HMAC key and the message."""
@@ -57,7 +60,7 @@ def get_sdls_header_len(vcid: int) -> int:
     Returns
     -------
     int
-        The length of the sdls headre.
+        The length of the sdls header.
     """
     
     if len(SPI_LIST) <= vcid:
@@ -72,35 +75,37 @@ def get_sdls_header_len(vcid: int) -> int:
     raise ValueError(f"VCID has invalid SPI: {spi}")
 
 
-def apply_sdls(header: PrimaryHeader, seq_num: int, tfdf: TransferFrameDataField, hmac_key: bytes) -> bytes:
+def apply_sdls(frame: TransferFrame, seq_num: int, hmac_key: bytes) -> None:
     """Apply the HMAC to the data zone (out of spec but no other choice) and return the header to be put in the insert zone (see previous note.)
 
     Parameters
     ----------
-    header
-        The primary header of the frame
-    tfdf
-        The contents of the transfer frame. As the spacepackets protocol does not support sdls, the MAC will be inserted into the 
-        data zone, despite spec stating that this is not the case.
+    frame
+        Transfer frame to apply sdls to.
+    seq_num
+        Anti replay sequence number to apply in the sdls header.
+    hmac_key
+        The hmac key used to compute the authentication HMAC.
 
     Returns
     -------
-    bytes
-        The sdls_header to be put in the insert zone.
+    None
     """
 
-    if len(SPI_LIST) <= header.vcid:
-        raise ValueError(f"VCID {header.vcid} does not have corresponding SPI.")
+    if len(SPI_LIST) <= frame.header.vcid:
+        raise ValueError(f"VCID {frame.header.vcid} does not have corresponding SPI.")
 
-    spi = SPI_LIST[header.vcid]
+    spi = SPI_LIST[frame.header.vcid]
     
     if spi == 1:
         sdls_header = bytearray(b"\x00\x01") + seq_num.to_bytes(SEQ_NUM_LEN, "little")
 
-        authenticated_data = header.pack() + sdls_header + tfdf.pack()
+        frame.insert_zone = sdls_header
+
+        authenticated_data = frame.header.pack() + sdls_header + frame.tfdf.pack()
 
         header_mask = bytearray(b"\x00\x00\x07\xfe\x00\x00\x00")
-        header_mask += bytearray(bytes(header.vcf_count_len))
+        header_mask += bytearray(bytes(frame.header.vcf_count_len))
 
         print(header_mask.hex())
 
@@ -108,12 +113,11 @@ def apply_sdls(header: PrimaryHeader, seq_num: int, tfdf: TransferFrameDataField
             authenticated_data[i] = authenticated_data[i] & header_mask[i]
 
         hmac_val = gen_hmac(hmac_key, authenticated_data)
-        tfdf.tfdz = tfdf.tfdz + hmac_val
-
-        return sdls_header
+        frame.tfdf.tfdz = frame.tfdf.tfdz + hmac_val
+        return
 
     elif spi == 0:
-        return bytes(b'')
+        return
 
     raise ValueError(f"VCID has invalid SPI: {spi}")
 
@@ -155,9 +159,10 @@ def verify_sdls(frame: TransferFrame, hmac_key: bytes) -> int:
 
         hmac_expected = gen_hmac(hmac_key, authenticated_data)
         hmac_actual = frame.tfdf.tfdz[-HMAC_LEN:]
+        frame.tfdf.tfdz = frame.tfdf.tfdz[:-HMAC_LEN] # strip the hmac from the transfer frame.
 
         if hmac_expected != hmac_actual:
-            raise EdlPacketError(f"Frame with invalid HMAC received expected: {hmac_expected}, Actual: {hmac_actual}")
+            raise SdlsInvalidHmacError(f"Frame with invalid HMAC received expected: {hmac_expected}, Actual: {hmac_actual}")
 
         sequence_number = int.from_bytes(sdls_header[:-SEQ_NUM_LEN], byteorder="little")
         return sequence_number

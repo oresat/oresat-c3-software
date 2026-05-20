@@ -21,9 +21,7 @@ from .sdls import get_sdls_len, get_sdls_header_len, apply_sdls
 SPACECRAFT_ID = 0x4F53  # aka "OS" in ASCII
 
 PRIMARY_HEADER_LEN = 7
-SEQ_NUM_LEN = 4 # no longer relevant to this, as it is handled instead by SDLS.
 DFH_LEN = 1
-HMAC_LEN = 32 # no longer relevant to this, as it is handled instead by SDLS.
 FECF_LEN = 2
 TC_MIN_LEN = PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN
 
@@ -102,7 +100,7 @@ def unpack_frame(raw: bytes) -> TransferFrame:
     # USLP Transfer Frame Validation
     # a) Must have expected TFVN: checked by TransferFrame.unpack
     # b) Must have expected MCID: checked below by also comparing SCID
-    # c) Header consistent with implemented features: covered by FRAME_PROPS + unpack
+    # c) Header consistent with implemented features: covered by frame_props + unpack
     # d) Consistent number of octets: length check short-circuit with TC_MIN_LEN
     #    Individual frame fields are check by unpack
     # e) Computed CRC matches FECF: CRC is checked by unpack
@@ -110,16 +108,16 @@ def unpack_frame(raw: bytes) -> TransferFrame:
     # gets the VCID so that we know how to unpack the frame
     vcid = ((raw[2] & 0b111) << 3) | ((raw[3] >> 5) & 0b111)
 
-    FRAME_PROPS = VarFrameProperties(
-		has_insert_zone=True,
-		has_fecf=True,
-		truncated_frame_len=0,
-		insert_zone_len=get_sdls_header_len(vcid),
-	)
+    frame_props = VarFrameProperties(
+        has_insert_zone=True,
+        has_fecf=True,
+        truncated_frame_len=0,
+        insert_zone_len=get_sdls_header_len(vcid),
+    )
 
     if len(raw) < TC_MIN_LEN:
         raise UslpInvalidRawPacketOrFrameLenError(f"Packet too short: {len(raw)}")
-    frame = TransferFrame.unpack(raw, FrameType.VARIABLE, FRAME_PROPS)
+    frame = TransferFrame.unpack(raw, FrameType.VARIABLE, frame_props)
     if frame.header.scid != SPACECRAFT_ID:
         raise UslpInvalidSpacecraftIdError
 
@@ -197,8 +195,10 @@ def make_frame(
         bypass_seq_ctrl_flag=BypassSequenceControlFlag.SEQ_CTRLD_QOS,
     )
 
-    sdls_header = apply_sdls(frame_header, sequence_number, tfdf, hmac_key)
-
-    return TransferFrame(
-        header=frame_header, tfdf=tfdf, op_ctrl_field=control_word, insert_zone=sdls_header
+    frame = TransferFrame(
+        header=frame_header, tfdf=tfdf, op_ctrl_field=control_word
     )
+
+    apply_sdls(frame, sequence_number, hmac_key)
+
+    return frame

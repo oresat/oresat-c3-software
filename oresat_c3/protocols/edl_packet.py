@@ -22,7 +22,7 @@ from spacepackets.uslp.header import (  # type: ignore
 )
 
 from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
-from .uslp import HMAC_LEN, SEQ_NUM_LEN, make_frame
+from .uslp import make_frame
 from .sdls import verify_sdls
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
@@ -130,7 +130,7 @@ class EdlPacket:
         """
 
         seq_num = verify_sdls(frame, hmac_key)
-        payload_raw = frame.tfdf.tfdz[:-HMAC_LEN]
+        payload_raw = frame.tfdf.tfdz
         if frame.header.vcid == EdlVcid.C3_COMMAND:
             try:
                 if frame.header.src_dest == SRC_DEST_ORESAT:

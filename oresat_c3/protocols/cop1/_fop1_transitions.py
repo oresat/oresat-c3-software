@@ -1,5 +1,6 @@
 from . import StateMachine
-from .fop import Fop1, FopEvent, FopState
+from ._fop1_events import FopEvent
+from .fop import Fop1, FopState
 
 _ignore = []
 

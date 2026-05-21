@@ -28,18 +28,34 @@ class FopState(CopState):
     INITIALIZING_WITH_BC = 5
     INITIAL = 6
 
+@unique
+class Alert(Enum):
+    LIMIT = 0
+    T1 = 1
+    LOCKOUT = 2
+    SYNCH = 3
+    NNR = 4
+    CLCW = 5
+    LLIF = 6
+    TERM = 7
 
-class NotificationType(Enum):
+
+class TransferNotificationType(Enum):
     ACCEPT = auto()
     REJECT = auto()
     POSITIVE_CONFIRM = auto()
     NEGATIVE_CONFIRM = auto()
 
 
+class AsyncNotificationType(Enum):
+    ALERT = auto()
+    SUSPEND = auto()
+
+
 @dataclass
 class TransferNotification(Indication):
     request_id: int
-    notification_type: NotificationType
+    notification_type: TransferNotificationType
 
 
 @dataclass
@@ -55,16 +71,12 @@ class TransmitRequestForFrame(Indication):
     tfdf: bytes
 
 
-@unique
-class Alert(Enum):
-    LIMIT = (0,)
-    T1 = (1,)
-    LOCKOUT = (2,)
-    SYNCH = (3,)
-    NNR = (4,)
-    CLCW = (5,)
-    LLIF = (6,)
-    TERM = (7,)
+@dataclass
+class AsyncNotification(Indication):
+    notification_type: AsyncNotificationType
+    # Qualifier is the Notification Type's parameter
+    # Alert has "Reason Code" but Suspend has no params
+    notification_qualifier: Optional[Alert]
 
 
 class ServiceType(Enum):
@@ -199,12 +211,18 @@ class Fop1(CopService):
     def _on_timer_expired(self) -> None:
         pass
 
+    def alert(self, alert_type: Alert) -> None:
+        logger.debug(f"Alert received: {alert_type}")
+        self.higher_interface.signal.appendleft(
+            AsyncNotification(self._gvcid, AsyncNotificationType.ALERT, alert_type)
+        )
+
     def remove_acknowledged_frames_from_sent_queue(self) -> None:
         entries = list(self._sent_queue)
         self._sent_queue.clear()
         for entry in entries:
             notif = TransferNotification(
-                entry.request_id, entry.gvcid, NotificationType.POSITIVE_CONFIRM
+                entry.request_id, entry.gvcid, TransferNotificationType.POSITIVE_CONFIRM
             )
             self.higher_interface.signal.appendleft(notif)
             self.nn_r = (self.nn_r + 1) & 0xFF
@@ -237,7 +255,9 @@ class Fop1(CopService):
                     waiting_fdu = self._wait_queue
                     self._wait_queue = None
                     self.higher_interface.signal.appendleft(
-                        TransferNotification(waiting_fdu.request_id, NotificationType.ACCEPT)
+                        TransferNotification(
+                            waiting_fdu.request_id, TransferNotificationType.ACCEPT
+                        )
                     )
                     self.transmit_type_ad_frame(waiting_fdu)
 

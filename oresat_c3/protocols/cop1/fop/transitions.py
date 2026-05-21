@@ -1,19 +1,19 @@
 from common.fsm import StateMachine
 
 from ._fop1_events import FopEvent
-from .fop import Fop1, FopState
+from .types import FopState
 
 _ignore = []
 
-_e2 = [Fop1.remove_acknowledged_frames_from_sent_queue, Fop1.cancel_timer, Fop1.look_for_fdu]
-_e6 = [Fop1.remove_acknowledged_frames_from_sent_queue, Fop1.look_for_fdu]
+_e2 = ["remove_acknowledged_frames_from_sent_queue", "cancel_timer", "look_for_fdu"]
+_e6 = ["remove_acknowledged_frames_from_sent_queue", "look_for_fdu"]
 _e8 = [
-    Fop1.remove_acknowledged_frames_from_sent_queue,
-    Fop1.initiate_retransmission,
-    Fop1.look_for_fdu,
+    "remove_acknowledged_frames_from_sent_queue",
+    "initiate_retransmission",
+    "look_for_fdu",
 ]
-_e9 = [Fop1.remove_acknowledged_frames_from_sent_queue]
-_e10 = [Fop1.initiate_retransmission, Fop1.look_for_fdu]
+_e9 = ["remove_acknowledged_frames_from_sent_queue"]
+_e10 = ["initiate_retransmission", "look_for_fdu"]
 
 _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     # S1

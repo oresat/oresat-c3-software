@@ -7,10 +7,11 @@ from typing import Optional
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 from uslp import SPACECRAFT_ID, Gvcid
 
-from . import Indication
 from ._fop1_events import FopEvent
 from ._fop1_transitions import _transitions
-from .common import CopService, CopState, StateMachine
+from .common import CopService, CopState, Indication, StateMachine
+from .control_word import ControlWord
+from .util import logger
 
 
 @unique
@@ -111,7 +112,7 @@ class Fop1(CopService):
         # Expected_Acknowledgement_Frame_Sequence_Number
         self.nn_r: int = 0
         self.timer_initial_value: int = 0
-        self.transmission_limit: int
+        self.transmission_limit: int = 1  # TODO: might be good to have in OD
         self.transmission_count: int = 0
         if k < 1 or k >= 256:
             raise ValueError("k must be between 1 and 256")
@@ -126,6 +127,65 @@ class Fop1(CopService):
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
             self._fsm.add_transition(tr_from, tr_to)
+
+    def on_clcw_arrived(self, clcw: ControlWord) -> None:
+        if not self._validate_clcw(clcw):
+            self.on_event(FopEvent.E15)
+        if clcw.lockout:
+            self.on_event(FopEvent.E14)
+        else:
+            if clcw.report_value == self.v_s:
+                # valid N(R) and all outstanding Type-AD acked
+                if clcw.retransmit:
+                    self.on_event(FopEvent.E4)
+                else:
+                    if clcw.wait:
+                        self.on_event(FopEvent.E3)
+                    else:
+                        if clcw.report_value == self.nn_r:
+                            # no new frames acked
+                            self.on_event(FopEvent.E1)
+                        else:
+                            # some new frames acked
+                            self.on_event(FopEvent.E2)
+            elif self.v_s > clcw.report_value >= self.nn_r:
+                # valid N(R) and some outstanding AD not yet acked
+                if clcw.retransmit:
+                    if self.transmission_limit == 1:
+                        if clcw.report_value == self.nn_r:
+                            self.on_event(FopEvent.E102)
+                        else:
+                            self.on_event(FopEvent.E101)
+                    elif self.transmission_limit > 1:
+                        if clcw.report_value == self.nn_r:
+                            if self.transmission_count < self.transmission_limit:
+                                if clcw.wait:
+                                    self.on_event(FopEvent.E11_B)
+                                else:
+                                    self.on_event(FopEvent.E10_B)
+                            else:
+                                if clcw.wait:
+                                    self.on_event(FopEvent.E103)
+                                else:
+                                    self.on_event(FopEvent.E12_B)
+                        else:
+                            if clcw.wait:
+                                self.on_event(FopEvent.E8_B)
+                            else:
+                                self.on_event(FopEvent.E9_B)
+                    else:
+                        logger.error("Transmission_Limit < 1")
+                        self.transmission_limit = 1
+            else:
+                # invalid N(R)
+                self.on_event(FopEvent.E13)
+
+    def _validate_clcw(self, clcw: ControlWord) -> bool:
+        return clcw.cop_in_effect == 0b01 and clcw.vcid == self._gvcid.vcid
+
+    def on_event(self, event: FopEvent) -> None:
+        logger.debug(f"Event received: {event}")
+        self._fsm.process_event(event)
 
     def start_timer(self) -> None:
         if self._timer is not None:

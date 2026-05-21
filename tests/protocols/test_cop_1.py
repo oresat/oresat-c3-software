@@ -12,7 +12,7 @@ from spacepackets.uslp import (
     UslpProtocolIdentifier,
 )
 
-from oresat_c3.protocols.cop1 import ControlWord
+from oresat_c3.protocols.cop1 import ControlWord, Gvcid
 from oresat_c3.protocols.cop1.farm import (
     Farm1,
     FarmState,
@@ -20,7 +20,7 @@ from oresat_c3.protocols.cop1.farm import (
     ValidFrameArrivedIndication,
 )
 from oresat_c3.protocols.edl_packet import EdlVcid
-from oresat_c3.protocols.uslp import SPACECRAFT_ID, TC_MIN_LEN, Gvcid
+from oresat_c3.protocols.uslp import SPACECRAFT_ID, TC_MIN_LEN
 
 
 class TestFarm1(unittest.TestCase):

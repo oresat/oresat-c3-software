@@ -4,10 +4,10 @@ from typing import Union
 from olaf import Service, logger
 from spacepackets.uslp import TransferFrame
 
-from ..protocols.cop1 import ControlWord, ServiceInterface
+from ..protocols.cop1 import ControlWord, Gvcid, ServiceInterface
 from ..protocols.cop1.farm import Farm1, FarmHigherServiceInterface, ValidFrameArrivedIndication
 from ..protocols.edl_packet import EdlVcid
-from ..protocols.uslp import Gvcid, unpack_frame
+from ..protocols.uslp import unpack_frame
 from .cop_manager import CopManagerService
 from .radios import RadiosService
 

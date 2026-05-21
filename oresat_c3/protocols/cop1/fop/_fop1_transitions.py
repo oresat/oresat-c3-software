@@ -1,4 +1,5 @@
-from . import StateMachine
+from common.fsm import StateMachine
+
 from ._fop1_events import FopEvent
 from .fop import Fop1, FopState
 

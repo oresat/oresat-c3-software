@@ -4,14 +4,15 @@ from dataclasses import dataclass
 from enum import Enum, auto, unique
 from typing import Optional
 
+from common.ccsds import ControlWord, Gvcid
+from common.fsm import CopState, StateMachine
+from common.service import CopService, Indication
+from common.util import logger
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
-from uslp import SPACECRAFT_ID, Gvcid
+from uslp import SPACECRAFT_ID
 
 from ._fop1_events import FopEvent
 from ._fop1_transitions import _transitions
-from .common import CopService, CopState, Indication, StateMachine
-from .control_word import ControlWord
-from .util import logger
 
 
 @unique

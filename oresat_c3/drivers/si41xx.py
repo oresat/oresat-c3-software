@@ -3,14 +3,11 @@ SI41xx RF Synthesizer driver.
 """
 
 from enum import IntEnum
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 import spidev
 
 from oresat_c3.subsystems._gpio import request_gpio_input
-
-if TYPE_CHECKING:
-    import gpiod
 
 
 class Si41xxRegister(IntEnum):
@@ -102,9 +99,7 @@ class Si41xx:
 
         self._state = Si41xxState.UNINIT
 
-        self._auxout_gpio: gpiod.LineRequest = request_gpio_input(
-            "/dev/gpiochip3", 29, "LBAND_LO_nLOCKED"
-        )
+        self._auxout_gpio = request_gpio_input("/dev/gpiochip3", 29, "LBAND_LO_nLOCKED")
 
         self._ref_freq = ref_freq
         self._if_div = if_div
@@ -141,9 +136,17 @@ class Si41xx:
         # |                data                  |  register address  |
         # +---------------------+-------------------------------------+
         word = reg.value | ((data & self._DATA_MASK) << 4)
+        mesg = [
+            (word >> 16) & 0xFF,
+            (word >> 8) & 0xFF,
+            word & 0xFF,
+        ]
 
-        self._spi.open_path("/dev/spidev2.0")
-        self._spi.xfer(word)
+        # open spidev 0 on interface 2
+        self._spi.open(2, 0)
+        # set clock polarity
+        self._spi.mode = 0b10
+        self._spi.writebytes(mesg)
         self._spi.close()
 
     def calc_div(self, freq: int) -> tuple[int, int]:
@@ -235,8 +238,8 @@ class Si41xx:
         autokp: bool,
         autopdb: bool,
         lprw: bool,
-        if_div: Union[Si41xxIfdiv, int],
-        aux_sel: Union[Si41xxAuxSel, int],
+        if_div: Si41xxIfdiv | int,
+        aux_sel: Si41xxAuxSel | int,
     ):
         """Set the Config register"""
 

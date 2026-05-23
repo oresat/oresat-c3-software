@@ -48,9 +48,14 @@ class AsyncNotificationType(Enum):
 
 
 @dataclass
+class DirectiveNotification(Indication):
+    request_id: int
+    notification_type: NotificationType
+
+@dataclass
 class TransferNotification(Indication):
     request_id: int
-    notification_type: TransferNotificationType
+    notification_type: NotificationType
 
 
 @dataclass

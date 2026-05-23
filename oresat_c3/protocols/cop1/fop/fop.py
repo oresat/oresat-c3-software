@@ -20,9 +20,10 @@ from .types import (
     SentQueueEntry,
     ServiceType,
     TransferNotification,
-    TransferNotificationType,
+    NotificationType,
     TransmitRequestForFrame,
     WaitQueueEntry,
+    DirectiveNotification,
 )
 
 
@@ -60,6 +61,7 @@ class Fop1(CopService):
         self._timer = None
         self._request_id: int = 0
         self._gvcid: Gvcid = Gvcid(0b1100, SPACECRAFT_ID, vcid)
+        self._pending_directive_request_id: Optional[int] = None
 
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
@@ -113,6 +115,14 @@ class Fop1(CopService):
                     else:
                         logger.error("Transmission_Limit < 1")
                         self.transmission_limit = 1
+                else:
+                    if clcw.wait:
+                        self.on_event(FopEvent.E7_B)
+                    else:
+                        if clcw.report_value == self.nn_r:
+                            self.on_event(FopEvent.E5)
+                        else:
+                            self.on_event(FopEvent.E6_B)
             else:
                 # invalid N(R)
                 self.on_event(FopEvent.E13)
@@ -147,7 +157,7 @@ class Fop1(CopService):
         self._sent_queue.clear()
         for entry in entries:
             notif = TransferNotification(
-                entry.request_id, entry.gvcid, TransferNotificationType.POSITIVE_CONFIRM
+                entry.request_id, entry.gvcid, NotificationType.POSITIVE_CONFIRM
             )
             self.higher_interface.signal.appendleft(notif)
             self.nn_r = (self.nn_r + 1) & 0xFF
@@ -180,11 +190,26 @@ class Fop1(CopService):
                     waiting_fdu = self._wait_queue
                     self._wait_queue = None
                     self.higher_interface.signal.appendleft(
-                        TransferNotification(
-                            waiting_fdu.request_id, TransferNotificationType.ACCEPT
-                        )
+                        TransferNotification(waiting_fdu.request_id, NotificationType.ACCEPT)
                     )
                     self.transmit_type_ad_frame(waiting_fdu)
+
+    def release_copy_of_bc_frame(self) -> None:
+        """Release copy of type BC frame
+
+        This action is not defined in the COP-1 standard, instead it must be inferred
+        from the context of the state machine. It is analogous to Remove acknowledged frames from
+        Sent_Queue, in that is meant to "release" (purge or remove) the one BC frame that is in the
+        Sent_Queue during S5.
+        """
+        self._sent_queue.clear()
+
+    def confirm_directive(self) -> None:
+        self.higher_interface.signal.appendleft(
+            DirectiveNotification(
+                self._gvcid, self._pending_directive_request_id, NotificationType.POSITIVE_CONFIRM
+            )
+        )
 
     def transmit_type_ad_frame(self, entry: WaitQueueEntry) -> None:
         n_s = self.v_s
@@ -206,9 +231,12 @@ class Fop1(CopService):
 
 # generate methods for alerts since transitions are parameterless
 for at in Alert:
+
     def make_alert(alert_type):
         def action(self):
             self.alert(alert_type)
+
         return action
+
     setattr(Fop1, f"_alert_{at.name}", make_alert(at))
 

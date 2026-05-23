@@ -2,10 +2,12 @@
 SI41xx RF Synthesizer driver.
 """
 
+import math
 from enum import IntEnum
-from typing import Union
 
-from olaf import Gpio
+from gpiod.line import Value
+
+from ..subsystems._gpio import request_gpio_input, request_gpio_output
 
 
 class Si41xxRegister(IntEnum):
@@ -54,7 +56,13 @@ class Si41xxError(Exception):
 
 
 class Si41xx:
-    """SI41xx RF Synthesizer driver."""
+    """
+    Si41xx RF Synthesizer driver.
+
+    Part of the radio subsystem, the Si41xx acts as a local oscillator that
+    down-converts the incoming L-band Earth uplink to a UHF intermediate
+    frequency, shifting the signal down to a manageable level for the radio.
+    """
 
     MAX_PHASEDET = 1_000_000
     MIN_PHASEDET = 10_000
@@ -99,11 +107,10 @@ class Si41xx:
         """
 
         self._state = Si41xxState.UNINIT
-
-        self._sen_gpio = Gpio(sen_pin, mock)
-        self._sclk_gpio = Gpio(sclk_pin, mock)
-        self._sdata_gpio = Gpio(sdata_pin, mock)
-        self._auxout_gpio = Gpio(auxout_pin, mock)
+        self._sen_gpio = request_gpio_output("/dev/gpiochip2", 9, sen_pin)
+        self._sclk_gpio = request_gpio_output("/dev/gpiochip3", 28, sclk_pin)
+        self._sdata_gpio = request_gpio_output("/dev/gpiochip3", 21, sdata_pin)
+        self._auxout_gpio = request_gpio_input("/dev/gpiochip3", 29, auxout_pin)
         self._ref_freq = ref_freq
         self._if_div = if_div
         self._if_n = if_n
@@ -115,7 +122,7 @@ class Si41xx:
 
     def _write_reg(self, reg: Si41xxRegister, data: int):
         """
-        Bit bang the register over serial
+        Write a value to a register using a bit banged version of SPI.
 
         Parameters
         ----------
@@ -123,30 +130,65 @@ class Si41xx:
             The register to write to.
         data: int
             the data to write. Should
+
+        Notes
+        -----
+        While there is no official standard for SPI, Motorola (now NXP) AN991 serves as a de facto standard [1]_.
+        The Si41xx serial interface differs slightly from the informal standard [2]_.
+
+        SEN <=> Slave Select or Chip Select (SS, CS)
+        SDATA <=> Master Out Slave In (MOSI)
+        SCLK <=> Serial Clock (SCLK)
+
+        A typical transation, SEN is asserted low to begin the transaction.
+        Each bit of data is shifted in on the raising edge of SCLK,
+        so the SDATA line needs to be asserted slightly before the transition.
+
+        SEN    ‾‾‾‾‾‾\\________________________________________________________________/‾‾‾‾‾‾‾‾‾‾‾‾
+
+        SCLK   ‾‾‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾\\_____/‾‾‾‾‾
+
+        SDATA  -----------<    bit0   ><    bit1   ><    bit2   ><    bit3   ><    bit4   >---------
+
+        References
+        ----------
+        .. [1] NXP, Appl. Note 991, pp.2.
+        .. [2] Skyworks,
+               "Dual-Band RF Synthesizer With Integrated VCOs For Wireless Communication,"
+               Si41xx datasheet, Revision 1.61.
         """
 
         if data > self._DATA_MASK:
             raise Si41xxError(f"data must be less than 0x{self._DATA_MASK:X}, was 0x{data:X}")
 
+        """
+        Pack the bits
+        MSB                      LSB
+        21     4,3                 0
+        [ data ][ register address ]
+        """
         word = reg.value | ((data & self._DATA_MASK) << 4)
 
-        self._sen_gpio.low()
+        # Pull serial enable line low to start transaction
+        self._sen_gpio.set_value(self._sen_gpio.offsets[0], Value.INACTIVE)
 
-        # bit bang from MSB down
+        # Bit bang from MSB down to LSB
         for _ in range(self._MSG_SIZE, 0, -1):
-            self._sclk_gpio.low()
+            self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.INACTIVE)
 
+            # Write a single bit to the serial data line
             if word & self._MSG_MSB:
-                self._sdata_gpio.high()
+                self._sdata_gpio.set_value(self._sdata_gpio.offsets[0], Value.ACTIVE)
             else:
-                self._sdata_gpio.low()
+                self._sdata_gpio.set_value(self._sdata_gpio.offsets[0], Value.INACTIVE)
 
-            self._sclk_gpio.high()
+            self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.ACTIVE)
             word <<= 1
 
-        self._sclk_gpio.low()
-        self._sen_gpio.high()
-        self._sclk_gpio.high()
+        # Release the interface
+        self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.INACTIVE)
+        self._sen_gpio.set_value(self._sen_gpio.offsets[0], Value.ACTIVE)
+        self._sclk_gpio.set_value(self._sclk_gpio.offsets[0], Value.ACTIVE)
 
     def calc_div(self, freq: int) -> tuple[int, int]:
         """
@@ -167,15 +209,7 @@ class Si41xx:
         if freq == 0:
             raise Si41xxError("freq must be a non-zero value")
 
-        phasedet = self._ref_freq
-        gcd = freq
-
-        # Find GCD of both frequencies
-        while phasedet != gcd:
-            if phasedet > gcd:
-                phasedet -= gcd
-            else:
-                gcd -= phasedet
+        phasedet = math.gcd(self._ref_freq, freq)
 
         # Divide until frequency is less than the maximum
         while phasedet >= self.MAX_PHASEDET:
@@ -231,8 +265,8 @@ class Si41xx:
         autokp: bool,
         autopdb: bool,
         lprw: bool,
-        if_div: Union[Si41xxIfdiv, int],
-        aux_sel: Union[Si41xxAuxSel, int],
+        if_div: Si41xxIfdiv | int,
+        aux_sel: Si41xxAuxSel | int,
     ):
         """Set the Config register"""
 

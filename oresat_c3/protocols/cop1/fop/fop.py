@@ -202,3 +202,13 @@ class Fop1(CopService):
                 n_s,
             )
         )
+
+
+# generate methods for alerts since transitions are parameterless
+for at in Alert:
+    def make_alert(alert_type):
+        def action(self):
+            self.alert(alert_type)
+        return make_action(alert_type)
+    setattr(Fop1, f"_alert_{param.name}", make_alert(at))
+

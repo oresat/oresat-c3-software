@@ -296,6 +296,23 @@ class EdlCommandCode(IntEnum):
     bytes
         Data buffer.
     """
+    
+    CO_NODE_FLASH = auto()
+    """
+    Flash a Zephyr/mcuboot image to a node via CANopen block download.
+
+    Parameters
+    ----------
+    node_id: uint8
+        The id of the CANopen node to write to.
+    filename: str
+        The name of the file cached on the C3 to flash.
+
+    Returns
+    -------
+    bool
+        True if the flash command was accepted into the queue.
+    """
 
 
 def _edl_req_sdo_write_pack_cb(values: tuple) -> bytes:
@@ -322,6 +339,17 @@ def _edl_res_sdo_read_unpack_cb(raw: bytes) -> tuple:
     res = struct.unpack(fmt, raw[:size])
     res += (raw[size:],)
     return res
+
+
+def _edl_req_node_flash_pack_cb(values: tuple) -> bytes:
+    node_id, filename = values
+    return bytes([node_id]) + filename.encode("utf-8")
+
+
+def _edl_req_node_flash_unpack_cb(raw: bytes) -> tuple:
+    node_id = raw[0]
+    filename = raw[1:].decode("utf-8").rstrip("\x00")
+    return (node_id, filename)
 
 
 EDL_COMMANDS = {
@@ -353,6 +381,12 @@ EDL_COMMANDS = {
         None,
         _edl_res_sdo_read_pack_cb,
         _edl_res_sdo_read_unpack_cb,
+    ),
+    EdlCommandCode.CO_NODE_FLASH: EdlCommand(
+        None, 
+        "?", 
+        _edl_req_node_flash_pack_cb, 
+        _edl_req_node_flash_unpack_cb
     ),
 }
 """All valid EDL commands lookup table"""

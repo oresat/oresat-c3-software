@@ -34,6 +34,9 @@ class NodeState(Enum):
             ERROR --> OFF : Disable
             ON --> OFF : Disable
             ON --> ERROR : Timeout with no heartbeats or OPD fault
+            ON --> UPDATING : Flasher started
+            UPDATING --> BOOT : Flasher finished (rebooting)
+            UPDATING --> OFF : Disable
     """
 
     OFF = 0
@@ -48,6 +51,8 @@ class NodeState(Enum):
     """Node is not found on the OPD."""
     BOOTLOADER = 5
     """For STM32s on the OPD only: Bootloader mode (used to reflash the app)."""
+    UPDATING = 6
+    """Node is currently receiving a software update via CAN bus."""
     DEAD = 0xFF
     """Node has failed to clear errors after multiple resets."""
 
@@ -64,6 +69,8 @@ class Node:
     """last enable timeout."""
     status: NodeState = field(init=False, default=NodeState.NOT_FOUND)
     """Node status."""
+    is_updating: bool = field(init=False, default=False)
+    """Whether the node is currently being updated."""
 
 
 class NodeManagerService(Service):
@@ -133,8 +140,25 @@ class NodeManagerService(Service):
                 lambda v, n=name: self._set_node_status(n, v),
             )
 
+    def set_node_updating(self, node_id: int, updating: bool) -> None:
+        """Set or clear the UPDATING state for a node."""
+        name = self.node_id_to_name.get(node_id)
+        if name and name in self._data:
+            node = self._data[name]
+            node.is_updating = updating
+            if updating:
+                node.status = NodeState.UPDATING
+                logger.info(f"Node {name} is now UPDATING. Heartbeat monitoring paused.")
+            else:
+                logger.info(f"Node {name} is no longer UPDATING. Heartbeat monitoring resumed.")
+                # Reset last_enable so the bootup timeout applies while it reboots from the flash
+                node.last_enable = monotonic()
+
     def _check_co_nodes_state(self, co: Node, last_hb: float) -> NodeState:
         """Get a CANopen node's state."""
+
+        if co.is_updating:
+            return NodeState.UPDATING
 
         is_booting = monotonic() > last_hb + self._RESET_TIMEOUT_S
 
@@ -169,6 +193,8 @@ class NodeManagerService(Service):
 
         # update status of data not on the OPD
         if opd is None:
+            if co.is_updating:
+                return NodeState.UPDATING
             if last_hb is None:
                 raise ValueError("CO Node has no heartbeat")
             if monotonic() > last_hb + self._HB_TIMEOUT:
@@ -224,7 +250,7 @@ class NodeManagerService(Service):
             node.status = state
 
         self._node_mgr["nodes_off"].value = count[NodeState.OFF]
-        self._node_mgr["nodes_booting"].value = count[NodeState.BOOT]
+        self._node_mgr["nodes_booting"].value = count[NodeState.BOOT] + count.get(NodeState.UPDATING, 0)
         self._node_mgr["nodes_on"].value = count[NodeState.ON]
         self._node_mgr["nodes_with_errors"].value = count[NodeState.ERROR]
         self._node_mgr["nodes_not_found"].value = count[NodeState.NOT_FOUND]

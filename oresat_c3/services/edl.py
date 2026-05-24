@@ -60,6 +60,7 @@ from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError,
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
+from .node_flasher import NodeFlasherService
 from .radios import RadiosService
 
 
@@ -72,12 +73,14 @@ class EdlService(Service):
         radios_service: RadiosService,
         node_mgr_service: NodeManagerService,
         beacon_service: BeaconService,
+        node_flasher_service: NodeFlasherService,
     ):
         super().__init__()
 
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
+        self._node_flasher_service = node_flasher_service
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
@@ -331,6 +334,15 @@ class EdlService(Service):
                 logger.error(e)
                 ecode = e.code
             ret = (ecode, len(data), data)
+        elif request.code == EdlCommandCode.CO_NODE_FLASH:
+            node_id, filename = request.args
+            logger.info(f"EDL queuing node flash for node 0x{node_id:02X} with file {filename}")
+            try:
+                self._node_flasher_service.enqueue_flash(node_id, filename)
+                ret = True
+            except Exception as e:
+                logger.error(f"Failed to queue flash: {e}")
+                ret = False
 
         if ret is not None and not isinstance(ret, tuple):
             ret = (ret,)  # make ret a tuple

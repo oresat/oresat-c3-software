@@ -424,6 +424,39 @@ class EdlCommandShell(Cmd):
 
         self._send_packet(EdlCommandCode.RTC_SET_TIME, (value,))
 
+    def help_node_flash(self):
+        """Print help message for node_flash command."""
+        print("node_flash <node> <filename>")
+        print("  <node> is the node id (e.g. 0x2A or 42) or node name")
+        print("  <filename> is the name of the bin file in the C3 cache to flash")
+
+    def do_node_flash(self, arg: str):
+        """Do the node_flash command."""
+
+        args = arg.split(" ", maxsplit=1)
+        if len(args) != 2:
+            self.help_node_flash()
+            return
+
+        node_id = None
+
+        if args[0].startswith("0x"):
+            node_id = int(args[0], 16)
+        elif args[0] in self.configs.cards:
+            node_id = self.configs.cards[args[0]].node_id
+        else:
+            try:
+                node_id = int(args[0])
+            except ValueError:
+                print("invalid node arg. Must be hex, int, or valid card name.")
+                return
+
+        filename = args[1]
+
+        response = self._send_packet(EdlCommandCode.CO_NODE_FLASH, (node_id, filename))
+        if response is not None:
+            print(f"Flash command sent. Response: {response}")
+
 
 def main():
     """Main for EDL shell script"""

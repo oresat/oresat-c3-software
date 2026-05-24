@@ -9,19 +9,14 @@ from typing import Any, Optional
 
 import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import (
-    FsmNotCalledAfterPacketInsertion,
-    NoRemoteEntityCfgFound,
-    SourceFileDoesNotExist,
-    UnretrievedPdusToBeSent,
-)
+from cfdppy.exceptions import NoRemoteEntityConfigFound, SourceFileDoesNotExist
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
-    IndicationCfg,
-    LocalEntityCfg,
-    RemoteEntityCfg,
-    RemoteEntityCfgTable,
+    IndicationConfig,
+    LocalEntityConfig,
+    RemoteEntityConfig,
+    RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
 from cfdppy.user import (
@@ -29,12 +24,11 @@ from cfdppy.user import (
     FileSegmentRecvdParams,
     MetadataRecvParams,
     TransactionFinishedParams,
-    TransactionId,
     TransactionParams,
 )
 from olaf import MasterNode, NodeStop, Service, logger
 from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
-from spacepackets.cfdp.defs import DeliveryCode, FileStatus
+from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
     DirectoryListingResponse,
@@ -46,10 +40,14 @@ from spacepackets.cfdp.tlv import (
 )
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
+from spacepackets.uslp.defs import (
+    UslpChecksumError,
+    UslpInvalidRawPacketOrFrameLenError,
+)
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
-from ..protocols.cfdp import FixedDestHandler, VfsCrcHelper, VfsSourceHandler
+from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -57,6 +55,7 @@ from ..protocols.edl_command import (
     EdlCommandResponse,
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
+from ..protocols.uslp import UslpInvalidSpacecraftIdError, unpack_frame
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .node_manager import NodeManagerService
@@ -125,7 +124,17 @@ class EdlService(Service):
             return None
 
         try:
-            packet = EdlPacket.unpack(message, self._hmac_key, not self._flight_mode)
+            frame = unpack_frame(message)
+        except (
+            UslpInvalidSpacecraftIdError,
+            UslpInvalidRawPacketOrFrameLenError,
+            UslpChecksumError,
+        ) as e:
+            logger.error(e)
+            return None
+
+        try:
+            packet = EdlPacket.from_frame(frame, self._hmac_key, not self._flight_mode)
         except EdlPacketError as e:
             self._rejected_count += 1
             self._rejected_count &= 0xFF_FF_FF_FF
@@ -408,15 +417,15 @@ class EdlFileReciever(CfdpUserBase):
             ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
         )
 
-        localcfg = LocalEntityCfg(
+        localcfg = LocalEntityConfig(
             local_entity_id=DEST_ID,
-            indication_cfg=IndicationCfg(),
+            indication_cfg=IndicationConfig(),
             default_fault_handlers=fault_handler,
         )
 
-        remote_entities = RemoteEntityCfgTable(
+        remote_entities = RemoteEntityConfigTable(
             [
-                RemoteEntityCfg(
+                RemoteEntityConfig(
                     entity_id=SOURCE_ID,
                     max_file_segment_len=None,
                     # FIXME this value should come from EdlPacket but EdlPacket does not define it.
@@ -437,7 +446,6 @@ class EdlFileReciever(CfdpUserBase):
             remote_cfg_table=remote_entities,
             check_timer_provider=DefaultCheckTimer(),
         )
-        self.dest._cksum_verif_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.source = VfsSourceHandler(
             cfg=localcfg,
@@ -446,7 +454,6 @@ class EdlFileReciever(CfdpUserBase):
             check_timer_provider=DefaultCheckTimer(),
             seq_num_provider=SeqCountProvider(16),
         )
-        self.source._crc_helper = VfsCrcHelper(ChecksumType.NULL_CHECKSUM, self.vfs)
 
         self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
         self.active_requests: dict[TransactionId, TransactionId] = {}
@@ -475,23 +482,24 @@ class EdlFileReciever(CfdpUserBase):
         # Timers only expire when .state_machine() is called, and .state_machine() must
         # be called after all the packets have been drained, or after inserting a new
         # pdu.
+        tick_dest = True
+        tick_src = True
         if pdu:
             logger.info(f"<--- {pdu}")
 
             if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
                 try:
-                    self.dest.insert_packet(pdu)
-                except Exception:
-                    # Usually this exception means the library is being used wrong, so we have
-                    # to be careful here. However there is a bug in the presence of dropped packets
-                    # where dest._params.last_inserted_packet does not get cleared.
-                    logger.exception("dest.state_machine() didn't properly clear inserted packet")
+                    self.dest.state_machine(pdu)
+                    tick_dest = False
+                except Exception as e:
+                    logger.exception(f"CFDP raised: {e}")
                     self.dest.reset()
             else:
                 try:
-                    self.source.insert_packet(pdu)
-                except Exception:
-                    logger.exception("source.state_machine() didn't properly clear inserted packet")
+                    self.source.state_machine(pdu)
+                    tick_src = False
+                except Exception as e:
+                    logger.exception(f"CFDP raised: {e}")
                     self.source.reset()
 
         if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
@@ -502,8 +510,8 @@ class EdlFileReciever(CfdpUserBase):
             else:
                 try:
                     self.source.put_request(request)
-                except (SourceFileDoesNotExist, NoRemoteEntityCfgFound):
-                    # Note that NoRemoteEntityCfgFound indicates that the MIB is missing info on
+                except (SourceFileDoesNotExist, NoRemoteEntityConfigFound):
+                    # Note that NoRemoteEntityConfigFound indicates that the MIB is missing info on
                     # the requested proxy transfer destination. CFDP doesn't seem to have a
                     # standard set of errors that cover this condition, and the least worst option
                     # resulted in an identical message to missing_file. Not super great, so if
@@ -511,13 +519,14 @@ class EdlFileReciever(CfdpUserBase):
                     self.scheduled_requests.put(self.missing_file_response(request))
 
         try:
-            self.dest.state_machine()
-            self.source.state_machine()
-        except Exception:
-            logger.exception("state_machine failed to update")
+            if tick_dest:
+                self.dest.state_machine()
+            if tick_src:
+                self.source.state_machine()
+        except Exception as e:
+            logger.exception(f"Failed to update state machine: {e}")
             self.dest.reset()
             self.source.reset()
-
         pdus = []
         while self.dest.packets_ready:
             pdus.append(self.dest.get_next_packet().pdu)

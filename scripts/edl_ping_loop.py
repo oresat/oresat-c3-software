@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket
+from oresat_c3.protocols.uslp import unpack_frame
 
 
 class Timeout:
@@ -115,7 +116,8 @@ class Link:
         for t in timeout:
             self._downlink.settimeout(t)
             response = self._downlink.recv(4096)
-            payload = EdlPacket.unpack(response, self.hmac).payload.values[0]
+            frame = unpack_frame(response)
+            payload = EdlPacket.from_frame(frame, self.hmac).payload.values[0]
             t_recv = monotonic()
 
             # self.sent_times.keys() are monotonic (not to be confused with the timestamps from

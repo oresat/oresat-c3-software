@@ -134,7 +134,7 @@ class EdlService(Service):
             return None
 
         try:
-            packet = EdlPacket.unpack(frame, self._hmac_key, not self._flight_mode)
+            packet = EdlPacket.from_frame(frame, self._hmac_key, not self._flight_mode)
         except EdlPacketError as e:
             self._rejected_count += 1
             self._rejected_count &= 0xFF_FF_FF_FF

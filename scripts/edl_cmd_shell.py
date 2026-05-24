@@ -66,7 +66,7 @@ class EdlCommandShell(Cmd):
                 res_packet_raw = self._downlink_socket.recv(1024)
                 # parse respone
                 frame = unpack_frame(res_packet_raw)
-                res_packet = EdlPacket.unpack(frame, self._hmac_key)
+                res_packet = EdlPacket.from_frame(frame, self._hmac_key)
             self._seq_num += 1
         except Exception as e:  # pylint: disable=W0718
             print(e)

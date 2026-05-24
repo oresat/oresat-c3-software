@@ -138,7 +138,7 @@ class EdlPacket:
         return packet
 
     @classmethod
-    def unpack(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):
+    def from_frame(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):
         """
         Unpack the EDL packet.
 

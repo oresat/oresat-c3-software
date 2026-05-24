@@ -169,7 +169,7 @@ class Downlink(Thread):
         while True:
             message = downlink.recv(4096)
             frame = unpack_frame(message)
-            packet = EdlPacket.unpack(frame, self._hmac_key, True).payload
+            packet = EdlPacket.from_frame(frame, self._hmac_key, True).payload
             if self._bad_connection and not random.randrange(5):
                 print("X--- DROPPED", packet)
                 continue  # simulate dropped packets

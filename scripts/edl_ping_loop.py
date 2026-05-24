@@ -117,7 +117,7 @@ class Link:
             self._downlink.settimeout(t)
             response = self._downlink.recv(4096)
             frame = unpack_frame(response)
-            payload = EdlPacket.unpack(frame, self.hmac).payload.values[0]
+            payload = EdlPacket.from_frame(frame, self.hmac).payload.values[0]
             t_recv = monotonic()
 
             # self.sent_times.keys() are monotonic (not to be confused with the timestamps from

@@ -28,13 +28,13 @@ class TestEdlPacket(unittest.TestCase):
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
         edl_message_req = edl_packet_req.pack(self.hmac_key)
-        edl_packet_req2 = EdlPacket.unpack(unpack_frame(edl_message_req), self.hmac_key)
+        edl_packet_req2 = EdlPacket.from_frame(unpack_frame(edl_message_req), self.hmac_key)
         self.assertEqual(edl_packet_req, edl_packet_req2)
 
         payload = EdlCommandResponse(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_res = EdlPacket(payload, self.seq_num, SRC_DEST_UNICLOGS)
         edl_message_res = edl_packet_res.pack(self.hmac_key)
-        edl_packet_res2 = EdlPacket.unpack(unpack_frame(edl_message_res), self.hmac_key)
+        edl_packet_res2 = EdlPacket.from_frame(unpack_frame(edl_message_res), self.hmac_key)
         self.assertEqual(edl_packet_res, edl_packet_res2)
 
     def test_unpack_short_packet(self):
@@ -46,7 +46,7 @@ class TestEdlPacket(unittest.TestCase):
         # Test if EdlPacketError "Packet too short" exception is thrown
         with self.assertRaises(UslpInvalidRawPacketOrFrameLenError):
             frame = unpack_frame(short_packet)
-            EdlPacket.unpack(frame, self.hmac_key)
+            EdlPacket.from_frame(frame, self.hmac_key)
 
     def test_unpack_invalid_fecf(self):
         """Test unpacking an EDL packet with an invalid FECF."""
@@ -63,7 +63,7 @@ class TestEdlPacket(unittest.TestCase):
         # Checking if UslpChecksumError exception is raised for the invalid FECF
         with self.assertRaises(UslpChecksumError):
             frame = unpack_frame(edl_message_req)
-            EdlPacket.unpack(frame, self.hmac_key)
+            EdlPacket.from_frame(frame, self.hmac_key)
 
     def test_unpack_invalid_hmac(self):
         """Test unpacking an EDL packet with an invalid HMAC."""
@@ -75,7 +75,7 @@ class TestEdlPacket(unittest.TestCase):
 
         frame = unpack_frame(edl_message_req)
         with self.assertRaises(EdlPacketError):
-            EdlPacket.unpack(frame, self.hmac_key)
+            EdlPacket.from_frame(frame, self.hmac_key)
 
     def test_unpack_invalid_vcid(self):
         "" "Test unpacking an EDL packet with an invalid VCID." ""
@@ -93,4 +93,4 @@ class TestEdlPacket(unittest.TestCase):
 
         frame = unpack_frame(req)
         with self.assertRaises(EdlPacketError):
-            EdlPacket.unpack(frame, self.hmac_key)
+            EdlPacket.from_frame(frame, self.hmac_key)

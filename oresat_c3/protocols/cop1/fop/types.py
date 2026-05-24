@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum, auto, unique
+from enum import Enum, auto, unique, IntEnum
 from typing import Optional
 
 from common.ccsds import Gvcid
@@ -35,7 +35,7 @@ class Alert(Enum):
     TERM = 7
 
 
-class TransferNotificationType(Enum):
+class NotificationType(Enum):
     ACCEPT = auto()
     REJECT = auto()
     POSITIVE_CONFIRM = auto()
@@ -51,6 +51,7 @@ class AsyncNotificationType(Enum):
 class DirectiveNotification(Indication):
     request_id: int
     notification_type: NotificationType
+
 
 @dataclass
 class TransferNotification(Indication):

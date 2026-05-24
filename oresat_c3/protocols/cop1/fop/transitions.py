@@ -10,6 +10,8 @@ _nnr = ["_alert_NNR"]
 _clcw = ["_alert_CLCW"]
 _limit = ["_alert_LIMIT"]
 _lockout = ["_alert_LOCKOUT"]
+_t1 = ["_alert_T1"]
+_suspend = ["suspend"]
 _e1 = ["confirm_directive", "cancel_timer"]
 _e1_2 = ["confirm_directive", "release_copy_of_bc_frame", "cancel_timer"]
 _e2 = ["remove_acknowledged_frames_from_sent_queue", "cancel_timer", "look_for_fdu"]
@@ -22,6 +24,7 @@ _e8 = [
 ]
 _e9 = ["remove_acknowledged_frames_from_sent_queue"]
 _e10 = ["initiate_retransmission", "look_for_fdu"]
+_e16 = ["initiate_retransmission", "look_for_directive"]
 
 _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     # S1
@@ -43,6 +46,10 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.ACTIVE, FopEvent.E13): (FopState.INITIAL, _nnr),
     (FopState.ACTIVE, FopEvent.E14): (FopState.INITIAL, _lockout),
     (FopState.ACTIVE, FopEvent.E15): (FopState.INITIAL, _clcw),
+    (FopState.ACTIVE, FopEvent.E16_B): (FopState.ACTIVE, _e10),
+    (FopState.ACTIVE, FopEvent.E104): (FopState.ACTIVE, _e10),
+    (FopState.ACTIVE, FopEvent.E17_B): (FopState.INITIAL, _t1),
+    (FopState.ACTIVE, FopEvent.E18_B): (FopState.INITIAL, _suspend),
     # S2
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E1): (FopState.INITIAL, _synch),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E2): (FopState.ACTIVE, _e2),
@@ -62,6 +69,10 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E13): (FopState.INITIAL, _nnr),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E14): (FopState.INITIAL, _lockout),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E15): (FopState.INITIAL, _clcw),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E16_B): (FopState.RETRANSMIT_NO_WAIT, _e10),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E104): (FopState.RETRANSMIT_NO_WAIT, _e10),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E17_B): (FopState.INITIAL, _t1),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E18_B): (FopState.INITIAL, _suspend),
     # S3
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E1): (FopState.INITIAL, _synch),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E2): (FopState.ACTIVE, _e2),
@@ -81,6 +92,10 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E13): (FopState.INITIAL, _nnr),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E14): (FopState.INITIAL, _lockout),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E15): (FopState.INITIAL, _clcw),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E16_B): (FopState.RETRANSMIT_WITH_WAIT, _ignore),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E104): (FopState.RETRANSMIT_WITH_WAIT, _ignore),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E17_B): (FopState.INITIAL, _t1),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E18_B): (FopState.INITIAL, _suspend),
     # S4
     (FopState.INITIALIZING_NO_BC, FopEvent.E1): (FopState.ACTIVE, _e1),
     (FopState.INITIALIZING_NO_BC, FopEvent.E3): (FopState.INITIAL, _clcw),
@@ -88,6 +103,10 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.INITIALIZING_NO_BC, FopEvent.E13): (FopState.INITIAL, _nnr),
     (FopState.INITIALIZING_NO_BC, FopEvent.E14): (FopState.INITIAL, _lockout),
     (FopState.INITIALIZING_NO_BC, FopEvent.E15): (FopState.INITIAL, _clcw),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E16_B): (FopState.INITIAL, _t1),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E104): (FopState.INITIAL, _suspend),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E17_B): (FopState.INITIAL, _t1),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E18_B): (FopState.INITIAL, _suspend),
     # S5
     (FopState.INITIALIZING_WITH_BC, FopEvent.E1): (FopState.ACTIVE, _e1_2),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E3): (FopState.INITIALIZING_WITH_BC, _ignore),
@@ -95,6 +114,10 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.INITIALIZING_WITH_BC, FopEvent.E13): (FopState.INITIALIZING_WITH_BC, _ignore),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E14): (FopState.INITIALIZING_WITH_BC, _ignore),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E15): (FopState.INITIAL, _clcw),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E16_B): (FopState.INITIALIZING_WITH_BC, _e16),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E16_B): (FopState.INITIALIZING_WITH_BC, _e16),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E17_B): (FopState.INITIAL, _t1),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E18_B): (FopState.INITIAL, _suspend),
     # S6
     (FopState.INITIAL, FopEvent.E1): (FopState.INITIAL, _ignore),
     (FopState.INITIAL, FopEvent.E2): (FopState.INITIAL, _ignore),

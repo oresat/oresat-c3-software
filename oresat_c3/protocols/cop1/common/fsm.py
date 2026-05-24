@@ -24,6 +24,10 @@ class StateMachine(Generic[T, U]):
         self._current_state: T = initial_state
         self._transition_map: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {}
 
+    @property
+    def current_state(self) -> T:
+        return self._current_state
+
     def process_event(self, event: U) -> None:
         logger.debug(f"Event received: {event.name}")
         transition = self._transition_map[self._current_state, event]

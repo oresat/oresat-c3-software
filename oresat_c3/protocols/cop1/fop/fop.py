@@ -38,7 +38,6 @@ class Fop1(CopService):
         k: int = 10,
     ) -> None:
         super().__init__()
-        self.state: FopState = FopState.INITIAL
         # TRANSMITTER_FRAME_SEQUENCE_NUMBER, V(S)
         self.v_s: int = 0
         self._wait_queue: Optional[WaitQueueEntry] = None
@@ -55,8 +54,8 @@ class Fop1(CopService):
         if k < 1 or k >= 256:
             raise ValueError("k must be between 1 and 256")
         self.sliding_window_width: int = k  # 'K'
-        self.timeout_type: int
-        self.suspend_state: int
+        self.timeout_type: int = 0
+        self.suspend_state: int = 0
 
         self._timer = None
         self._request_id: int = 0
@@ -66,6 +65,10 @@ class Fop1(CopService):
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
             self._fsm.add_transition(tr_from, tr_to)
+
+    @property
+    def state(self) -> FopState:
+        return self._fsm.current_state
 
     def on_clcw_arrived(self, clcw: ControlWord) -> None:
         if not self._validate_clcw(clcw):
@@ -144,12 +147,33 @@ class Fop1(CopService):
         self._timer.cancel()
 
     def _on_timer_expired(self) -> None:
-        pass
+        if self.transmission_count < self.transmission_limit:
+            if self.timeout_type == 0:
+                self.on_event(FopEvent.E16_B)
+            elif self.timeout_type == 1:
+                self.on_event(FopEvent.E104)
+            else:
+                logger.error(f"Timeout_Type not 0 or 1, resetting to 0")
+                self.timeout_type = 0
+        else:
+            if self.timeout_type == 0:
+                self.on_event(FopEvent.E17_B)
+            elif self.timeout_type == 1:
+                self.on_event(FopEvent.E18_B)
+            else:
+                logger.error(f"Timeout_Type not 0 or 1, resetting to 0")
+                self.timeout_type = 0
 
     def alert(self, alert_type: Alert) -> None:
         logger.debug(f"Alert received: {alert_type}")
         self.higher_interface.signal.appendleft(
             AsyncNotification(self._gvcid, AsyncNotificationType.ALERT, alert_type)
+        )
+
+    def suspend(self) -> None:
+        self.suspend_state = self.state.value
+        self.higher_interface.signal.appendleft(
+            AsyncNotification(self._gvcid, AsyncNotificationType.SUSPEND, None)
         )
 
     def remove_acknowledged_frames_from_sent_queue(self) -> None:
@@ -169,6 +193,21 @@ class Fop1(CopService):
         self.start_timer()
         for entry in self._sent_queue:
             entry.to_be_retransmitted = True
+
+    def look_for_directive(self) -> None:
+        if self.bc_out:
+            entry = self._sent_queue[0]
+            if entry.to_be_retransmitted:
+                self.bc_out = False
+                self.lower_interface.signal.appendleft(
+                    TransmitRequestForFrame(
+                        entry.gvcid,
+                        BypassSequenceControlFlag.EXPEDITED_QOS,
+                        ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                        entry.n_s,
+                        entry.tfdf,
+                    )
+                )
 
     def look_for_fdu(self) -> None:
         if self.ad_out:
@@ -239,4 +278,3 @@ for at in Alert:
         return action
 
     setattr(Fop1, f"_alert_{at.name}", make_alert(at))
-

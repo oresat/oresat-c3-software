@@ -46,7 +46,7 @@ _e39 = ["accept_directive", "set_tt", "confirm_directive"]
 _e41 = ["_ready_ad", "look_for_fdu"]
 _e45 = ["_ready_bd", "accept"]
 
-_transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
+_transitions: dict[StateMachine.TRANSITION_FROM, tuple[FopState, str]] = {
     # S1
     (FopState.ACTIVE, FopEvent.E1): (FopState.ACTIVE, _ignore),
     (FopState.ACTIVE, FopEvent.E2): (FopState.ACTIVE, _e2),

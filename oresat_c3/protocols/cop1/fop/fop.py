@@ -72,8 +72,8 @@ class Fop1(CopService):
 
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
-            # FIXME: getattr() from the str actions to map bound calls
-            self._fsm.add_transition(tr_from, tr_to)
+            state, action_str = tr_to
+            self._fsm.add_transition(tr_from, (state, getattr(self, action_str)))
 
     @property
     def state(self) -> FopState:

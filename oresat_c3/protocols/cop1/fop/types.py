@@ -35,6 +35,11 @@ class Alert(Enum):
     TERM = 7
 
 
+class ServiceType(Enum):
+    AD = auto()
+    BD = auto()
+
+
 class NotificationType(Enum):
     ACCEPT = auto()
     REJECT = auto()
@@ -51,6 +56,13 @@ class AsyncNotificationType(Enum):
 class DirectiveNotification(Indication):
     request_id: int
     notification_type: NotificationType
+
+
+@dataclass
+class RequestToTransferFdu(Indication):
+    request_id: int
+    fdu: bytes
+    service_type: ServiceType
 
 
 @dataclass
@@ -78,11 +90,6 @@ class AsyncNotification(Indication):
     # Qualifier is the Notification Type's parameter
     # Alert has "Reason Code" but Suspend has no params
     notification_qualifier: Optional[Alert]
-
-
-class ServiceType(Enum):
-    AD = auto()
-    BD = auto()
 
 
 @dataclass

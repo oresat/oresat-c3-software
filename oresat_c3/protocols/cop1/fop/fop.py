@@ -24,6 +24,7 @@ from .types import (
     TransmitRequestForFrame,
     WaitQueueEntry,
     DirectiveNotification,
+    RequestToTransferFdu,
 )
 
 
@@ -61,6 +62,9 @@ class Fop1(CopService):
         self._request_id: int = 0
         self._gvcid: Gvcid = Gvcid(0b1100, SPACECRAFT_ID, vcid)
         self._pending_directive_request_id: Optional[int] = None
+        self._pending_fdu: RequestToTransferFdu = (
+            None  # TODO: clear at end of event (notif) handling
+        )
 
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
@@ -130,6 +134,19 @@ class Fop1(CopService):
                 # invalid N(R)
                 self.on_event(FopEvent.E13)
 
+    def on_receive_request_to_transfer_fdu(self, request: RequestToTransferFdu) -> None:
+        self._pending_fdu = request
+        if request.service_type == ServiceType.AD:
+            if self._wait_queue is None:
+                self.on_event(FopEvent.E19)
+            else:
+                self.on_event(FopEvent.E20)
+        elif request.service_type == ServiceType.BD:
+            if self.bd_out:
+                self.on_event(FopEvent.E21_B)
+            else:
+                self.on_event(FopEvent.E22)
+
     def _validate_clcw(self, clcw: ControlWord) -> bool:
         return clcw.cop_in_effect == 0b01 and clcw.vcid == self._gvcid.vcid
 
@@ -163,6 +180,21 @@ class Fop1(CopService):
             else:
                 logger.error(f"Timeout_Type not 0 or 1, resetting to 0")
                 self.timeout_type = 0
+
+    def accept_fdu(self) -> None:
+        self._respond_to_fdu(NotificationType.ACCEPT)
+
+    def reject_fdu(self) -> None:
+        self._respond_to_fdu(NotificationType.REJECT)
+
+    def _respond_to_fdu(self, n_t: NotificationType) -> None:
+        self.higher_interface.signal.appendleft(
+            TransferNotification(
+                gvcid=self._pending_fdu.gvcid,
+                request_id=self._pending_fdu.request_id,
+                notification_type=n_t,
+            )
+        )
 
     def alert(self, alert_type: Alert) -> None:
         logger.debug(f"Alert received: {alert_type}")
@@ -266,6 +298,26 @@ class Fop1(CopService):
                 n_s,
             )
         )
+
+    def transmit_type_bd_frame(self) -> None:
+        self.bd_out = False
+        self.lower_interface.signal.appendleft(
+            TransmitRequestForFrame(
+                BypassSequenceControlFlag.EXPEDITED_QOS,
+                ProtocolCommandFlag.USER_DATA,
+                0,  # seq num not applicable for BD
+                self._pending_fdu.fdu,
+            )
+        )
+
+    def add_to_wait_queue(self) -> None:
+        self._wait_queue = WaitQueueEntry(
+            request_id=self._pending_fdu.request_id,
+            gvcid=self._pending_fdu.gvcid,
+            fdu=self._pending_fdu.fdu,
+            service_type=self._pending_fdu.service_type,
+        )
+        self._pending_fdu = None
 
 
 # generate methods for alerts since transitions are parameterless

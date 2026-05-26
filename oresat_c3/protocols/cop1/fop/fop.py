@@ -66,9 +66,7 @@ class Fop1(CopService):
         self._request_id: int = 0
         self._gvcid: Gvcid = Gvcid(0b1100, SPACECRAFT_ID, vcid)
         self._pending_directive_request: Optional[DirectiveRequest] = None
-        self._pending_fdu: RequestToTransferFdu = (
-            None  # TODO: clear at end of event (notif) handling
-        )
+        self._pending_fdu: RequestToTransferFdu = None
 
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
@@ -215,6 +213,8 @@ class Fop1(CopService):
     def on_event(self, event: FopEvent) -> None:
         logger.debug(f"Event received: {event}")
         self._fsm.process_event(event)
+        # FDUs are always consumed or rejected within 1 event cycle
+        self._pending_fdu = None
 
     def start_timer(self) -> None:
         if self._timer is not None:
@@ -378,9 +378,11 @@ class Fop1(CopService):
 
     def confirm_directive(self) -> None:
         self._respond_to_directive(NotificationType.POSITIVE_CONFIRM)
+        self._pending_directive_request = None
 
     def reject_directive(self) -> None:
         self._respond_to_directive(NotificationType.REJECT)
+        self._pending_directive_request = None
 
     def _respond_to_directive(self, n_t: NotificationType) -> None:
         self.higher_interface.signal.appendleft(
@@ -464,6 +466,9 @@ class Fop1(CopService):
         )
 
     def transmit_set_v_r_bc_frame(self) -> None:
+        if not self._pending_directive_request:
+            logger.error("Missing Directive Request")
+            return
         self.bd_out = False
         self.lower_interface.signal.appendleft(
             TransmitRequestForFrame(

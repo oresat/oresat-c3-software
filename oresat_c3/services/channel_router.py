@@ -25,9 +25,17 @@ class ChannelRouterService(Service):
         super().__init__()
         self._radios_service = radios_service
         self._cop_service = cop_service
-        self._routes: dict[EdlVcid, Union[SimpleQueue[TransferFrame], ServiceInterface]] = {}
+        self._uplink_routes: dict[EdlVcid, Union[SimpleQueue[TransferFrame], ServiceInterface]] = {}
+        self._downlink_routes: dict[EdlVcid, SimpleQueue[TransferFrame]] = {}
 
     def on_loop(self) -> None:
+        for dl in self._downlink_routes.values():
+            try:
+                msg = dl.get_nowait()
+                self._radios_service.send_edl_response(msg)
+            except Empty:
+                continue
+
         try:
             message = self._radios_service.recv_queue.get_nowait()
         except Empty:
@@ -36,8 +44,8 @@ class ChannelRouterService(Service):
         try:
             frame = unpack_frame(message)
             vcid = frame.header.vcid
-            if vcid in self._routes:
-                route = self._routes[vcid]
+            if vcid in self._uplink_routes:
+                route = self._uplink_routes[vcid]
                 if isinstance(route, ServiceInterface):
                     if route.buffer.appendleft(frame):
                         route.signal.appendleft(
@@ -55,7 +63,7 @@ class ChannelRouterService(Service):
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
 
-    def request_route(
+    def request_uplink_route(
         self, vcid: EdlVcid, cop: bool = False
     ) -> Union[SimpleQueue[TransferFrame], FarmHigherServiceInterface]:
         """Request the creation of a route from the radios.
@@ -82,15 +90,15 @@ class ChannelRouterService(Service):
 
         """
 
-        if vcid in self._routes:
-            raise KeyError(f"Route already exists: {vcid}")
+        if vcid in self._uplink_routes:
+            return self._uplink_routes[vcid]
         if cop:
             low_interface, out = self._cop_service.create_service(vcid)
-            self._routes[vcid] = low_interface
+            self._uplink_routes[vcid] = low_interface
         else:
             out: Queue[TransferFrame] = Queue(ChannelRouterService.QUEUE_SIZE)
-            self._routes[vcid] = out
-        logger.info(f"Created route for VCID {vcid}, cop={cop}")
+            self._uplink_routes[vcid] = out
+        logger.info(f"Created uplink route for VCID {vcid}, cop={cop}")
         return out
 
     def get_control_word(self, vcid: EdlVcid) -> ControlWord:
@@ -106,3 +114,12 @@ class ChannelRouterService(Service):
             farm_b_counter=service.b_counter,
             report_value=service.receiver_frame_sequence_number,
         )
+
+    def request_downlink_route(self, vcid: EdlVcid) -> SimpleQueue[bytes]:
+        if vcid in self._downlink_routes:
+            return self._downlink_routes[vcid]
+        else:
+            q = SimpleQueue()
+            self._downlink_routes[vcid] = q
+            logger.info(f"Created downlink route for VCID {vcid}")
+            return q

@@ -1,4 +1,4 @@
-from queue import Empty, Full, Queue
+from queue import Empty, Full, Queue, SimpleQueue
 
 from olaf import Service, logger
 from spacepackets.uslp import TransferFrame
@@ -20,9 +20,17 @@ class ChannelRouterService(Service):
     def __init__(self, radios_service: RadiosService):
         super().__init__()
         self._radios_service = radios_service
-        self._routes: dict[EdlVcid, Queue[TransferFrame]] = {}
+        self._uplink_routes: dict[EdlVcid, Queue[TransferFrame]] = {}
+        self._downlink_routes: dict[EdlVcid, SimpleQueue[TransferFrame]] = {}
 
     def on_loop(self) -> None:
+        for dl in self._downlink_routes.values():
+            try:
+                msg = dl.get_nowait()
+                self._radios_service.send_edl_response(msg)
+            except Empty:
+                continue
+
         try:
             message = self._radios_service.recv_queue.get_nowait()
         except Empty:
@@ -31,9 +39,9 @@ class ChannelRouterService(Service):
         try:
             frame = unpack_frame(message)
             vcid = frame.header.vcid
-            if vcid in self._routes:
+            if vcid in self._uplink_routes:
                 try:
-                    self._routes[vcid].put_nowait(frame)
+                    self._uplink_routes[vcid].put_nowait(frame)
                 except Full:
                     logger.warning(f"{vcid} queue full: frame discarded")
             else:
@@ -42,9 +50,19 @@ class ChannelRouterService(Service):
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
 
-    def request_route(self, vcid: EdlVcid) -> Queue[TransferFrame]:
-        if vcid in self._routes:
-            raise KeyError(f"Route already exists: {vcid}")
-        q: Queue[TransferFrame] = Queue(ChannelRouterService.QUEUE_SIZE)
-        self._routes[vcid] = q
-        return q
+    def request_uplink_route(self, vcid: EdlVcid) -> Queue[TransferFrame]:
+        if vcid in self._uplink_routes:
+            return self._uplink_routes[vcid]
+        else:
+            q = Queue(ChannelRouterService.QUEUE_SIZE)
+            self._uplink_routes[vcid] = q
+            return q
+
+    def request_downlink_route(self, vcid: EdlVcid) -> SimpleQueue[bytes]:
+        if vcid in self._downlink_routes:
+            return self._downlink_routes[vcid]
+        else:
+            q = SimpleQueue()
+            self._downlink_routes[vcid] = q
+            logger.info(f"Created downlink route for VCID {vcid}")
+            return q

@@ -4,7 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import time
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
@@ -26,7 +26,13 @@ from cfdppy.user import (
     TransactionParams,
 )
 from olaf import MasterNode, NodeStop, Service, logger
-from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode
+from spacepackets.cfdp import (
+    ChecksumType,
+    ConditionCode,
+    FaultHandlerCode,
+    PduHolder,
+    TransmissionMode,
+)
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
@@ -74,8 +80,18 @@ class EdlService(Service):
         self._radios_service = radios_service
         self._node_mgr_service = node_mgr_service
         self._beacon_service = beacon_service
-        self._cmd_route = channel_router_service.request_route(EdlVcid.C3_COMMAND)
-        self._file_route = channel_router_service.request_route(EdlVcid.FILE_TRANSFER)
+        self._cmd_downlink: SimpleQueue[bytes] = channel_router_service.request_downlink_route(
+            EdlVcid.C3_COMMAND
+        )
+        self._cmd_uplink: SimpleQueue[TransferFrame] = channel_router_service.request_uplink_route(
+            EdlVcid.C3_COMMAND
+        )
+        self._file_downlink: SimpleQueue[bytes] = channel_router_service.request_downlink_route(
+            EdlVcid.FILE_TRANSFER
+        )
+        self._file_uplink: SimpleQueue[TransferFrame] = channel_router_service.request_uplink_route(
+            EdlVcid.FILE_TRANSFER
+        )
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
@@ -140,7 +156,7 @@ class EdlService(Service):
 
         return packet
 
-    def _respond(self, payload) -> None:
+    def _respond(self, vcid: EdlVcid, payload: Union[PduHolder, EdlCommandResponse]) -> None:
         try:
             res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
             res_message = res_packet.pack(self._hmac_key)
@@ -148,11 +164,14 @@ class EdlService(Service):
             logger.exception(f"EDL response generation raised: {e}")
             return
 
-        self._radios_service.send_edl_response(res_message)
+        if vcid == EdlVcid.C3_COMMAND:
+            self._cmd_downlink.put_nowait(res_message)
+        elif vcid == EdlVcid.FILE_TRANSFER:
+            self._file_downlink.put_nowait(res_message)
 
     def _process_command(self) -> None:
         try:
-            frame = self._cmd_route.get_nowait()
+            frame = self._cmd_uplink.get_nowait()
         except Empty:
             return
         req_packet = self._frame_to_packet(frame)
@@ -163,13 +182,13 @@ class EdlService(Service):
                 res_payload = self._run_cmd(req_packet.payload)
                 if not res_payload.values:
                     return  # no response
-                self._respond(res_payload)
+                self._respond(EdlVcid.C3_COMMAND, res_payload)
             except Exception as e:  # pylint: disable=W0718
                 logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
 
     def _process_cfdp(self) -> None:
         try:
-            frame = self._file_route.get_nowait()
+            frame = self._file_uplink.get_nowait()
         except Empty:
             return
         req_packet = self._frame_to_packet(frame)
@@ -188,7 +207,7 @@ class EdlService(Service):
             return
 
         for payload in res_payload:
-            self._respond(payload)
+            self._respond(EdlVcid.FILE_TRANSFER, payload)
 
     def on_loop(self):
         self._process_command()

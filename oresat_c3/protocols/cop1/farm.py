@@ -2,9 +2,9 @@ import threading
 from dataclasses import dataclass
 from enum import Enum, unique
 
-from common.ccsds import Gvcid
-from common.service import CopService, Indication, ServiceInterface
-from common.util import logger
+from .common.ccsds import Gvcid
+from .common.service import CopService, Indication, ServiceInterface
+from .common.util import logger
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag, TransferFrame
 
 

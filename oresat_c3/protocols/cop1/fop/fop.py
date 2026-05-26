@@ -25,6 +25,8 @@ from .types import (
     WaitQueueEntry,
     DirectiveNotification,
     RequestToTransferFdu,
+    DirectiveRequest,
+    DirectiveType,
 )
 
 
@@ -37,6 +39,7 @@ class Fop1(CopService):
         self,
         vcid: int,
         k: int = 10,
+        timer_initial_value: int = 3,
     ) -> None:
         super().__init__()
         # TRANSMITTER_FRAME_SEQUENCE_NUMBER, V(S)
@@ -49,25 +52,25 @@ class Fop1(CopService):
         self.bc_out: bool = False
         # Expected_Acknowledgement_Frame_Sequence_Number
         self.nn_r: int = 0
-        self.timer_initial_value: int = 0
-        self.transmission_limit: int = 1  # TODO: might be good to have in OD
+        self.timer_initial_value: int = timer_initial_value
+        self.transmission_limit: int = 1
         self.transmission_count: int = 0
-        if k < 1 or k >= 256:
-            raise ValueError("k must be between 1 and 256")
-        self.sliding_window_width: int = k  # 'K'
+        self.sliding_window_width: int = 0
+        self._set_window_width(k)
         self.timeout_type: int = 0
         self.suspend_state: int = 0
 
         self._timer = None
         self._request_id: int = 0
         self._gvcid: Gvcid = Gvcid(0b1100, SPACECRAFT_ID, vcid)
-        self._pending_directive_request_id: Optional[int] = None
+        self._pending_directive_request: Optional[DirectiveRequest] = None
         self._pending_fdu: RequestToTransferFdu = (
             None  # TODO: clear at end of event (notif) handling
         )
 
         self._fsm = StateMachine[FopState, FopEvent](FopState.INITIAL)
         for tr_from, tr_to in _transitions.items():
+            # FIXME: getattr() from the str actions to map bound calls
             self._fsm.add_transition(tr_from, tr_to)
 
     @property
@@ -147,6 +150,49 @@ class Fop1(CopService):
             else:
                 self.on_event(FopEvent.E22)
 
+    def on_receive_directive(self, directive: DirectiveRequest) -> None:
+        self._pending_directive_request = directive
+        d_type = directive.directive_type
+        if d_type is DirectiveType.INITIATE_AD_NO_CLCW:
+            self.on_event(FopEvent.E23)
+        elif d_type is DirectiveType.INITIATE_AD_WITH_CLCW:
+            self.on_event(FopEvent.E24)
+        elif d_type is DirectiveType.INITIATE_AD_WITH_UNLOCK:
+            if self.bc_out:
+                self.on_event(FopEvent.E25_B)
+            else:
+                self.on_event(FopEvent.E26)
+        elif d_type is DirectiveType.INITIATE_AD_WITH_SET_V_R:
+            if self.bc_out:
+                self.on_event(FopEvent.E27_B)
+            else:
+                self.on_event(FopEvent.E28)
+        elif d_type is DirectiveType.TERMINATE_AD:
+            self.on_event(FopEvent.E29)
+        elif d_type is DirectiveType.RESUME_AD:
+            if self.suspend_state == 0:
+                self.on_event(FopEvent.E30)
+            elif self.suspend_state == 1:
+                self.on_event(FopEvent.E31_B)
+            elif self.suspend_state == 2:
+                self.on_event(FopEvent.E32_B)
+            elif self.suspend_state == 3:
+                self.on_event(FopEvent.E33_B)
+            elif self.suspend_state == 4:
+                self.on_event(FopEvent.E34_B)
+        elif d_type is DirectiveType.SET_V_S:
+            self.on_event(FopEvent.E35_B)
+        elif d_type is DirectiveType.SET_SLIDING_WINDOW_WIDTH:
+            self.on_event(FopEvent.E36)
+        elif d_type is DirectiveType.SET_T1:
+            self.on_event(FopEvent.E37)
+        elif d_type is DirectiveType.SET_TRANSMISSION_LIMIT:
+            self.on_event(FopEvent.E38)
+        elif d_type is DirectiveType.SET_TIMEOUT_TYPE:
+            self.on_event(FopEvent.E39)
+        else:
+            self.on_event(FopEvent.E40)
+
     def _validate_clcw(self, clcw: ControlWord) -> bool:
         return clcw.cop_in_effect == 0b01 and clcw.vcid == self._gvcid.vcid
 
@@ -207,6 +253,42 @@ class Fop1(CopService):
         self.higher_interface.signal.appendleft(
             AsyncNotification(self._gvcid, AsyncNotificationType.SUSPEND, None)
         )
+
+    def set_k(self) -> None:
+        if self._pending_directive_request:
+            try:
+                self._set_window_width(self._pending_directive_request.directive_qualifier)
+            except ValueError:
+                logger.exception(
+                    "Invalid Set FOP_SLIDING_WINDOW_WIDTH directive (K=%d)",
+                    self._pending_directive_request.directive_qualifier,
+                )
+        else:
+            logger.error("Missing DirectiveRequest")
+
+    def _set_window_width(self, k: int) -> None:
+        if 1 <= k < 256:
+            self.sliding_window_width = k
+        else:
+            raise ValueError(f"Invalid sliding window width K={k}")
+
+    def set_t1_initial(self) -> None:
+        if self._pending_directive_request:
+            self.timer_initial_value = self._pending_directive_request.directive_qualifier
+        else:
+            logger.error("Missing DirectiveRequest")
+
+    def set_transmission_limit(self) -> None:
+        if self._pending_directive_request:
+            self.transmission_limit = self._pending_directive_request.directive_qualifier
+        else:
+            logger.error("Missing DirectiveRequest")
+
+    def set_tt(self) -> None:
+        if self._pending_directive_request:
+            self.timeout_type = self._pending_directive_request.directive_qualifier
+        else:
+            logger.error("Missing DirectiveRequest")
 
     def remove_acknowledged_frames_from_sent_queue(self) -> None:
         entries = list(self._sent_queue)
@@ -275,12 +357,47 @@ class Fop1(CopService):
         """
         self._sent_queue.clear()
 
+    def accept_directive(self) -> None:
+        self._respond_to_directive(NotificationType.ACCEPT)
+
     def confirm_directive(self) -> None:
+        self._respond_to_directive(NotificationType.POSITIVE_CONFIRM)
+
+    def reject_directive(self) -> None:
+        self._respond_to_directive(NotificationType.REJECT)
+
+    def _respond_to_directive(self, n_t: NotificationType) -> None:
         self.higher_interface.signal.appendleft(
             DirectiveNotification(
-                self._gvcid, self._pending_directive_request_id, NotificationType.POSITIVE_CONFIRM
+                self._pending_directive_request.gvcid,
+                self._pending_directive_request.request_id,
+                n_t,
             )
         )
+
+    def initialize(self) -> None:
+        self._sent_queue.clear()
+        self._wait_queue = None
+        self.transmission_count = 1
+        self.suspend_state = 0
+
+    def resume(self) -> None:
+        self.start_timer()
+        self.suspend_state = 0
+
+    def set_pending_v_r(self) -> None:
+        value = (
+            self._pending_directive_request.directive_qualifier
+            if self._pending_directive_request
+            else 0
+        )
+        self.v_s = self.nn_r = value
+
+    def _gated_set_v_s_(self) -> None:
+        if self.suspend_state == 0:
+            self.accept_directive()
+            self.set_pending_v_r()
+            self.confirm_directive()
 
     def transmit_type_ad_frame(self, entry: WaitQueueEntry) -> None:
         n_s = self.v_s
@@ -307,6 +424,30 @@ class Fop1(CopService):
                 ProtocolCommandFlag.USER_DATA,
                 0,  # seq num not applicable for BD
                 self._pending_fdu.fdu,
+            )
+        )
+
+    def transmit_unlock_bc_frame(self) -> None:
+        self.bd_out = False
+        self.lower_interface.signal.appendleft(
+            TransmitRequestForFrame(
+                BypassSequenceControlFlag.EXPEDITED_QOS,
+                ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                0,
+                b"\x00",
+            )
+        )
+
+    def transmit_set_v_r_bc_frame(self) -> None:
+        self.bd_out = False
+        self.lower_interface.signal.appendleft(
+            TransmitRequestForFrame(
+                BypassSequenceControlFlag.EXPEDITED_QOS,
+                ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                0,
+                bytes(
+                    [0x82, 0x00, self._pending_directive_request.directive_qualifier.to_bytes(1)]
+                ),
             )
         )
 

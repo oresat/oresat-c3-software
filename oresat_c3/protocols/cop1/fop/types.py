@@ -1,11 +1,12 @@
 from dataclasses import dataclass
-from enum import Enum, auto, unique, IntEnum
+from enum import Enum, auto, unique
 from typing import Optional
+
+from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 
 from common.ccsds import Gvcid
 from common.fsm import CopState
 from common.service import Indication
-from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 
 
 @unique
@@ -52,10 +53,31 @@ class AsyncNotificationType(Enum):
     SUSPEND = auto()
 
 
+class DirectiveType(Enum):
+    INITIATE_AD_NO_CLCW = auto()
+    INITIATE_AD_WITH_CLCW = auto()
+    INITIATE_AD_WITH_UNLOCK = auto()
+    INITIATE_AD_WITH_SET_V_R = auto()
+    TERMINATE_AD = auto()
+    RESUME_AD = auto()
+    SET_V_S = auto()
+    SET_SLIDING_WINDOW_WIDTH = auto()
+    SET_T1 = auto()
+    SET_TRANSMISSION_LIMIT = auto()
+    SET_TIMEOUT_TYPE = auto()
+
+
 @dataclass
 class DirectiveNotification(Indication):
     request_id: int
     notification_type: NotificationType
+
+
+@dataclass
+class DirectiveRequest(Indication):
+    request_id: int
+    directive_type: DirectiveType
+    directive_qualifier: int = 0
 
 
 @dataclass

@@ -5,6 +5,8 @@ from .types import FopState
 
 _ignore = []
 _reject_fdu = ["reject_fdu"]
+_reject_directive = ["reject_directive"]
+_resume = ["accept_directive", "resume", "confirm_directive"]
 
 _synch = ["_alert_SYNCH"]
 _nnr = ["_alert_NNR"]
@@ -28,6 +30,14 @@ _e10 = ["initiate_retransmission", "look_for_fdu"]
 _e16 = ["initiate_retransmission", "look_for_directive"]
 _e19 = ["add_to_wait_queue", "look_for_fdu"]
 _e21 = ["accept_fdu", "transmit_type_bd_frame"]
+_e23 = ["accept_directive", "initialize", "confirm_directive"]
+_e24 = ["accept_directive", "initialize", "start_timer"]
+_e25 = ["accept_directive", "initialize", "transmit_unlock_bc_frame"]
+_e29 = ["accept_directive", "_alert_TERM", "confirm_directive"]
+_e36 = ["accept_directive", "set_k", "confirm_directive"]
+_e37 = ["accept_directive", "set_t1_initial", "confirm_directive"]
+_e38 = ["accept_directive", "set_transmission_limit", "confirm_directive"]
+_e39 = ["accept_directive", "set_tt", "confirm_directive"]
 
 _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     # S1
@@ -57,6 +67,20 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.ACTIVE, FopEvent.E20): (FopState.ACTIVE, _reject_fdu),
     (FopState.ACTIVE, FopEvent.E21_B): (FopState.ACTIVE, _e21),
     (FopState.ACTIVE, FopEvent.E22): (FopState.ACTIVE, _reject_fdu),
+    (FopState.ACTIVE, FopEvent.E23): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E24): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E25_B): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E26): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E27_B): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E28): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E29): (FopState.INITIAL, _e29),
+    (FopState.ACTIVE, FopEvent.E30): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E35_B): (FopState.ACTIVE, _reject_directive),
+    (FopState.ACTIVE, FopEvent.E36): (FopState.ACTIVE, _e36),
+    (FopState.ACTIVE, FopEvent.E37): (FopState.ACTIVE, _e37),
+    (FopState.ACTIVE, FopEvent.E38): (FopState.ACTIVE, _e38),
+    (FopState.ACTIVE, FopEvent.E39): (FopState.ACTIVE, _e39),
+    (FopState.ACTIVE, FopEvent.E40): (FopState.ACTIVE, _reject_directive),
     # S2
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E1): (FopState.INITIAL, _synch),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E2): (FopState.ACTIVE, _e2),
@@ -84,6 +108,20 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E20): (FopState.RETRANSMIT_NO_WAIT, _reject_fdu),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E21_B): (FopState.RETRANSMIT_NO_WAIT, _e21),
     (FopState.RETRANSMIT_NO_WAIT, FopEvent.E22): (FopState.RETRANSMIT_NO_WAIT, _reject_fdu),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E23): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E24): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E25_B): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E26): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E27_B): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E28): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E29): (FopState.INITIAL, _e29),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E30): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E35_B): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E36): (FopState.RETRANSMIT_NO_WAIT, _e36),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E37): (FopState.RETRANSMIT_NO_WAIT, _e37),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E38): (FopState.RETRANSMIT_NO_WAIT, _e38),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E39): (FopState.RETRANSMIT_NO_WAIT, _e39),
+    (FopState.RETRANSMIT_NO_WAIT, FopEvent.E40): (FopState.RETRANSMIT_NO_WAIT, _reject_directive),
     # S3
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E1): (FopState.INITIAL, _synch),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E2): (FopState.ACTIVE, _e2),
@@ -114,6 +152,47 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E20): (FopState.RETRANSMIT_WITH_WAIT, _reject_fdu),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E21_B): (FopState.RETRANSMIT_WITH_WAIT, _e21),
     (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E22): (FopState.RETRANSMIT_WITH_WAIT, _reject_fdu),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E23): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E24): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E25_B): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E26): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E27_B): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E28): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E29): (FopState.INITIAL, _e29),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E30): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E35_B): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E36): (FopState.RETRANSMIT_WITH_WAIT, _e36),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E37): (FopState.RETRANSMIT_WITH_WAIT, _e37),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E38): (FopState.RETRANSMIT_WITH_WAIT, _e38),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E39): (FopState.RETRANSMIT_WITH_WAIT, _e39),
+    (FopState.RETRANSMIT_WITH_WAIT, FopEvent.E40): (
+        FopState.RETRANSMIT_WITH_WAIT,
+        _reject_directive,
+    ),
     # S4
     (FopState.INITIALIZING_NO_BC, FopEvent.E1): (FopState.ACTIVE, _e1),
     (FopState.INITIALIZING_NO_BC, FopEvent.E3): (FopState.INITIAL, _clcw),
@@ -129,6 +208,20 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.INITIALIZING_NO_BC, FopEvent.E20): (FopState.INITIALIZING_NO_BC, _reject_fdu),
     (FopState.INITIALIZING_NO_BC, FopEvent.E21_B): (FopState.INITIALIZING_NO_BC, _e21),
     (FopState.INITIALIZING_NO_BC, FopEvent.E22): (FopState.INITIALIZING_NO_BC, _reject_fdu),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E23): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E24): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E25_B): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E26): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E27_B): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E28): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E29): (FopState.INITIAL, _e29),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E30): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E35_B): (FopState.INITIALIZING_NO_BC, _reject_directive),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E36): (FopState.INITIALIZING_NO_BC, _e36),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E37): (FopState.INITIALIZING_NO_BC, _e37),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E38): (FopState.INITIALIZING_NO_BC, _e38),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E39): (FopState.INITIALIZING_NO_BC, _e39),
+    (FopState.INITIALIZING_NO_BC, FopEvent.E40): (FopState.INITIALIZING_NO_BC, _reject_directive),
     # S5
     (FopState.INITIALIZING_WITH_BC, FopEvent.E1): (FopState.ACTIVE, _e1_2),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E3): (FopState.INITIALIZING_WITH_BC, _ignore),
@@ -144,6 +237,47 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.INITIALIZING_WITH_BC, FopEvent.E20): (FopState.INITIALIZING_WITH_BC, _reject_fdu),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E21_B): (FopState.INITIALIZING_WITH_BC, _e21),
     (FopState.INITIALIZING_WITH_BC, FopEvent.E22): (FopState.INITIALIZING_WITH_BC, _reject_fdu),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E23): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E24): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E25_B): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E26): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E27_B): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E28): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E29): (FopState.INITIAL, _e29),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E30): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E35_B): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E36): (FopState.INITIALIZING_WITH_BC, _e36),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E37): (FopState.INITIALIZING_WITH_BC, _e37),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E38): (FopState.INITIALIZING_WITH_BC, _e38),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E39): (FopState.INITIALIZING_WITH_BC, _e39),
+    (FopState.INITIALIZING_WITH_BC, FopEvent.E40): (
+        FopState.INITIALIZING_WITH_BC,
+        _reject_directive,
+    ),
     # S6
     (FopState.INITIAL, FopEvent.E1): (FopState.INITIAL, _ignore),
     (FopState.INITIAL, FopEvent.E2): (FopState.INITIAL, _ignore),
@@ -167,4 +301,25 @@ _transitions: dict[StateMachine.TRANSITION_FROM, StateMachine.TRANSITION_TO] = {
     (FopState.INITIAL, FopEvent.E20): (FopState.INITIAL, _reject_fdu),
     (FopState.INITIAL, FopEvent.E21_B): (FopState.INITIAL, _e21),
     (FopState.INITIAL, FopEvent.E22): (FopState.INITIAL, _reject_fdu),
+    (FopState.INITIAL, FopEvent.E23): (FopState.ACTIVE, _e23),
+    (FopState.INITIAL, FopEvent.E24): (FopState.INITIALIZING_NO_BC, _e24),
+    (FopState.INITIAL, FopEvent.E25_B): (FopState.INITIALIZING_WITH_BC, _e25),
+    (FopState.INITIAL, FopEvent.E26): (FopState.INITIAL, _reject_directive),
+    (FopState.INITIAL, FopEvent.E27_B): (
+        FopState.INITIALIZING_WITH_BC,
+        ["accept_directive", "initialize", "set_pending_v_r", "transmit_set_v_r_bc_frame"],
+    ),
+    (FopState.INITIAL, FopEvent.E28): (FopState.INITIAL, _reject_directive),
+    (FopState.INITIAL, FopEvent.E29): (FopState.INITIAL, ["accept_directive", "confirm_directive"]),
+    (FopState.INITIAL, FopEvent.E30): (FopState.INITIAL, _reject_directive),
+    (FopState.INITIAL, FopEvent.E31_B): (FopState.ACTIVE, _resume),
+    (FopState.INITIAL, FopEvent.E32_B): (FopState.RETRANSMIT_NO_WAIT, _resume),
+    (FopState.INITIAL, FopEvent.E33_B): (FopState.RETRANSMIT_WITH_WAIT, _resume),
+    (FopState.INITIAL, FopEvent.E34_B): (FopState.INITIALIZING_NO_BC, _resume),
+    (FopState.INITIAL, FopEvent.E35_B): (FopState.INITIAL, ["_gated_set_v_s_"]),
+    (FopState.INITIAL, FopEvent.E36): (FopState.INITIAL, _e36),
+    (FopState.INITIAL, FopEvent.E37): (FopState.INITIAL, _e37),
+    (FopState.INITIAL, FopEvent.E38): (FopState.INITIAL, _e38),
+    (FopState.INITIAL, FopEvent.E39): (FopState.INITIAL, _e39),
+    (FopState.INITIAL, FopEvent.E40): (FopState.INITIAL, _reject_directive),
 }

@@ -29,6 +29,7 @@ from .types import (
     TransferNotification,
     TransmitRequestForFrame,
     WaitQueueEntry,
+    FopInterface,
 )
 
 
@@ -44,6 +45,7 @@ class Fop1(CopService):
         timer_initial_value: int = 3,
     ) -> None:
         super().__init__()
+        self.interface = FopInterface()
         # TRANSMITTER_FRAME_SEQUENCE_NUMBER, V(S)
         self.v_s: int = 0
         self._wait_queue: Optional[WaitQueueEntry] = None
@@ -250,7 +252,7 @@ class Fop1(CopService):
         self._respond_to_fdu(NotificationType.REJECT)
 
     def _respond_to_fdu(self, n_t: NotificationType) -> None:
-        self.higher_interface.signal.appendleft(
+        self.interface.to_higher.appendleft(
             TransferNotification(
                 gvcid=self._pending_fdu.gvcid,
                 request_id=self._pending_fdu.request_id,
@@ -260,13 +262,13 @@ class Fop1(CopService):
 
     def alert(self, alert_type: Alert) -> None:
         logger.debug(f"Alert received: {alert_type}")
-        self.higher_interface.signal.appendleft(
+        self.interface.to_higher.appendleft(
             AsyncNotification(self._gvcid, AsyncNotificationType.ALERT, alert_type)
         )
 
     def suspend(self) -> None:
         self.suspend_state = self.state.value
-        self.higher_interface.signal.appendleft(
+        self.interface.to_higher.appendleft(
             AsyncNotification(self._gvcid, AsyncNotificationType.SUSPEND, None)
         )
 
@@ -313,7 +315,7 @@ class Fop1(CopService):
             notif = TransferNotification(
                 entry.request_id, entry.gvcid, NotificationType.POSITIVE_CONFIRM
             )
-            self.higher_interface.signal.appendleft(notif)
+            self.interface.to_higher.appendleft(notif)
             self.nn_r = (self.nn_r + 1) & 0xFF
         self.transmission_count = 1
 
@@ -358,7 +360,7 @@ class Fop1(CopService):
                 if self._wait_queue is not None and self._wait_queue.service_type == ServiceType.AD:
                     waiting_fdu = self._wait_queue
                     self._wait_queue = None
-                    self.higher_interface.signal.appendleft(
+                    self.interface.to_higher.appendleft(
                         TransferNotification(waiting_fdu.request_id, NotificationType.ACCEPT)
                     )
                     self.transmit_type_ad_frame(waiting_fdu)
@@ -385,7 +387,7 @@ class Fop1(CopService):
         self._pending_directive_request = None
 
     def _respond_to_directive(self, n_t: NotificationType) -> None:
-        self.higher_interface.signal.appendleft(
+        self.interface.to_higher.appendleft(
             DirectiveNotification(
                 self._pending_directive_request.gvcid,
                 self._pending_directive_request.request_id,
@@ -435,7 +437,7 @@ class Fop1(CopService):
         self._sent_queue.append(sent_entry)
         self.start_timer()
         self.ad_out = False
-        self.lower_interface.signal.appendleft(
+        self.interface.to_lower.appendleft(
             TransmitRequestForFrame(
                 BypassSequenceControlFlag.SEQ_CTRLD_QOS,
                 ProtocolCommandFlag.USER_DATA,
@@ -445,7 +447,7 @@ class Fop1(CopService):
 
     def transmit_type_bd_frame(self) -> None:
         self.bd_out = False
-        self.lower_interface.signal.appendleft(
+        self.interface.to_lower.appendleft(
             TransmitRequestForFrame(
                 BypassSequenceControlFlag.EXPEDITED_QOS,
                 ProtocolCommandFlag.USER_DATA,
@@ -456,7 +458,7 @@ class Fop1(CopService):
 
     def transmit_unlock_bc_frame(self) -> None:
         self.bd_out = False
-        self.lower_interface.signal.appendleft(
+        self.interface.to_lower.appendleft(
             TransmitRequestForFrame(
                 BypassSequenceControlFlag.EXPEDITED_QOS,
                 ProtocolCommandFlag.PROTOCOL_INFORMATION,
@@ -470,7 +472,7 @@ class Fop1(CopService):
             logger.error("Missing Directive Request")
             return
         self.bd_out = False
-        self.lower_interface.signal.appendleft(
+        self.interface.to_lower.appendleft(
             TransmitRequestForFrame(
                 BypassSequenceControlFlag.EXPEDITED_QOS,
                 ProtocolCommandFlag.PROTOCOL_INFORMATION,

@@ -5,6 +5,7 @@ from typing import Optional
 from common.ccsds import Gvcid
 from common.fsm import CopState
 from common.service import Indication
+from common.util import BoundedDeque
 from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 
 
@@ -142,3 +143,10 @@ class SentQueueEntry:
     tfdf: bytes  # the master copy for retransmission
     n_s: int  # N(S) sequence number, needed to track NN(R)
     to_be_retransmitted: bool = False  # from section 5.1.5
+
+
+class FopInterface:
+    def __init__(self, size: int = 10):
+        self.signal_queue: BoundedDeque[Indication] = BoundedDeque(size)
+        self.to_higher: BoundedDeque[Indication] = BoundedDeque(size)
+        self.to_lower: BoundedDeque[Indication] = BoundedDeque(size)

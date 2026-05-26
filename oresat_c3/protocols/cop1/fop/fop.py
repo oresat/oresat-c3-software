@@ -16,17 +16,19 @@ from .types import (
     Alert,
     AsyncNotification,
     AsyncNotificationType,
+    DirectiveNotification,
+    DirectiveRequest,
+    DirectiveType,
     FopState,
+    NotificationType,
+    RequestToTransferFdu,
+    Response,
+    ResponseType,
     SentQueueEntry,
     ServiceType,
     TransferNotification,
-    NotificationType,
     TransmitRequestForFrame,
     WaitQueueEntry,
-    DirectiveNotification,
-    RequestToTransferFdu,
-    DirectiveRequest,
-    DirectiveType,
 )
 
 
@@ -192,6 +194,20 @@ class Fop1(CopService):
             self.on_event(FopEvent.E39)
         else:
             self.on_event(FopEvent.E40)
+
+    def on_receive_response_from_lower_layer(self, response: Response) -> None:
+        if response.response_type == ResponseType.AD_ACCEPTED:
+            self.on_event(FopEvent.E41)
+        elif response.response_type == ResponseType.AD_REJECTED:
+            self.on_event(FopEvent.E42)
+        elif response.response_type == ResponseType.BC_ACCEPTED:
+            self.on_event(FopEvent.E43)
+        elif response.response_type == ResponseType.BC_REJECTED:
+            self.on_event(FopEvent.E44)
+        elif response.response_type == ResponseType.BD_ACCEPTED:
+            self.on_event(FopEvent.E45)
+        elif response.response_type == ResponseType.BD_REJECTED:
+            self.on_event(FopEvent.E46)
 
     def _validate_clcw(self, clcw: ControlWord) -> bool:
         return clcw.cop_in_effect == 0b01 and clcw.vcid == self._gvcid.vcid
@@ -398,6 +414,15 @@ class Fop1(CopService):
             self.accept_directive()
             self.set_pending_v_r()
             self.confirm_directive()
+
+    def _ready_ad(self) -> None:
+        self.ad_out = True
+
+    def _ready_bc(self) -> None:
+        self.bc_out = True
+
+    def _ready_bd(self) -> None:
+        self.bd_out = True
 
     def transmit_type_ad_frame(self, entry: WaitQueueEntry) -> None:
         n_s = self.v_s

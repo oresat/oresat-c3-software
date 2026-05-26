@@ -2,11 +2,10 @@ from dataclasses import dataclass
 from enum import Enum, auto, unique
 from typing import Optional
 
-from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
-
 from common.ccsds import Gvcid
 from common.fsm import CopState
 from common.service import Indication
+from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 
 
 @unique
@@ -67,6 +66,15 @@ class DirectiveType(Enum):
     SET_TIMEOUT_TYPE = auto()
 
 
+class ResponseType(Enum):
+    AD_ACCEPTED = auto()
+    AD_REJECTED = auto()
+    BC_ACCEPTED = auto()
+    BC_REJECTED = auto()
+    BD_ACCEPTED = auto()
+    BD_REJECTED = auto()
+
+
 @dataclass
 class DirectiveNotification(Indication):
     request_id: int
@@ -112,6 +120,11 @@ class AsyncNotification(Indication):
     # Qualifier is the Notification Type's parameter
     # Alert has "Reason Code" but Suspend has no params
     notification_qualifier: Optional[Alert]
+
+
+@dataclass
+class Response(Indication):
+    response_type: ResponseType
 
 
 @dataclass

@@ -48,7 +48,7 @@ class Antennas:
         try:
             if self._pz_end_max7310.is_valid:
                 logger.info("Found plus z end card.")
-                self._max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                self._pz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
             else:
                 logger.info("Could not find plus z end card.")
                 self._pz_end_max7310 = None
@@ -60,7 +60,7 @@ class Antennas:
         try:
             if self._mz_end_max7310.is_valid:
                 logger.info("Found minus z end card.")
-                self._max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                self._mz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
             else:
                 logger.info("Could not find minus z end card.")
                 self._mz_end_max7310 = None
@@ -72,7 +72,7 @@ class Antennas:
         try:
             if self._mz_mid_max7310.is_valid:
                 logger.info("Found minus z mid card.")
-                self._max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                self._mz_mid_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
             else:
                 logger.info("Could not find minus z mid card.")
                 self._mz_mid_max7310 = None

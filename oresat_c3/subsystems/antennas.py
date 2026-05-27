@@ -99,17 +99,17 @@ class Antennas:
 
         if self._pz_end_max7310 != None:
             logger.info("Attempting pos z end card firing.")
-            self.deploy(timeout, self._pz_end_max7310)
+            self.deploy_card(timeout, self._pz_end_max7310)
             sleep(delay_between)
         if self._mz_end_max7310 != None:
             logger.info("Attempting minus z end card firing.")
-            self.deploy(timeout, self._mz_end_max7310)
+            self.deploy_card(timeout, self._mz_end_max7310)
             sleep(delay_between)
         if self._mz_mid_max7310 != None:
             logger.info("Attempting minus z mid card firing.")
-            self.deploy(timeout, self._mz_mid_max7310)
+            self.deploy_card(timeout, self._mz_mid_max7310)
 
-    def deploy(self, timeout: int, _max7310: Max7310):
+    def deploy_card(self, timeout: int, _max7310):
         """
         Deploy using the specified MAX7310 chip.
 

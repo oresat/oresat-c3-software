@@ -28,13 +28,13 @@ class Antennas:
         """
 
         if not mock:
-            self._pz_end_max7310 = Max7310(_I2C_BUS_NUM, 0x14)
-            self._mz_end_max7310 = Max7310(_I2C_BUS_NUM, 0x15)
-            self._mz_mid_max7310 = Max7310(_I2C_BUS_NUM, 0x16)
+            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14)
+            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15)
+            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16)
         else:
-            self._pz_end_max7310 = Max7310(_I2C_BUS_NUM, 0x14, 0)
-            self._mz_end_max7310 = Max7310(_I2C_BUS_NUM, 0x15, 0)
-            self._mz_mid_max7310 = Max7310(_I2C_BUS_NUM, 0x16, 0)
+            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14, 0)
+            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15, 0)
+            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16, 0)
 
         self._live_inputs = 1 << self._READ_ANT_PIN & 1 << self._TEST_ANT_PIN
         self._safe_inputs = self._live_inputs & 1 << self._FIRE_ANT_1_PIN & 1 << self._FIRE_ANT_2_PIN

@@ -19,75 +19,107 @@ class Antennas:
     _FIRE_ANT_2_PIN = 2
     _TEST_ANT_PIN = 3
     
-    def __init__(self, mock: bool = False):
+    def __init__(self, mock: bool = False) -> None:
         """
         Parameters
         ----------
         mock: bool
             Mock the hardware.
         """
-
-        if not mock:
-            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14)
-            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15)
-            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16)
-        else:
-            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14, 0)
-            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15, 0)
-            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16, 0)
-
+        self._mock = mock
         self._live_inputs = 1 << self._READ_ANT_PIN & 1 << self._TEST_ANT_PIN
         self._safe_inputs = self._live_inputs & 1 << self._FIRE_ANT_1_PIN & 1 << self._FIRE_ANT_2_PIN
-        self.probe_cards()
+
+        self._pz_end_max7310 = None
+        self._mz_end_max7310 = None
+        self._mz_mid_max7310 = None
+
+        self.probe_pz_end()
+        self.probe_mz_end()
+        self.probe_mz_mid()
 
 
-    def probe_cards(self):
+    def probe_pz_end(self) -> bool:
         """
-            Looks for the endcards on the OPD. any that end cards that cannot be found or fail are set to None
+            Attempt to define and confirm the existence of the plus z end card.
         """
+
+        if not self._mock:
+            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14)
+        else:
+            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14, 0)
+
         try:
             if self._pz_end_max7310.is_valid:
                 logger.info("Found plus z end card.")
                 self._pz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                return True
             else:
                 logger.info("Could not find plus z end card.")
                 self._pz_end_max7310 = None
+                return False
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.info(f"Failed to setup plus z end card with error.")
             self._pz_end_max7310 = None
+            return False
 
+    def probe_mz_end(self) -> bool:
+        """
+            Attempt to define and confirm the existence of the minus z end card.
+        """
+
+        if not self._mock:
+            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15)
+        else:
+            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15, 0)
+        
         try:
             if self._mz_end_max7310.is_valid:
                 logger.info("Found minus z end card.")
                 self._mz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                return True
             else:
                 logger.info("Could not find minus z end card.")
                 self._mz_end_max7310 = None
+                return False
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.info(f"Failed to setup minus z end card with error.")
             self._mz_end_max7310 = None
+            return False
 
+    def probe_mz_mid(self) -> bool:
+        """
+            Attempt to define and confirm the existence of the minus z mid card.
+        """
+
+        if not self._mock:
+            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16)
+        else:
+            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16, 0)
+        
         try:
             if self._mz_mid_max7310.is_valid:
                 logger.info("Found minus z mid card.")
                 self._mz_mid_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+                return True
             else:
                 logger.info("Could not find minus z mid card.")
                 self._mz_mid_max7310 = None
+                return False
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.info(f"Failed to setup minus z mid card with error.")
             self._mz_mid_max7310 = None
+            return False
 
 
-
-    def deploy(self, timeout: int, delay_between: int):
+    def deploy(self, timeout: int, delay_between: int) -> None:
         """
-        Deploy the monopole antenna and then the helical.
+        Deploy the plus z endcard (helical), then the minus z endcard (monopole), then the minus z midcard (ESI deployable solar wing).
 
-        Wrapper ontop of deploy_monopole and deploy_helical.
+        Wrapper ontop of deploy_pz_endcard, deploy_mz_endcard, and deploy_mz_midcard.
 
         Parameters
         ----------
@@ -96,64 +128,90 @@ class Antennas:
         delay_between: int
             Delay between the monopole and helical deployments.
         """
+        logger.info("Attempting pos z end card firing.")
+        self.deploy_pz_endcard(timeout, self._pz_end_max7310)
+        sleep(delay_between)
+        logger.info("Attempting minus z end card firing.")
+        self.deploy_mz_endcard(timeout, self._mz_end_max7310)
+        sleep(delay_between)
+        logger.info("Attempting minus z mid card firing.")
+        self.deploy_mz_midcard(timeout, self._mz_mid_max7310)
 
-        if self._pz_end_max7310 != None:
-            logger.info("Attempting pos z end card firing.")
-            self.deploy_card(timeout, self._pz_end_max7310)
-            sleep(delay_between)
-        if self._mz_end_max7310 != None:
-            logger.info("Attempting minus z end card firing.")
-            self.deploy_card(timeout, self._mz_end_max7310)
-            sleep(delay_between)
-        if self._mz_mid_max7310 != None:
-            logger.info("Attempting minus z mid card firing.")
-            self.deploy_card(timeout, self._mz_mid_max7310)
-
-    def deploy_card(self, timeout: int, _max7310):
+    def deploy_pz_endcard(self, timeout: int) -> None:
         """
-        Deploy using the specified MAX7310 chip.
+        Try to deploy the positive z end card (Helical). If we have been unable to find this endcard, try to find it again.
 
         Parameters
         ----------
         timeout: int
             How long the gpio lines are set high.
-        max: Max7310
-            The MAX7310 to try to deploy with
         """
+        if self._pz_end_max7310 == None:
+            if not self.probe_pz_end():
+                return
 
         try:
-            _max7310.configure(0, 0, self._live_inputs, self._TIMEOUT_CONFIG)
-            _max7310.output_set(self._FIRE_ANT_1_PIN)
-            _max7310.output_set(self._FIRE_ANT_2_PIN)
-
+            self._pz_end_max7310.configure(0, 0, self._live_inputs, self._TIMEOUT_CONFIG)
+            self._pz_end_max7310.output_set(self._FIRE_ANT_1_PIN)
+            self._pz_end_max7310.output_set(self._FIRE_ANT_2_PIN)
             sleep(timeout)
 
-            _max7310.output_clear(self._FIRE_ANT_1_PIN)
-            _max7310.output_clear(self._FIRE_ANT_2_PIN)
-            _max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+            self._pz_end_max7310.output_clear(self._FIRE_ANT_1_PIN)
+            self._pz_end_max7310.output_clear(self._FIRE_ANT_2_PIN)
+            self._pz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
-            logger.info(f"Tried and failed to fire deployer.")
+            logger.info(f"Tried and failed to fire plus z end card deployer.")
 
+    def deploy_mz_endcard(self, timeout: int) -> None:
+        """
+        Try to deploy the positive z end card (Helical). If we have been unable to find this endcard, try to find it again.
 
-    # Commenting this out for now. We may want to reimplement this later.
-    # def is_helical_good(self, good_threshold: int) -> bool:
-    #     """
-    #     Test the helical resistor.
+        Parameters
+        ----------
+        timeout: int
+            How long the gpio lines are set high.
+        """
+        if self._mz_end_max7310 == None:
+            if not self.probe_mz_end():
+                return
 
-    #     Parameters
-    #     ----------
-    #     good_threshold: int
-    #         The good threshold (anything above this value is good) in millivolts for
-    #         testing an antenna.
+        try:
+            self._mz_end_max7310.configure(0, 0, self._live_inputs, self._TIMEOUT_CONFIG)
+            self._mz_end_max7310.output_set(self._FIRE_ANT_1_PIN)
+            self._mz_end_max7310.output_set(self._FIRE_ANT_2_PIN)
+            sleep(timeout)
 
-    #     Returns
-    #     -------
-    #     bool
-    #         Helical is good.
-    #     """
+            self._mz_end_max7310.output_clear(self._FIRE_ANT_1_PIN)
+            self._mz_end_max7310.output_clear(self._FIRE_ANT_2_PIN)
+            self._mz_end_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+        except Max7310Error as e:
+            logger.error(f"MAX7310 error: {e}")
+            logger.info(f"Tried and failed to fire minus z end card deployer.")
 
-    #     self._gpio_test_helical.high()
-    #     value = self._adc_helical.value
-    #     self._gpio_test_helical.low()
-    #     return value >= good_threshold
+    def deploy_mz_midcard(self, timeout: int) -> None:
+        """
+        Try to deploy the positive z end card (Helical). If we have been unable to find this endcard, try to find it again.
+
+        Parameters
+        ----------
+        timeout: int
+            How long the gpio lines are set high.
+        """
+        if self._mz_mid_max7310 == None:
+            if not self.probe_mz_mid():
+                return
+
+        try:
+            self._mz_mid_max7310.configure(0, 0, self._live_inputs, self._TIMEOUT_CONFIG)
+            self._mz_mid_max7310.output_set(self._FIRE_ANT_1_PIN)
+            self._mz_mid_max7310.output_set(self._FIRE_ANT_2_PIN)
+            sleep(timeout)
+
+            self._mz_mid_max7310.output_clear(self._FIRE_ANT_1_PIN)
+            self._mz_mid_max7310.output_clear(self._FIRE_ANT_2_PIN)
+            self._mz_mid_max7310.configure(0, 0, self._safe_inputs, self._TIMEOUT_CONFIG)
+        except Max7310Error as e:
+            logger.error(f"MAX7310 error: {e}")
+            logger.info(f"Tried and failed to fire minus z mid card deployer.")
+

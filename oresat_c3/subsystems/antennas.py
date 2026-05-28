@@ -129,13 +129,13 @@ class Antennas:
             Delay between the monopole and helical deployments.
         """
         logger.info("Attempting pos z end card firing.")
-        self.deploy_pz_endcard(timeout, self._pz_end_max7310)
+        self.deploy_pz_endcard(timeout)
         sleep(delay_between)
         logger.info("Attempting minus z end card firing.")
-        self.deploy_mz_endcard(timeout, self._mz_end_max7310)
+        self.deploy_mz_endcard(timeout)
         sleep(delay_between)
         logger.info("Attempting minus z mid card firing.")
-        self.deploy_mz_midcard(timeout, self._mz_mid_max7310)
+        self.deploy_mz_midcard(timeout)
 
     def deploy_pz_endcard(self, timeout: int) -> None:
         """

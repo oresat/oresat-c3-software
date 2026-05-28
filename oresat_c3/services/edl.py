@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from pathlib import Path
-from queue import Empty, SimpleQueue
+from queue import Empty, Queue, SimpleQueue
 from time import time
 from typing import Any, Optional, Union
 
@@ -26,8 +26,13 @@ from cfdppy.user import (
     TransactionParams,
 )
 from olaf import MasterNode, NodeStop, Service, logger
-from spacepackets.cfdp import ChecksumType, ConditionCode, FaultHandlerCode, TransmissionMode, \
-    PduHolder
+from spacepackets.cfdp import (
+    ChecksumType,
+    ConditionCode,
+    FaultHandlerCode,
+    PduHolder,
+    TransmissionMode,
+)
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
 from spacepackets.cfdp.tlv import (
@@ -80,11 +85,11 @@ class EdlService(Service):
         self._beacon_service = beacon_service
         self._channel_router = channel_router_service
         self._cmd_downlink = channel_router_service.request_downlink_route(EdlVcid.C3_COMMAND)
-        self._cmd_uplink: FarmHigherServiceInterface = channel_router_service.request_uplink_route(
+        self._cmd_uplink: Queue[TransferFrame] = channel_router_service.request_uplink_route(
             EdlVcid.C3_COMMAND, cop=True
         )
         self._file_downlink = channel_router_service.request_downlink_route(EdlVcid.FILE_TRANSFER)
-        self._file_uplink: SimpleQueue[TransferFrame] = channel_router_service.request_uplink_route(
+        self._file_uplink: Queue[TransferFrame] = channel_router_service.request_uplink_route(
             EdlVcid.FILE_TRANSFER
         )
 
@@ -163,7 +168,7 @@ class EdlService(Service):
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.exception(f"EDL response generation raised: {e}")
             return
-        
+
         if vcid == EdlVcid.C3_COMMAND:
             self._cmd_downlink.put_nowait(res_message)
         elif vcid == EdlVcid.FILE_TRANSFER:
@@ -171,9 +176,8 @@ class EdlService(Service):
 
     def _process_command(self) -> None:
         try:
-            frame = self._cmd_uplink.buffer.pop()
-            self._cmd_uplink.buffer_release.set()
-        except IndexError:
+            frame = self._cmd_uplink.get_nowait()
+        except Empty:
             return
         logger.info("processing cmd packet")
         req_packet = self._frame_to_packet(frame)
@@ -220,14 +224,14 @@ class EdlService(Service):
         #  There is no payload yet for this channel, it will only need CLCWs
         self.sleep_ms(1500)
         clcw = self._channel_router.get_control_word(EdlVcid.C3_COMMAND)
-        # self._radios_service.send_edl_response(
-        #     make_frame(
-        #         b"\x00" * 4,
-        #         0,
-        #         SourceOrDestField.SOURCE,
-        #         control_word=clcw.pack(),
-        #     ).pack(FrameType.VARIABLE)
-        # )
+        self._radios_service.send_edl_response(
+            make_frame(
+                b"\x00" * 4,
+                2,
+                SourceOrDestField.SOURCE,
+                control_word=clcw.pack(),
+            ).pack(FrameType.VARIABLE)
+        )
 
     def _run_cmd(self, request: EdlCommandRequest) -> EdlCommandResponse:
         ret: Any = None

@@ -60,6 +60,7 @@ from ..protocols.edl_command import (
 )
 from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
 from ..protocols.uslp import make_frame
+from ..protocols.sdls import SdlsInvalidHmacError
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .channel_router import ChannelRouterService
@@ -136,6 +137,11 @@ class EdlService(Service):
         try:
             packet = EdlPacket.unpack(frame, self._hmac_key, not self._flight_mode)
         except EdlPacketError as e:
+            self._rejected_count += 1
+            self._rejected_count &= 0xFF_FF_FF_FF
+            logger.error(f"invalid EDL request packet: {e}")
+            return None  # no responses to invalid packets
+        except SdlsInvalidHmacError as e:
             self._rejected_count += 1
             self._rejected_count &= 0xFF_FF_FF_FF
             logger.error(f"invalid EDL request packet: {e}")
@@ -230,6 +236,7 @@ class EdlService(Service):
                 2,
                 SourceOrDestField.SOURCE,
                 control_word=clcw.pack(),
+				hmac_key=self._hmac_key
             ).pack(FrameType.VARIABLE)
         )
 

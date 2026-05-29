@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# A helper script to toggle the C3 between different validation modes.
+# Usage: ./setup_scripts.sh {oom|pure|restore}
+
+SERVICE_FILE="/etc/systemd/system/oresat-c3.service"
+BOMB="/home/debian/memoryBomb.py"
+BEACON="/home/debian/pureBeacon.py"
+
+case "$1" in
+    oom)
+        echo "Switching oresat-c3.service to OOM Validation mode..."
+        sudo sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python3 $BOMB|" $SERVICE_FILE
+        sudo systemctl daemon-reload
+        sudo systemctl restart oresat-c3
+        ;;
+    pure)
+        echo "Switching oresat-c3.service to Pure Beacon mode..."
+        sudo sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python3 $BEACON|" $SERVICE_FILE
+        sudo systemctl daemon-reload
+        sudo systemctl restart oresat-c3
+        ;;
+    restore)
+        echo "Restoring original mission configuration..."
+        sudo sed -i "s|ExecStart=.*|ExecStart=/usr/bin/python3 -m oresat_c3 -m all|" $SERVICE_FILE
+        sudo systemctl daemon-reload
+        sudo systemctl restart oresat-c3
+        ;;
+    *)
+        echo "Usage: $0 {oom|pure|restore}"
+        ;;
+esac

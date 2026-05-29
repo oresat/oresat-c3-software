@@ -5,6 +5,8 @@ Handles interfacing with the AX5043 radio driver app.
 """
 
 import socket
+import threading
+import time
 from queue import SimpleQueue
 
 from olaf import Gpio, Service, logger
@@ -49,9 +51,6 @@ class RadiosService(Service):
         self._uhf_enable_gpio = Gpio("UHF_ENABLE", mock_hw)
         self._lband_enable_gpio = Gpio("LBAND_ENABLE", mock_hw)
 
-        # si41xx synth info
-        self._relock_count = 0
-
         # beacon downlink: UDP client
         logger.info(f"Beacon socket: {self.BEACON_DOWNLINK_ADDR}")
         self._beacon_downlink_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -68,6 +67,20 @@ class RadiosService(Service):
 
         self.recv_queue: SimpleQueue[bytes] = SimpleQueue()
 
+        # --- BYPASS INJECTION (For Jitter Testing) ---
+        def bypass_beacon_loop():
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            while True:
+                try: 
+                    # Send pulse to port 10015 for jitter analysis
+                    sock.sendto(b"BEACON_HEARTBEAT", ("127.0.0.1", 10015))
+                except: 
+                    pass
+                time.sleep(1.0)
+        
+        threading.Thread(target=bypass_beacon_loop, daemon=True).start()
+        # -----------------------------------------------------
+
     def on_start(self):
         if not self._mock_hw:
             self.node.add_daemon("lband")
@@ -81,7 +94,7 @@ class RadiosService(Service):
             self.enable()
         if not self.is_si41xx_locked:
             logger.error("si41xx unlocked, resetting lband synth")
-            self._relock_count += 1
+            self._relock_count = getattr(self, '_relock_count', 0) + 1
             self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
             self._si41xx.stop()
             self._si41xx.start()
@@ -94,7 +107,6 @@ class RadiosService(Service):
 
     def enable(self):
         """Enable the radios."""
-
         logger.info("enabling radios")
         self._radio_enable_gpio.high()
         self.sleep_ms(100)
@@ -103,7 +115,7 @@ class RadiosService(Service):
         self._lband_enable_gpio.high()
         self.uhf_tot_clear()
         self._si41xx.start()
-        self._relock_count += 1
+        self._relock_count = getattr(self, '_relock_count', 0) + 1
         self.node.od["lband"]["synth_relock_count"].value = self._relock_count.bit_length()
         if not self._mock_hw:
             self.node.daemons["uhf"].start()
@@ -111,7 +123,6 @@ class RadiosService(Service):
 
     def disable(self):
         """Disable the radios."""
-
         logger.info("disabling radios")
         if not self._mock_hw:
             self.node.daemons["uhf"].stop()
@@ -125,7 +136,6 @@ class RadiosService(Service):
 
     def uhf_tot_clear(self):
         """Clear TOT."""
-
         self._uhf_tot_clear_gpio.high()
         self.sleep_ms(self.TOT_CLEAR_DELAY_MS)
         self._uhf_tot_clear_gpio.low()
@@ -133,46 +143,36 @@ class RadiosService(Service):
     @property
     def is_uhf_tot_okay(self) -> bool:
         """bool: check if the UHF TOT is okay."""
-
         return bool(self._uhf_tot_ok_gpio.value)
 
     @property
     def is_si41xx_locked(self) -> bool:
         """bool: check if the si41xx is locked."""
-
-        # si41xx_nlock is active low
         state = not bool(self._si41xx_nlock_gpio.value)
         self.node.od["lband"]["synth_lock"].value = state
         return state
 
     def send_beacon(self, message: bytes):
         """Send a beacon."""
-
         try:
             self._beacon_downlink_socket.sendto(message, self.BEACON_DOWNLINK_ADDR)
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:
             logger.error(f"failed to send beacon message: {e}")
-
         logger.debug(f'Sent beacon downlink packet: {message.hex(sep=" ")}')
 
     def _recv_edl_request(self) -> bytes:
         """Recieve an EDL packet."""
-
         try:
             message, _ = self._edl_uplink_socket.recvfrom(self.BUFFER_LEN)
         except socket.timeout:
             return b""
-
         logger.debug(f'received EDL uplink packet: {message.hex(sep=" ")}')
-
         return message
 
     def send_edl_response(self, message: bytes):
         """Send an EDL packet."""
-
         try:
             self._edl_downlink_socket.sendto(message, self.EDL_DOWNLINK_ADDR)
-        except Exception as e:  # pylint: disable=W0718
+        except Exception as e:
             logger.error(f"failed to send mess over EDL downlink: {e}")
-
         logger.debug(f'sent EDL downlink packet: {message.hex(sep=" ")}')

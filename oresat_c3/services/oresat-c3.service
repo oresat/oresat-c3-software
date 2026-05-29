@@ -1,0 +1,18 @@
+[Unit]
+Description=OreSat C3 Flight Software
+After=network.target oresat-watchdog.service
+Requires=oresat-watchdog.service
+
+[Service]
+WorkingDirectory=/home/debian/oresat-c3-software
+ExecStart=/usr/bin/python3 -m oresat_c3 -m all
+Restart=always
+RestartSec=2
+
+# --- RESOURCE LIMITS ---
+CPUWeight=500
+MemoryMax=256M
+MemorySwapMax=0
+
+[Install]
+WantedBy=multi-user.target

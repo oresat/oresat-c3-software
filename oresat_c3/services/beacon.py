@@ -1,4 +1,4 @@
-"""'
+"""
 Beacon Service
 
 Handles making the beacon packets.
@@ -60,14 +60,14 @@ class BeaconService(Service):
         self.node.add_sdo_callbacks("beacon", "last_timestamp", self._on_read_last_ts, None)
 
     def on_loop(self):
-        if self._delay_obj.value <= 0:
-            self.sleep(1)
-            return  # do nothing
-
-        if self._tx_enabled_obj.value and self._c3_state_obj.value == C3State.BEACON:
-            self.send()
-
-        self.sleep(self._delay_obj.value)
+        # --- MODIFICATION FOR JITTER TEST ---
+        # 1. Always Send (Ignore State)
+        self.send()
+        
+        # 2. Force Fast Interval (1.0 Second)
+        # Original: self.sleep(self._delay_obj.value)
+        self.sleep(1.0)
+        # -------------------------------------------
 
     def send(self):
         """Send a beacon now."""

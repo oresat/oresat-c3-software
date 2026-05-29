@@ -1,0 +1,152 @@
+import os
+import sys
+import warnings
+import matplotlib.ticker as ticker
+
+try:
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+except ImportError:
+    print("\n[!] Error: Missing dependencies.")
+    print("Please install: pip install pandas matplotlib seaborn\n")
+    sys.exit(1)
+
+warnings.filterwarnings("ignore", "Passing `palette` without assigning `hue` is deprecated")
+
+# Configuration: Update to use your own path
+#DATA_DIR = "C:/Users/Chris/Desktop/oresat_c3_project/results/jitter"
+DATA_DIR = "C:/Users/Chris/Desktop/oresat_c3_project/results/initial_validation"
+
+FILES = {
+#    "Legacy Idle": "legacy_idle.csv",
+#    "Legacy Stressed": "legacy_stress.csv",
+#    "Optimized Idle": "optimized_idle.csv",
+#    "Optimized Stressed": "optimized_stress.csv"
+    "Baseline": "baseline.csv",
+   "Stressed": "stress.csv"
+}
+
+def analyze_jitter():
+    print("\n" + "="*75)
+    print("ORESAT C3: JITTER ANALYSIS (COMPARATIVE SUMMARY)")
+    print("="*75)
+    
+    stats_list = []
+    all_dfs = []
+
+    if not os.path.exists(DATA_DIR):
+        print(f"Data directory '{DATA_DIR}' not found.")
+        return
+    
+    for label, filename in FILES.items():
+        path = os.path.join(DATA_DIR, filename)
+
+        if not os.path.exists(path):
+            print(f"Target file '{filename}' not found in {DATA_DIR}.")
+            continue
+            
+        df = pd.read_csv(path)
+        df['Scenario'] = label
+        all_dfs.append(df)
+        
+        std_dev = df['delta_ms'].std()
+        mean_val = df['delta_ms'].mean()
+        max_val = df['delta_ms'].max()
+        
+        stats_list.append({
+            "Scenario": label,
+            "Mean (ms)": mean_val,
+            "Jitter (StdDev)": std_dev,
+            "Worst Spike (ms)": max_val
+        })
+
+    if not stats_list:
+        print("No valid data found to process.")
+        return
+
+    stats_df = pd.DataFrame(stats_list)
+    combined_df = pd.concat(all_dfs)
+
+    # --- METRICS TABLE ---
+    print(stats_df.to_string(index=False, formatters={
+        "Mean (ms)": "{:.2f}".format,
+        "Jitter (StdDev)": "{:.4f}".format,
+        "Worst Spike (ms)": "{:.2f}".format
+    }))
+    print("-" * 75)
+
+    # --- PLOT ---
+    # Left: Bar Chart
+    # Right: Distribution Curve
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7), dpi=100)
+    sns.set_theme(style="whitegrid")
+    
+    # ---------------------------------------------------------
+    # PLOT 1: BAR GRAPH
+    # Aggregated standard deviation per scenario.
+    # ---------------------------------------------------------
+    plot = sns.barplot(
+        x='Scenario', 
+        y='Jitter (StdDev)', 
+        hue='Scenario', 
+        data=stats_df, 
+        palette="husl",
+        dodge=False,
+        ax=ax1,
+        legend=False
+    )
+
+    for p in plot.patches:
+        height = p.get_height()
+        if height > 0:
+            ax1.annotate(f"{height:.2f} ms", 
+                         (p.get_x() + p.get_width() / 2., height), 
+                         ha='center', va='center', 
+                         xytext=(0, 9), 
+                         textcoords='offset points',
+                         fontsize=10, fontweight='bold')
+
+    ax1.set_title("Standard Deviation (Jitter)", fontsize=13, fontweight='bold')
+    ax1.set_ylabel("StdDev (ms) [About a Base of 1000 ms]", fontsize=11)
+    ax1.set_xlabel("Environment", fontsize=11)
+    ax1.set_ylim(0, stats_df['Jitter (StdDev)'].max() * 1.3)
+
+    # ---------------------------------------------------------
+    # PLOT 2: DISTRIBUTION CURVE
+    # Visualizes the probability density of the packet intervals.
+    # ---------------------------------------------------------
+    colors = ["red", "blue", "green", "purple"]
+    linestyles = ["-", "-", ":", "-."]
+    
+    for (label, color), ls in zip(zip(FILES.keys(), colors), linestyles):
+        subset = combined_df[combined_df['Scenario'] == label]
+        sns.kdeplot(
+            data=subset, 
+            x='delta_ms', 
+            color=color,
+            label=label,
+            fill=False, 
+            common_norm=False, 
+            alpha=0.8, 
+            linewidth=2.5,
+            linestyle=ls,
+            ax=ax2
+        )
+
+    ax2.set_title("Distribution Curve (Relative Stability)", fontsize=13, fontweight='bold')
+    ax2.set_xlabel("Packet Interval Delta (ms)", fontsize=11)
+    ax2.set_ylabel("Probability Density", fontsize=11)
+    ax2.set_xlim(900, 1100) 
+    ax2.axvline(x=1000.0, color='black', linestyle='--', alpha=0.6, label="Ideal Target")
+    ax2.legend(title="Test Scenario", fontsize=9, title_fontsize=10)
+
+    # Final Layout
+    plt.suptitle("OreSat C3: Performance Analysis - Scheduling Optimization", fontsize=15, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+    output_path = os.path.join(DATA_DIR, "jitteranalysis.png")
+    plt.savefig(output_path, bbox_inches='tight')
+    plt.show()
+
+if __name__ == "__main__":
+    analyze_jitter()

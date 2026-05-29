@@ -1,0 +1,118 @@
+import os
+import sys
+import warnings
+import matplotlib.ticker as ticker
+
+try:
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+except ImportError:
+    print("\n[!] Error: Missing dependencies.")
+    print("Please install: pip install pandas matplotlib seaborn\n")
+    sys.exit(1)
+
+warnings.filterwarnings("ignore", "Passing `palette` without assigning `hue` is deprecated")
+
+# Configuration: Update to use your own path
+DATA_DIR = "C:/Users/Chris/Desktop/oresat_c3_project/results/stability"
+
+FILES = {
+    "IO Saturation (Transient)": "ioSaturation.csv",
+    "IO Saturation (Sustained)": "ioSaturation2.csv"
+}
+
+def analyze_advanced_stability():
+    all_dfs = []
+    
+    if not os.path.exists(DATA_DIR):
+        print(f"Data directory '{DATA_DIR}' not found.")
+        return
+
+    for label, filename in FILES.items():
+        path = os.path.join(DATA_DIR, filename)
+        
+        if not os.path.exists(path):
+            print(f"Target file '{filename}' not found in {DATA_DIR}.")
+            continue
+            
+        df = pd.read_csv(path)
+        
+        if len(df) < 2:
+            print(f"Not enough data points in {filename}. Skipping.")
+            continue
+
+        df['Scenario'] = label
+        df['Rolling_Jitter'] = df['delta_ms'].rolling(window=10, min_periods=1).std().fillna(0)
+        all_dfs.append(df)
+
+    if not all_dfs:
+        print("No valid data found to process.")
+        return
+
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+
+    # --- PLOT ---
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7), dpi=100)
+    sns.set_theme(style="whitegrid")
+    
+    # Define visual styles
+    colors = ["red", "blue"][:len(FILES)]
+    linestyles = ["-", "--"]
+    
+    # ---------------------------------------------------------
+    # PLOT 1: DISTRIBUTION CURVE
+    # Probability density of the packet intervals.
+    # ---------------------------------------------------------
+    for (label, color), style in zip(zip(FILES.keys(), colors), linestyles):
+        subset = combined_df[combined_df['Scenario'] == label]
+        sns.kdeplot(
+            data=subset, 
+            x='delta_ms', 
+            color=color,
+            label=label,
+            fill=False, 
+            common_norm=False, 
+            alpha=0.8, 
+            linewidth=2.5,
+            linestyle=style,
+            ax=ax1
+        )
+
+    ax1.set_title("Distribution Curve (Relative Stability)", fontsize=13, fontweight='bold')
+    ax1.set_xlabel("Packet Interval Delta (ms)", fontsize=11)
+    ax1.set_ylabel("Probability Density", fontsize=11)
+    ax1.set_xlim(800, 1200) 
+    ax1.set_ylim(bottom=0)
+    ax1.axvline(x=1000.0, color='black', linestyle='--', alpha=0.6, label="Ideal Target")
+    ax1.legend(title="Test Scenario", fontsize=9, title_fontsize=10)
+
+    # ---------------------------------------------------------
+    # PLOT 2: ROLLING JITTER
+    # Checks StdDev in periods (10 packets) over time.
+    # ---------------------------------------------------------
+    sns.lineplot(
+        data=combined_df, 
+        x='packet_index', 
+        y='Rolling_Jitter', 
+        hue='Scenario',
+        palette=colors,
+        ax=ax2, 
+        linewidth=2,
+        alpha=0.8
+    )
+    
+    ax2.set_title("Chronological Stability (10-Packet Rolling Jitter)", fontsize=13, fontweight='bold')
+    ax2.set_xlabel("Packet Sequence Index", fontsize=11)
+    ax2.set_ylabel("Rolling Standard Deviation (ms)", fontsize=11)
+    ax2.set_ylim(bottom=0)
+    
+    # Final Layout
+    plt.suptitle("OreSat C3: Stability Analysis", fontsize=15, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    output_path = os.path.join(DATA_DIR, "stabilityanalysis.png")
+    plt.savefig(output_path, bbox_inches='tight')
+    plt.show()
+
+if __name__ == "__main__":
+    analyze_advanced_stability()

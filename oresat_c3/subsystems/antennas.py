@@ -12,13 +12,13 @@ class Antennas:
 
     _TIMEOUT_CONFIG = 1
 
-    _I2C_BUS_NUM = 2 #reimplementation of whats in node_manager. Bad and should be fixed.	
+    _I2C_BUS_NUM = 2  # reimplementation of whats in node_manager. Bad and should be fixed.	
 
     _READ_ANT_PIN = 0
     _FIRE_ANT_1_PIN = 1
     _FIRE_ANT_2_PIN = 2
     _TEST_ANT_PIN = 3
-    
+
     def __init__(self, mock: bool = False) -> None:
         """
         Parameters
@@ -28,7 +28,9 @@ class Antennas:
         """
         self._mock = mock
         self._live_inputs = 1 << self._READ_ANT_PIN & 1 << self._TEST_ANT_PIN
-        self._safe_inputs = self._live_inputs & 1 << self._FIRE_ANT_1_PIN & 1 << self._FIRE_ANT_2_PIN
+        self._safe_inputs = (
+            self._live_inputs & 1 << self._FIRE_ANT_1_PIN & 1 << self._FIRE_ANT_2_PIN
+        )
 
         self._pz_end_max7310 = None
         self._mz_end_max7310 = None
@@ -38,10 +40,9 @@ class Antennas:
         self.probe_mz_end()
         self.probe_mz_mid()
 
-
     def probe_pz_end(self) -> bool:
         """
-            Attempt to define and confirm the existence of the plus z end card.
+        Attempt to define and confirm the existence of the plus z end card.
         """
 
         if not self._mock:
@@ -66,14 +67,14 @@ class Antennas:
 
     def probe_mz_end(self) -> bool:
         """
-            Attempt to define and confirm the existence of the minus z end card.
+        Attempt to define and confirm the existence of the minus z end card.
         """
 
         if not self._mock:
             self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15)
         else:
             self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15, 0)
-        
+
         try:
             if self._mz_end_max7310.is_valid:
                 logger.info("Found minus z end card.")
@@ -91,14 +92,14 @@ class Antennas:
 
     def probe_mz_mid(self) -> bool:
         """
-            Attempt to define and confirm the existence of the minus z mid card.
+        Attempt to define and confirm the existence of the minus z mid card.
         """
 
         if not self._mock:
             self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16)
         else:
             self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16, 0)
-        
+
         try:
             if self._mz_mid_max7310.is_valid:
                 logger.info("Found minus z mid card.")
@@ -113,7 +114,6 @@ class Antennas:
             logger.info(f"Failed to setup minus z mid card with error.")
             self._mz_mid_max7310 = None
             return False
-
 
     def deploy(self, timeout: int, delay_between: int) -> None:
         """
@@ -214,4 +214,3 @@ class Antennas:
         except Max7310Error as e:
             logger.error(f"MAX7310 error: {e}")
             logger.info(f"Tried and failed to fire minus z mid card deployer.")
-

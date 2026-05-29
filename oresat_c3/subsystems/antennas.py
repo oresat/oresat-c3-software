@@ -48,7 +48,7 @@ class Antennas:
         if not self._mock:
             self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14)
         else:
-            self._pz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x14, 0)
+            self._pz_end_max7310 = MockMax7310(self._I2C_BUS_NUM, 0x14, 0)
 
         try:
             if self._pz_end_max7310.is_valid:
@@ -73,7 +73,7 @@ class Antennas:
         if not self._mock:
             self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15)
         else:
-            self._mz_end_max7310 = Max7310(self._I2C_BUS_NUM, 0x15, 0)
+            self._mz_end_max7310 = MockMax7310(self._I2C_BUS_NUM, 0x15, 0)
 
         try:
             if self._mz_end_max7310.is_valid:
@@ -98,7 +98,7 @@ class Antennas:
         if not self._mock:
             self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16)
         else:
-            self._mz_mid_max7310 = Max7310(self._I2C_BUS_NUM, 0x16, 0)
+            self._mz_mid_max7310 = MockMax7310(self._I2C_BUS_NUM, 0x16, 0)
 
         try:
             if self._mz_mid_max7310.is_valid:

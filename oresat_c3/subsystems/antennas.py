@@ -12,7 +12,7 @@ class Antennas:
 
     _TIMEOUT_CONFIG = 1
 
-    _I2C_BUS_NUM = 2  # reimplementation of whats in node_manager. Bad and should be fixed.	
+    _I2C_BUS_NUM = 2  # reimplementation of whats in node_manager. Bad and should be fixed.
 
     _READ_ANT_PIN = 0
     _FIRE_ANT_1_PIN = 1

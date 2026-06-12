@@ -61,7 +61,7 @@ class CopManagerService(Service):
     def create_farm_service(self, vcid: EdlVcid) -> SimpleQueue[TransferFrame]:
         logger.info(f"Creating FARM-1 Service for VCID {vcid}")
         q: SimpleQueue[TransferFrame] = SimpleQueue()
-        self._farms[vcid] = (Farm1(w=20, vcf_count_length=2), q)
+        self._farms[vcid] = (Farm1(w=20, vcf_count_length=1), q)
         return q
 
     def get_service(self, vcid: EdlVcid) -> Optional[CopService]:

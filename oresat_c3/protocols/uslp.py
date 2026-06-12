@@ -92,6 +92,7 @@ def make_frame(
     control_word: Optional[bytes] = None,
     sequence_number: int = 0,
     bypass: bool = False,
+    command: bool = False,
 ) -> TransferFrame:
     """Create and pack a USLP
 
@@ -113,6 +114,8 @@ def make_frame(
         The anti-replay sequence number for SDLS.
     bypass
         Specify if this frame is bypass (Type-BD) frame.
+    command
+        Specify if this frame is for protocol command.
 
     Returns
     -------
@@ -126,6 +129,8 @@ def make_frame(
         # Needs to be this, yamcs does not support user defined octet stream and this functions.
         tfdz=payload,
     )
+
+    vcf_count_len = 1 if vcf_count is not None else 0
 
     # USLP transfer frame total length - 1
     frame_len = len(payload) + PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN - 1
@@ -146,10 +151,14 @@ def make_frame(
         vcid=vcid,
         src_dest=src_dest,
         frame_len=frame_len,
-        vcf_count_len=bool(vcf_count),
+        vcf_count_len=vcf_count_len,
         vcf_count=vcf_count,
         op_ctrl_flag=has_clcw,
-        prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
+        prot_ctrl_cmd_flag=(
+            ProtocolCommandFlag.PROTOCOL_INFORMATION
+            if command
+            else ProtocolCommandFlag.USER_DATA
+        ),
         bypass_seq_ctrl_flag=(
             BypassSequenceControlFlag.EXPEDITED_QOS
             if bypass

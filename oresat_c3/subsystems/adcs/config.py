@@ -5,7 +5,7 @@ from olaf import logger
 
 
 class ADCSConfig(TypedDict):
-    """Config class for the ADCS Manager
+    r"""Config class for the ADCS Manager
 
     Attributes
     ----------
@@ -29,7 +29,7 @@ class ADCSConfig(TypedDict):
         Specify what the ADCS is to do. Pointing modes point toward the target specified in
         ``guidance_mode``
 
-        * ``RW_POINTING``: Point toward target specified in `guidance_mode` using the reaction wheels
+        * ``RW_POINTING``: Point toward target specified in `guidance_mode` using reaction wheels
         * ``MTB_POINTING``: "Magnetic Torque Bar" (magnetorquer) pointing mode
         * ``DETUMBLE``: Coarse detumble with magnetorquers
         * ``THERMAL_DETUMBLE``: First mode in 3-step passive thermal-spin mode:
@@ -112,7 +112,6 @@ def build_config(mission: str) -> ADCSConfig:
 
     # Inertia tensor data
     if mission == "SENTINEL":
-
         jxx = 0.01650237
         jxy = 0.00000711
         jxz = 0.00004547

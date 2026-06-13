@@ -105,20 +105,21 @@ def get_gain_matrix(
     b = np.block([[np.zeros((3, 3))], [np.linalg.inv(j)]])
     # sensors for all inputs
     c = np.identity(6)
-    # integrator only cares about attitude error, only integrate quaternion values (top half of C matrix)
+    # integrator only cares about attitude error, only integrate quaternion values (top half of
+    # C matrix)
     c_aug = np.eye(3, 6)
 
     if use_integrator:
         a_aug, b_aug = add_integrators(a, b, c_aug)
         d_aug = np.zeros((c_aug.shape[0], b_aug.shape[1]))
 
-        ad, bd, cd, dd, dt = cont2discrete((a_aug, b_aug, c_aug, d_aug), timestep)
+        ad, bd, _cd, _dd, _dt = cont2discrete((a_aug, b_aug, c_aug, d_aug), timestep)
         p = solve_discrete_are(ad, bd, q, r)
         k = np.linalg.inv(r + bd.T @ p @ bd) @ bd.T @ p @ ad
     else:
         d = np.zeros((c.shape[0], b.shape[1]))
 
-        ad, bd, cd, dd, dt = cont2discrete((a, b, c, d), timestep)
+        ad, bd, _cd, _dd, _dt = cont2discrete((a, b, c, d), timestep)
         p = solve_discrete_are(ad, bd, q[:6, :6], r)
         k = np.linalg.inv(r + bd.T @ p @ bd) @ bd.T @ p @ ad
 

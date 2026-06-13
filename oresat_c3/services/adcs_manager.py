@@ -88,7 +88,6 @@ def adcs_callback(
 
 
 class ADCSManager(Service):
-
     def __init__(self, config: ADCSConfig, mock_hw: bool = False) -> None:
         super().__init__()
         self.control_mode: str = config["control_mode"]
@@ -123,7 +122,8 @@ class ADCSManager(Service):
         # lqr_max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
         # lqr_max_error: float = 1
         # lqr_max_rate: float = 0.09
-        lqr_max_input: float = config["lqr_max_input"] # fmt: skip # QUALITATIVE value for max torque used by LQR tuning ONLY
+        # QUALITATIVE value for max torque used by LQR tuning ONLY
+        lqr_max_input: float = config["lqr_max_input"]
         lqr_max_error: float = config["lqr_max_error"]
         lqr_max_rate: float = config["lqr_max_rate"]
 
@@ -222,11 +222,13 @@ class ADCSManager(Service):
         rod_windings = 1700
         OD = 10.5e-3  # outer diameter of windings
         ID = 6.35e-3  # inner diameter of windings
-        rod_area = np.pi * ((OD + ID) / 2)**2 # fmt: skip
+        rod_area = np.pi * ((OD + ID) / 2) ** 2
         rod_length = 71e-3
-        rod_radius = 6.35e-3/2 # fmt: skip # [m] radius of just the core, used to determine the magnetic permeability of permalloy rod
+        # [m] radius of just the core, used to determine the magnetic permeability of permalloy rod
+        rod_radius = 6.35e-3 / 2
         rod_mu = 100000  # relative permeability of the core material
-        S_mag = (4*(np.log(rod_length/rod_radius)-1))/((rod_length/rod_radius)**2-4*np.log(rod_length/rod_radius)) # fmt: skip
+        rod_ratio = rod_length / rod_radius
+        S_mag = (4 * (np.log(rod_ratio) - 1)) / ((rod_ratio) ** 2 - 4 * np.log(rod_ratio))
         K_rod = 1 + (rod_mu - 1) / (1 + (rod_mu - 1) * S_mag)  # magnetic permeability
 
         ring_windings = 505
@@ -373,7 +375,7 @@ class ADCSManager(Service):
 
             """
             The following section includes feed-forward terms for target tracking
-            to avoid overdamping and to account for gyroscopic effects 
+            to avoid overdamping and to account for gyroscopic effects
             """
 
             # feed forward term for angular rate bias
@@ -424,7 +426,8 @@ class ADCSManager(Service):
             b = self.get_magnetometer_data()
             # detumble controller as defined by Markley & Crassidis
             desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
-            m_cmd = desired_torque * self.mag_constants / b # fmt: skip # convert magnetorquer commands from torque to uA
+            # convert magnetorquer commands from torque to uA
+            m_cmd = desired_torque * self.mag_constants / b
             # TODO: COMMAND MAGNETORQUERS
             logger.debug("Command Magnetorquers: {}", m_cmd)
 
@@ -442,7 +445,8 @@ class ADCSManager(Service):
                 # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0, 0, 1]  # spin about the z axis
                 desired_torque = np.cross(b, tau_des) / (b @ b)
-                m_cmd = desired_torque * self.mag_constants / b # fmt: skip # convert magnetorquer commands from torque to uA
+                # convert magnetorquer commands from torque to uA
+                m_cmd = desired_torque * self.mag_constants / b
                 # TODO: COMMAND MAGNETORQUERS
                 logger.debug("Command Magnetorquers: {}", m_cmd)
 
@@ -468,7 +472,8 @@ class ADCSManager(Service):
             bm = self._b_mat(b)
             k = 1e-8
             m_cmd = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
-            m_cmd = m_cmd * self.mag_constants / b # fmt: skip # convert magnetorquer commands from torque to uA
+            # convert magnetorquer commands from torque to uA
+            m_cmd = m_cmd * self.mag_constants / b
             # TODO: COMMAND MAGNETORQUERS
             logger.debug("Command Magnetorquers: {}", m_cmd)
 
@@ -613,9 +618,10 @@ class ADCSManager(Service):
         adcs_record: ODRecord = self.node.od["adcs"]
         for direction in ("pos", "min"):
             for num in range(1, 3):
-                vec: list[float] = []
-                for dim in ("x", "y", "z"):
-                    vec.append(adcs_record[f"{direction}_z_magnetometer_{num}_{dim}"].value)
+                vec = [
+                    adcs_record[f"{direction}_z_magnetometer_{num}_{dim}"].value
+                    for dim in ("x", "y", "z")
+                ]
                 field_vectors.append(np.array(vec))
         avg = sum(np.array(field_vectors)) / len(field_vectors)
         avg *= 1e-7  # convert milligauss -> Tesla

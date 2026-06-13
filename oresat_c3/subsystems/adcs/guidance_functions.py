@@ -121,7 +121,8 @@ def ram_quaternion(
     drag_facing = r_ne @ (v_ecef / np.linalg.norm(v_ecef))
 
     nadir_eci = r_ne @ nadir_vector_ecef
-    # remove component parallel to velocity vector from nadir vector to determine "downwards-pointing" vector
+    # remove component parallel to velocity vector from nadir vector to determine
+    # "downwards-pointing" vector
     nadir_facing = nadir_eci - np.dot(nadir_eci, drag_facing) * drag_facing
     nadir_facing = nadir_facing / np.linalg.norm(nadir_facing)
 
@@ -252,7 +253,7 @@ def time_to_overpass(
     small_dt = 5  # for fine overpass determination
     maximum_window = 3600  # large value to ensure exit boundary of overpass window is found
     exit_check_increment = 5  # search for window exit in increments
-    # lead time before entering window to engage control system. Allows satellite to reorient in time.
+    # lead time before entering window to engage control system. Lets satellite reorient in time.
     lead_time = 100
     min_window_time = 300  # minimum overpass time
     # time to skip after window with insufficient overpass time before searching again
@@ -291,7 +292,8 @@ def time_to_overpass(
 
         if overpass_time is None:  # no overpass found within window
             logger.error(
-                "Overpass window not found in {} hour time window. Check if inclination allows for overpass within {} km",
+                "Overpass window not found in {} hour time window. Check if inclination allows for"
+                "overpass within {} km",
                 time_range_hours,
                 max_distance / 1e3,
             )
@@ -330,7 +332,8 @@ def time_to_overpass(
         time_offset = window_exit + skip_after_window
 
     logger.error(
-        "Sufficiently large overpass window not found in specified time window of {} hours. Check if inclination allows for overpass within {} km",
+        "Sufficiently large overpass window not found in specified time window of {} hours. Check"
+        "if inclination allows for overpass within {} km",
         time_range_hours,
         max_distance / 1e3,
     )

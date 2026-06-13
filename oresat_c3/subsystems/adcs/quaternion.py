@@ -63,7 +63,7 @@ def normalize(q: ArrayLike) -> np.ndarray:
 
 
 def quat_mult(q_rot: ArrayLike, q_init: ArrayLike) -> np.ndarray:
-    """Shuster quaternion multiplication
+    r"""Shuster quaternion multiplication
 
     Parameters
     ----------

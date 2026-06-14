@@ -528,8 +528,9 @@ class ADCSManager(Service):
             desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
             # convert magnetorquer commands from torque to uA
             m_cmd = desired_torque * self.mag_constants / b
-            # TODO: COMMAND MAGNETORQUERS
-            logger.debug("Command Magnetorquers: {}", m_cmd)
+            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
+            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
+            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
 
             if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(
                 np.abs(omega) < 1e-4
@@ -548,9 +549,9 @@ class ADCSManager(Service):
                 desired_torque = np.cross(b, tau_des) / (b @ b)
                 # convert magnetorquer commands from torque to uA
                 m_cmd = desired_torque * self.mag_constants / b
-                # TODO: COMMAND MAGNETORQUERS
-                logger.debug("Command Magnetorquers: {}", m_cmd)
-
+                self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
+                self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
+                self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
         elif self.control_mode.value == ControlMode.MTB_POINTING:
             b = self.get_magnetometer_data()
             star_tracker_output = self.get_sensor_data("star_tracker_1")
@@ -578,10 +579,11 @@ class ADCSManager(Service):
             m_cmd = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
             # convert magnetorquer commands from torque to uA
             m_cmd = m_cmd * self.mag_constants / b
-            # TODO: COMMAND MAGNETORQUERS
-            logger.debug("Command Magnetorquers: {}", m_cmd)
-
-            # TODO: alert C3 ADCS is satisfied. Pause ADCS.
+            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
+            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
+            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+            logger.debug("ADCS satisfied: going to IDLE")
+            self.control_mode.value = ControlMode.IDLE
         else:
             logger.error("Unknown control mode {}", self.control_mode.value)
 

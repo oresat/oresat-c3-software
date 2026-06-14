@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import numpy as np
+from .config import GuidanceMode
 from olaf import logger
 from skyfield.framelib import itrs
 from skyfield.timelib import Timescale
@@ -109,7 +110,7 @@ def nadir_quat(
 
 
 def ram_quaternion(
-    drag_orientation: str, v_ecef: np.ndarray, nadir_vector_ecef: np.ndarray, eci_2_ecef: np.ndarray
+    drag_orientation: GuidanceMode, v_ecef: np.ndarray, nadir_vector_ecef: np.ndarray, eci_2_ecef: np.ndarray
 ) -> np.ndarray:
     """
     Creates an orientation quaternion forming based on whether maximum or
@@ -126,14 +127,14 @@ def ram_quaternion(
     nadir_facing = nadir_eci - np.dot(nadir_eci, drag_facing) * drag_facing
     nadir_facing = nadir_facing / np.linalg.norm(nadir_facing)
 
-    if drag_orientation == "MAX_DRAG":
+    if drag_orientation == GuidanceMode.MAX_DRAG:
         yvec = np.cross(nadir_facing, drag_facing)
         yvec = yvec / np.linalg.norm(yvec)
 
         # Create DCM for body orientation in ECI coordinates
         c_bn = np.vstack((drag_facing, yvec, nadir_facing))
     else:
-        if drag_orientation != "MIN_DRAG":
+        if drag_orientation != GuidanceMode.MIN_DRAG:
             logger.error("unknown drag orientation {}. Defaulting to MIN_DRAG", drag_orientation)
         # flip vector such that in min_drag mode
         # the satellite's solar panels (rather than the GPS antenna) are pointing anti-nadir

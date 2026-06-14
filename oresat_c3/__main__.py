@@ -29,7 +29,6 @@ from .services.node_flasher import NodeFlasherService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
-from .subsystems.adcs.config import build_config
 from .subsystems.rtc import set_system_time_to_rtc_time
 
 
@@ -150,11 +149,7 @@ def main():
     edl_service = EdlService(
         app.node, node_mgr_service, beacon_service, channel_router_service, node_flasher_service
     )
-    adcs_config = build_config()
-    adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
-    edl_service = EdlService(app.node, radios_service, node_mgr_service, beacon_service)
-    adcs_config = build_config(str(config.mission))
-    adcs_mgr_service = ADCSManager(adcs_config, mock_hw)
+    adcs_mgr_service = ADCSManager()
 
     app.add_service(state_service)  # add state first to restore state from F-RAM
     app.add_service(radios_service)

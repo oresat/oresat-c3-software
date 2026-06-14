@@ -7,13 +7,14 @@ and magnetorquers.
 """
 
 import functools
+import struct
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from time import sleep, time
+from time import time
 from typing import Callable, Optional, Tuple, Type, TypeVar, Union
 
 import numpy as np
-from canopen.objectdictionary import ODRecord
+from canopen.objectdictionary import ODRecord, ODVariable
 from olaf import Service, logger
 from skyfield.api import load
 from skyfield.framelib import itrs
@@ -21,7 +22,7 @@ from typing_extensions import Concatenate, ParamSpec
 
 from ..subsystems.adcs import guidance_functions as guid
 from ..subsystems.adcs import quaternion as quat
-from ..subsystems.adcs.config import ADCSConfig
+from ..subsystems.adcs.config import ControlMode, GainMode, GuidanceMode, PointingReference
 from ..subsystems.adcs.discrete_state_space import get_gain_matrix
 from ..subsystems.adcs.kalman_filter import MEKF
 
@@ -88,22 +89,20 @@ def adcs_callback(
 
 
 class ADCSManager(Service):
-    def __init__(self, config: ADCSConfig, mock_hw: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.control_mode: str = config["control_mode"]
-        self.guidance_mode: str = config["guidance_mode"]
-        self.pointing_reference: str = config["pointing_reference"]
-        # used for tracking mode to set static ground target with GPS coordinates in ECEF
-        self.ECEF_target: np.ndarray = guid.gps_to_ecef(
-            config["target_lat"], config["target_lon"], config["target_height"]
-        )
-        self.update_time: float = config["update_time"]
-        self.rw_inertia: float = config["rw_inertia"]
-        self.sat_inertia: np.ndarray = config["sat_inertia"]
+        self.control_mode: ODVariable = None
+        self.guidance_mode: ODVariable = None
+        self.pointing_reference: ODVariable = None
+        self.ECEF_target: np.ndarray = np.zeros(3)
 
-        self.G: np.ndarray = config["g"]
-        self.G_transpose: np.ndarray = self.G.T  # save repeated calculations each iteration
-        self.G_pinv: np.ndarray = -np.linalg.pinv(self.G)
+        self.update_time: ODVariable = None
+
+        self.rw_inertia: ODVariable = None
+        self.sat_inertia: np.ndarray = np.zeros((3, 3))
+
+        self.g_transpose: np.ndarray = np.zeros((4, 3))
+        self.g_pinv: np.ndarray = np.zeros((3, 4))
         # translate star tracker targets to +z side of satellite
         # by rotating by 90 degrees CW about the y axis
         self.q_90_rot: np.ndarray = quat.axis_angle_to_quaternion([0, 1, 0], -90)
@@ -117,56 +116,29 @@ class ADCSManager(Service):
         self.spin_omega_target: np.ndarray = np.array([0, 0, 0.034])
         self.filter_initialized: bool = False
 
-        # Controller gains
-        self.use_variable_gain: bool = config["use_variable_gain"]
-        # lqr_max_input: float = 0.001  # QUALITATIVE value for max torque used by LQR tuning ONLY
-        # lqr_max_error: float = 1
-        # lqr_max_rate: float = 0.09
-        # QUALITATIVE value for max torque used by LQR tuning ONLY
-        lqr_max_input: float = config["lqr_max_input"]
-        lqr_max_error: float = config["lqr_max_error"]
-        lqr_max_rate: float = config["lqr_max_rate"]
+        self.use_variable_gain: ODVariable = None
+        self.K_RW: np.ndarray = np.empty(3)
 
-        self.K_RW: np.ndarray = get_gain_matrix(
-            self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, lqr_max_input
-        )
-        if self.use_variable_gain:
-            self.gain_mode: int = 0  # start with "low" gain
-            lqr_max_input = 0.01  # QUALITATIVE value for max torque used by LQR tuning ONLY
-            lqr_max_error = 0.05
-            lqr_max_rate = 0.2
-            self.K_RW_fine: np.ndarray = get_gain_matrix(
-                self.sat_inertia, self.update_time, lqr_max_error, lqr_max_rate, lqr_max_input
-            )  # define a fine pointing controller with aggressive error gains
+        self._gain_mode: GainMode = GainMode.STANDARD
 
-        max_input_mag: float = 3  # QUALITATIVE value for max torque used by LQR tuning ONLY
-        lqr_max_error_mag: float = 0.5
-        lqr_max_rate_mag: float = 0.0003
-        self.K_MAG: np.ndarray = get_gain_matrix(
-            self.sat_inertia, self.update_time, lqr_max_error_mag, lqr_max_rate_mag, max_input_mag
-        )
+        self.K_RW_fine: np.ndarray = np.empty(3)
 
-        """
-        maximum principal moment of inertia
-        (Markley & Crassidis defines this with the minimum principal moment of inertia as a safe
-        upper bound to avoid instability, but maximum works better)
-        """
-        j_min: float = np.max(np.linalg.eigvals(self.sat_inertia))
+        self.K_MAG: np.ndarray = np.empty(3)
+
         # gain based on minimal principal moment of inertia as defined in Markley & Crassidis
-        self.detumble_gain: float = (
-            4
-            * np.pi
-            / config["orbital_period"]
-            * (1 + np.sin(config["orbital_inclination"] * np.pi / 180))
-            * j_min
-        )
+        self.detumble_gain: float = 1.0
 
+        star_tracker_uncertainty: float = 8.7e-07
+        star_tracker_noise: float = 2.4e-06
+        gyro_uncertainty: float = 0.017453292519943295
+        gyro_noise: float = 0.0002443460952792061
+        gyro_bias_drift: float = 1e-05
         self.EKF: MEKF = MEKF(
-            config["star_tracker_uncertainty"],
-            config["star_tracker_noise"],
-            config["gyro_uncertainty"],
-            config["gyro_noise"],
-            config["gyro_bias_drift"],
+            star_tracker_uncertainty,
+            star_tracker_noise,
+            gyro_uncertainty,
+            gyro_noise,
+            gyro_bias_drift,
         )
 
         self.skyfield_timescale = load.timescale()
@@ -244,6 +216,54 @@ class ADCSManager(Service):
         )  # constants for each magnetorquer axis used to convert desired torques to current [uA]
 
     def on_start(self) -> None:
+        self.control_mode = self.node.od["adcs_manager"]["control_mode"]
+        self.guidance_mode = self.node.od["adcs_manager"]["mode"]
+        self.pointing_reference = self.node.od["adcs_manager"]["pointing_reference"]
+        # used for tracking mode to set static ground target with GPS coordinates in ECEF
+        self.node.add_sdo_callbacks("adcs_manager", "target_lat", None, self._update_ecef_target)
+        self.node.add_sdo_callbacks("adcs_manager", "target_lon", None, self._update_ecef_target)
+        self.node.add_sdo_callbacks("adcs_manager", "target_height", None, self._update_ecef_target)
+        self._update_ecef_target(None)
+
+        self.update_time = self.node.od["adcs_manager"]["update_interval"]
+        self.node.add_sdo_callbacks("adcs_manager", "update_interval", None, self._update_interval)
+
+        self.node.add_sdo_callbacks("adcs_manager", "sat_inertia", None, self._update_sat_inertia)
+        self.rw_inertia = self.node.od["adcs_manager"]["rw_inertia"]
+        logger.debug(self.node.od["adcs_manager"]["sat_inertia"].value)
+        self._update_sat_inertia(self.node.od["adcs_manager"]["sat_inertia"].value)
+
+        self.node.add_sdo_callbacks(
+                "adcs_manager",
+                "rw_orientations",
+                None,
+                self._update_rw_orientations
+                )
+        self.use_variable_gain = self.node.od["adcs_manager"]["variable_gain"]
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_input", None, self._update_lqr_rw)
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_error", None, self._update_lqr_rw)
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_rate", None, self._update_lqr_rw)
+        self._update_lqr_rw(None)
+
+
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_input_mag", None, self._update_lqr_mag)
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_error_mag", None, self._update_lqr_mag)
+        self.node.add_sdo_callbacks("adcs_manager", "lqr_max_rate_mag", None, self._update_lqr_mag)
+
+        self._update_lqr_rw_fine()
+
+        self.node.add_sdo_callbacks(
+                "adcs_manager",
+                "orbital_period",
+                None,
+                self._update_detumble_gain
+                )
+        self.node.add_sdo_callbacks(
+                "adcs_manager",
+                "orbital_inclination",
+                None,
+                self._update_detumble_gain
+                )
         # add SDO callbacks, which are also called for relevant PDOs
         # at the same time, initialize valid data tracking and sensor times
         logger.debug("Initializing sensor data mappings...")
@@ -279,70 +299,126 @@ class ADCSManager(Service):
         # reset filter states for next maneuver
         self.EKF.reset(q, omega, init_time)
 
-    def update_ecef_target(
-        self, target_lat: float, target_lon: float, target_height: float
-    ) -> None:
-        self.ECEF_target = guid.gps_to_ecef(target_lat, target_lon, target_height)
+    def _update_sat_inertia(self, value: bytes) -> None:
+        jxx, jxy, jxz, jyx, jyy, jyz, jzx, jzy, jzz = struct.unpack(">fffffffff", value)
+        self.sat_inertia = np.array([[jxx, jxy, jxz], [jyx, jyy, jyz], [jzx, jzy, jzz]])
+        self._update_lqr_rw(None)
+        self._update_lqr_rw_fine()
+        self._update_lqr_mag(None)
+        self._update_detumble_gain(None)
+
+    def _update_rw_orientations(self, value: bytes) -> None:
+        logger.debug(value.hex())
+        a_1, a_2, a_3, a_4, b_1, b_2, b_3, b_4, c_1, c_2, c_3, c_4 = struct.unpack(">ffffffffffff", value)
+        g = np.array(([[a_1, a_2, a_3, a_4], [b_1, b_2, b_3, b_4], [c_1, c_2, c_3, c_4]]))
+        self.g_transpose = g.T
+        self.g_pinv = -np.linalg.pinv(g)
+
+    def _update_interval(self, _value: float) -> None:
+        self._update_lqr_rw(None)
+        self._update_lqr_mag(None)
+
+    def _update_lqr_rw(self, _value: float) -> None:
+        self.K_RW = get_gain_matrix(
+            self.sat_inertia,
+            self.update_time.value,
+            self.node.od["adcs_manager"]["lqr_max_error"].value,
+            self.node.od["adcs_manager"]["lqr_max_rate"].value,
+            self.node.od["adcs_manager"]["lqr_max_input"].value,
+        )
+
+    def _update_lqr_rw_fine(self) -> None:
+        # define a fine pointing controller with aggressive error gains
+        lqr_max_input_fine = 0.01
+        lqr_max_error_fine = 0.05
+        lqr_max_rate_fine = 0.2
+        self.K_RW_fine = get_gain_matrix(self.sat_inertia, self.update_time.value, 0.05, 0.2, 0.01)
+
+    def _update_lqr_mag(self, _value: float) -> None:
+        self.K_MAG: np.ndarray = get_gain_matrix(
+            self.sat_inertia,
+            self.update_time.value,
+            self.node.od["adcs_manager"]["lqr_max_error_mag"].value,
+            self.node.od["adcs_manager"]["lqr_max_rate_mag"].value,
+            self.node.od["adcs_manager"]["lqr_max_input_mag"].value,
+        )
+
+    def _update_ecef_target(self, _value: float) -> None:
+        self.ECEF_target = guid.gps_to_ecef(
+                self.node.od["adcs_manager"]["target_lat"].value,
+                self.node.od["adcs_manager"]["target_lon"].value,
+                self.node.od["adcs_manager"]["target_height"].value,
+                )
+
+    def _update_detumble_gain(self, _value: float) -> None:
+        """
+        maximum principal moment of inertia
+        (Markley & Crassidis defines this with the minimum principal moment of inertia as a safe
+        upper bound to avoid instability, but maximum works better)
+        """
+        j_min: float = np.max(np.linalg.eigvals(self.sat_inertia))
+        self.detumble_gain: float = (
+            4
+            * np.pi
+            / self.node.od["adcs_manager"]["orbital_period"].value
+            * (1 + np.sin(self.node.od["adcs_manager"]["orbital_inclination"].value * np.pi / 180))
+            * j_min
+        )
 
     def on_loop(self) -> None:
-        if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT") and not self.filter_initialized:
+        if self.control_mode.value == ControlMode.IDLE:
+            self.sleep_ms(300000)
+            return
+        if self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT) and not self.filter_initialized:
             if not self.is_data_available:
-                sleep(5)
+                self.sleep_ms(5000)
                 return
             omega = self._sensor_data["adcs"].data.gyro
             if not self._sensor_data["star_tracker_1"].data.attitude_known:
                 d_omega = self.spin_omega_target - omega  # desired delta omega
                 # calculate tau, divide by five to smooth control inputs
                 tau = self.sat_inertia @ d_omega / self.update_time / 5
-                wheel_torque = self.G_pinv @ tau
+                wheel_torque = self.g_pinv @ tau
                 # TODO: COMMAND REACTION WHEELS HERE
                 logger.debug("Command reaction wheels: {}", wheel_torque)
             else:
                 self.initialize_filter()
 
-        if self.guidance_mode in (
-            "TARGET",  # track static target on Earth's surface
-            "NADIR",
-            "MAX_DRAG",  # Orient satellite with largest face ram-pointing (+x)
-            "MIN_DRAG",  # Orient satellite with smallest face ram-pointing (+z)
-        ):
-            """
-            Dynamic guidance functions for target tracking, nadir-pointing, and
-            minimum & maximum drag orientation. This is separate from the control
-            portion of the code, and just defines the target which is fed into the
-            control algorithms
-            """
+        # Dynamic guidance functions for target tracking, nadir-pointing, and
+        # minimum & maximum drag orientation. This is separate from the control
+        # portion of the code, and just defines the target which is fed into the
+        # control algorithms
 
-            gps_data = self._sensor_data["gps"].data
-            r_ecef = np.asarray(gps_data.position)
-            v_ecef = np.asarray(gps_data.velocity)
-            t = self.skyfield_timescale.now()  # set ephemeris calculation time
-            eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
-            # used to get correct facing for star tracker
-            # Nadir vector is opposite of vector from earth.
-            nadir_vector_ecef = -r_ecef / np.linalg.norm(r_ecef)
-            if self.guidance_mode == "TARGET":
-                # calculate target vector in ECEF cartesian coordinates
-                target_vector = self.ECEF_target - r_ecef
-                # normalize to unit vector
-                target_vector = target_vector / np.linalg.norm(target_vector)
-                # create orientation quaternion from cartesian target
-                new_target = guid.target_tracking_quat(target_vector, nadir_vector_ecef, eci_2_ecef)
-            elif self.guidance_mode == "NADIR":
-                # create orientation quaternion from cartesian target
-                new_target = guid.nadir_quat(nadir_vector_ecef, v_ecef, eci_2_ecef)
-            elif self.guidance_mode == "MAX_DRAG" or self.guidance_mode == "MIN_DRAG":
-                # calculate ram-facing orientation for either +z or +x axis based on min or max drag
-                new_target = guid.ram_quaternion(
-                    self.guidance_mode, v_ecef, nadir_vector_ecef, eci_2_ecef
-                )
-            else:
-                new_target = None
-                logger.warning(f"Unknown guidance mode: {self.guidance_mode}")
+        gps_data = self._sensor_data["gps"].data
+        r_ecef = np.asarray(gps_data.position)
+        v_ecef = np.asarray(gps_data.velocity)
+        t = self.skyfield_timescale.now()  # set ephemeris calculation time
+        eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
+        # used to get correct facing for star tracker
+        # Nadir vector is opposite of vector from earth.
+        nadir_vector_ecef = -r_ecef / np.linalg.norm(r_ecef)
+        if self.guidance_mode.value == GuidanceMode.TARGET:
+            # calculate target vector in ECEF cartesian coordinates
+            target_vector = self.ECEF_target - r_ecef
+            # normalize to unit vector
+            target_vector = target_vector / np.linalg.norm(target_vector)
+            # create orientation quaternion from cartesian target
+            new_target = guid.target_tracking_quat(target_vector, nadir_vector_ecef, eci_2_ecef)
+        elif self.guidance_mode.value == GuidanceMode.NADIR:
+            # create orientation quaternion from cartesian target
+            new_target = guid.nadir_quat(nadir_vector_ecef, v_ecef, eci_2_ecef)
+        elif self.guidance_mode.value == GuidanceMode.MAX_DRAG or self.guidance_mode.value == GuidanceMode.MIN_DRAG:
+            # calculate ram-facing orientation for either +z or +x axis based on min or max drag
+            new_target = guid.ram_quaternion(
+                GuidanceMode(self.guidance_mode.value), v_ecef, nadir_vector_ecef, eci_2_ecef
+            )
+        else:
+            new_target = None
+            logger.warning(f"Unknown guidance mode: {self.guidance_mode.value}")
 
-            self.update_target(new_target)
+        self.update_target(new_target)
 
-        if self.control_mode in ("RW_POINTING", "THERMAL_REORIENT"):
+        if self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT):
             # get sensor data and modify for consumption by control algorithms
             wheel_speeds = (
                 np.array(
@@ -384,15 +460,15 @@ class ADCSManager(Service):
             rot_axis = quat.quat_to_axis(rotation_quat)
             rot_angle = quat.error_angle(rotation_quat) * np.pi / 180
             # set rotation rate for tracking maneuver
-            omega_desired = rot_axis * (rot_angle / self.update_time)
+            omega_desired = rot_axis * (rot_angle / self.update_time.value)
 
             # feed forward term to account for stored angular momentum
             # desired acceleration in body frame
-            alpha_d_b = (omega_desired - self.omega_desired_prev) / self.update_time
+            alpha_d_b = (omega_desired - self.omega_desired_prev) / self.update_time.value
             self.omega_desired_prev = omega_desired.copy()
             # calculate stored wheel momentum in body frame
             # (resulting in a 3x1 vector of angular momentum axis elements in body frame)
-            h_wheels = self.rw_inertia * wheel_speeds @ self.G.T
+            h_wheels = self.rw_inertia * wheel_speeds @ self.g_transpose
             # total feed-forward torque accounting for gyroscopic coupling
             tau_ff = self.sat_inertia @ alpha_d_b + np.cross(
                 omega, self.sat_inertia @ omega + h_wheels
@@ -405,12 +481,12 @@ class ADCSManager(Service):
             desired_torque = self.rw_controller(q_error, omega, time())
             desired_torque = desired_torque + tau_ff  # add feedforward terms
             # convert desired 3-axis torque to inputs for 4 reaction wheels
-            wheel_torque = self.G_pinv @ desired_torque
+            wheel_torque = self.g_pinv @ desired_torque
             # TODO: COMMAND REACTION WHEELS HERE
             logger.debug("Command reaction wheels: {}", wheel_torque)
 
             if (
-                self.control_mode == "THERMAL_REORIENT"
+                self.control_mode.value == ControlMode.THERMAL_REORIENT
                 and quat.error_angle(q_error) <= 0.1
                 and np.all(np.abs(omega) < 1e-6)
             ):
@@ -418,9 +494,9 @@ class ADCSManager(Service):
                 # Must wait for wheels to turn off.
                 # They should be at zero by the end of the maneuver. If not, there is a problem!
                 # change mission mode to spin-up with magnetorquers
-                self.control_mode = "THERMAL_SPINUP"
+                self.control_mode.value = ControlMode.THERMAL_SPINUP.value
 
-        elif self.control_mode == "DETUMBLE" or self.control_mode == "THERMAL_DETUMBLE":
+        elif self.control_mode.value in (ControlMode.DETUMBLE, ControlMode.THERMAL_DETUMBLE):
             # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
             omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
@@ -431,13 +507,13 @@ class ADCSManager(Service):
             # TODO: COMMAND MAGNETORQUERS
             logger.debug("Command Magnetorquers: {}", m_cmd)
 
-            if self.control_mode == "THERMAL_DETUMBLE" and np.all(np.abs(omega) < 1e-4):
+            if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(np.abs(omega) < 1e-4):
                 # If angular velocity within threshold, switch to reorient
-                self.control_mode = "THERMAL_REORIENT"
+                self.control_mode.value = ControlMode.THERMAL_REORIENT.value
                 # reset filter as it hasn't been used since reaction wheels last
                 self.initialize_filter()
 
-        elif self.control_mode == "THERMAL_SPINUP":
+        elif self.control_mode.value == ControlMode.THERMAL_SPINUP:
             # spin up about satellite's z-axis using magnetorquer
             omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
@@ -450,7 +526,7 @@ class ADCSManager(Service):
                 # TODO: COMMAND MAGNETORQUERS
                 logger.debug("Command Magnetorquers: {}", m_cmd)
 
-        elif self.control_mode == "MTB_POINTING":
+        elif self.control_mode.value == ControlMode.MTB_POINTING:
             omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
             star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
@@ -479,16 +555,16 @@ class ADCSManager(Service):
 
             # TODO: alert C3 ADCS is satisfied. Pause ADCS.
         else:
-            logger.error("Unknown control mode {}", self.control_mode)
+            logger.error("Unknown control mode {}", self.control_mode.value)
 
     def update_target(self, target_quat: np.ndarray) -> None:
-        if self.pointing_reference == "ST":
+        if self.pointing_reference.value == PointingReference.STAR_TRACKER:
             # define target in body coordinates
             self.q_target = quat.quat_mult(self.q_90_rot, target_quat)
-        elif self.pointing_reference == "HELICAL" or self.pointing_reference == "SC":
+        elif self.pointing_reference.value == PointingReference.HELICAL:
             # target does not require rotation
             self.q_target = target_quat
-        elif self.pointing_reference == "CFC":
+        elif self.pointing_reference == PointingReference.CIRRUS_FLUX:
             # define target in body coordinates
             self.q_target = quat.quat_mult(self.q_180_rot, target_quat)
         else:
@@ -499,19 +575,19 @@ class ADCSManager(Service):
     ) -> np.ndarray:
         x = np.concatenate((q_error[:3], omega))
 
-        if self.use_variable_gain and quat.error_angle(q_error) < 1:
+        if self.use_variable_gain.value and quat.error_angle(q_error) < 1:
             # LQR controller with integral term
             transient_time = 30  # seconds
-            if self.gain_mode == 0:
+            if self._gain_mode == GainMode.STANDARD:
                 self.transient_start = current_time
                 # switch to transient mode
-                self.gain_mode = 1
+                self._gain_mode = GainMode.TRANSIENT
                 # first step of transient mode returns the same as standard controller
                 return -self.K_RW @ x
-            elif self.gain_mode == 1:
+            elif self._gain_mode == GainMode.TRANSIENT:
                 if self.transient_start >= self.transient_start + transient_time:
                     # switch to full fine-pointing mode
-                    self.gain_mode = 2
+                    self._gain_mode = GainMode.FINE_POINTING
                 gain_switch_time = current_time - self.transient_start
                 return (-self.K_RW_fine @ x) * gain_switch_time / transient_time - (
                     self.K_RW @ x
@@ -520,7 +596,7 @@ class ADCSManager(Service):
                 return -self.K_RW_fine @ x
         else:
             # switch to standard gain mode
-            self.gain_mode = 0
+            self._gain_mode = GainMode.STANDARD
             return -self.K_RW @ x
 
     def mag_lqr_controller(self, q_error: np.ndarray, omega: np.ndarray) -> np.ndarray:

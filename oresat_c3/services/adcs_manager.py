@@ -6,6 +6,8 @@ it can calculate attitude adjustments and execute those adjustments by commandin
 and magnetorquers.
 """
 
+from __future__ import annotations
+
 import functools
 import struct
 from dataclasses import dataclass, field
@@ -54,7 +56,7 @@ class TimestampedData:
 class CallbackDataMapping:
     callback: Callable[[str, Union[bool, float], TimestampedData], None]
     dataclass: Type[Union[StarTrackerData, GPSData, IMUData]]
-    od_indices: Tuple[str]
+    od_indices: Tuple[str, ...]
 
 
 P = ParamSpec("P")
@@ -91,14 +93,14 @@ def adcs_callback(
 class ADCSManager(Service):
     def __init__(self) -> None:
         super().__init__()
-        self.control_mode: ODVariable = None
-        self.guidance_mode: ODVariable = None
-        self.pointing_reference: ODVariable = None
+        self.control_mode: ODVariable | None = None
+        self.guidance_mode: ODVariable | None = None
+        self.pointing_reference: ODVariable | None = None
         self.ECEF_target: np.ndarray = np.zeros(3)
 
-        self.update_time: ODVariable = None
+        self.update_time: ODVariable | None = None
 
-        self.rw_inertia: ODVariable = None
+        self.rw_inertia: ODVariable | None = None
         self.sat_inertia: np.ndarray = np.zeros((3, 3))
 
         self.g_transpose: np.ndarray = np.zeros((4, 3))
@@ -116,7 +118,7 @@ class ADCSManager(Service):
         self.spin_omega_target: np.ndarray = np.array([0, 0, 0.034])
         self.filter_initialized: bool = False
 
-        self.use_variable_gain: ODVariable = None
+        self.use_variable_gain: ODVariable | None = None
         self.K_RW: np.ndarray = np.empty(3)
 
         self._gain_mode: GainMode = GainMode.STANDARD
@@ -223,28 +225,23 @@ class ADCSManager(Service):
         self.node.add_sdo_callbacks("adcs_manager", "target_lat", None, self._update_ecef_target)
         self.node.add_sdo_callbacks("adcs_manager", "target_lon", None, self._update_ecef_target)
         self.node.add_sdo_callbacks("adcs_manager", "target_height", None, self._update_ecef_target)
-        self._update_ecef_target(None)
+        self._update_ecef_target(0.0)
 
         self.update_time = self.node.od["adcs_manager"]["update_interval"]
         self.node.add_sdo_callbacks("adcs_manager", "update_interval", None, self._update_interval)
 
         self.node.add_sdo_callbacks("adcs_manager", "sat_inertia", None, self._update_sat_inertia)
         self.rw_inertia = self.node.od["adcs_manager"]["rw_inertia"]
-        logger.debug(self.node.od["adcs_manager"]["sat_inertia"].value)
         self._update_sat_inertia(self.node.od["adcs_manager"]["sat_inertia"].value)
 
         self.node.add_sdo_callbacks(
-                "adcs_manager",
-                "rw_orientations",
-                None,
-                self._update_rw_orientations
-                )
+            "adcs_manager", "rw_orientations", None, self._update_rw_orientations
+        )
         self.use_variable_gain = self.node.od["adcs_manager"]["variable_gain"]
         self.node.add_sdo_callbacks("adcs_manager", "lqr_max_input", None, self._update_lqr_rw)
         self.node.add_sdo_callbacks("adcs_manager", "lqr_max_error", None, self._update_lqr_rw)
         self.node.add_sdo_callbacks("adcs_manager", "lqr_max_rate", None, self._update_lqr_rw)
-        self._update_lqr_rw(None)
-
+        self._update_lqr_rw(0.0)
 
         self.node.add_sdo_callbacks("adcs_manager", "lqr_max_input_mag", None, self._update_lqr_mag)
         self.node.add_sdo_callbacks("adcs_manager", "lqr_max_error_mag", None, self._update_lqr_mag)
@@ -253,17 +250,11 @@ class ADCSManager(Service):
         self._update_lqr_rw_fine()
 
         self.node.add_sdo_callbacks(
-                "adcs_manager",
-                "orbital_period",
-                None,
-                self._update_detumble_gain
-                )
+            "adcs_manager", "orbital_period", None, self._update_detumble_gain
+        )
         self.node.add_sdo_callbacks(
-                "adcs_manager",
-                "orbital_inclination",
-                None,
-                self._update_detumble_gain
-                )
+            "adcs_manager", "orbital_inclination", None, self._update_detumble_gain
+        )
         # add SDO callbacks, which are also called for relevant PDOs
         # at the same time, initialize valid data tracking and sensor times
         logger.debug("Initializing sensor data mappings...")
@@ -293,7 +284,12 @@ class ADCSManager(Service):
     def initialize_filter(self) -> None:
         """Initialize or reset the extended kalman filter"""
         logger.debug("Resetting extended kalman filter")
-        omega = self._sensor_data["adcs"].data.gyro
+        imu_data = self._sensor_data["adcs"].data
+        if not isinstance(imu_data, IMUData):
+            logger.error("Incorrect sensor data type")
+            self.sleep_ms(5000)
+            return
+        omega = imu_data.gyro
         q = self._sensor_data["star_tracker_1"].data.orientation
         init_time = time()
         # reset filter states for next maneuver
@@ -302,21 +298,23 @@ class ADCSManager(Service):
     def _update_sat_inertia(self, value: bytes) -> None:
         jxx, jxy, jxz, jyx, jyy, jyz, jzx, jzy, jzz = struct.unpack(">fffffffff", value)
         self.sat_inertia = np.array([[jxx, jxy, jxz], [jyx, jyy, jyz], [jzx, jzy, jzz]])
-        self._update_lqr_rw(None)
+        self._update_lqr_rw(1.0)
         self._update_lqr_rw_fine()
-        self._update_lqr_mag(None)
-        self._update_detumble_gain(None)
+        self._update_lqr_mag(1.0)
+        self._update_detumble_gain(1.0)
 
     def _update_rw_orientations(self, value: bytes) -> None:
         logger.debug(value.hex())
-        a_1, a_2, a_3, a_4, b_1, b_2, b_3, b_4, c_1, c_2, c_3, c_4 = struct.unpack(">ffffffffffff", value)
+        a_1, a_2, a_3, a_4, b_1, b_2, b_3, b_4, c_1, c_2, c_3, c_4 = struct.unpack(
+            ">ffffffffffff", value
+        )
         g = np.array(([[a_1, a_2, a_3, a_4], [b_1, b_2, b_3, b_4], [c_1, c_2, c_3, c_4]]))
         self.g_transpose = g.T
         self.g_pinv = -np.linalg.pinv(g)
 
     def _update_interval(self, _value: float) -> None:
-        self._update_lqr_rw(None)
-        self._update_lqr_mag(None)
+        self._update_lqr_rw(1.0)
+        self._update_lqr_mag(1.0)
 
     def _update_lqr_rw(self, _value: float) -> None:
         self.K_RW = get_gain_matrix(
@@ -329,9 +327,6 @@ class ADCSManager(Service):
 
     def _update_lqr_rw_fine(self) -> None:
         # define a fine pointing controller with aggressive error gains
-        lqr_max_input_fine = 0.01
-        lqr_max_error_fine = 0.05
-        lqr_max_rate_fine = 0.2
         self.K_RW_fine = get_gain_matrix(self.sat_inertia, self.update_time.value, 0.05, 0.2, 0.01)
 
     def _update_lqr_mag(self, _value: float) -> None:
@@ -345,10 +340,10 @@ class ADCSManager(Service):
 
     def _update_ecef_target(self, _value: float) -> None:
         self.ECEF_target = guid.gps_to_ecef(
-                self.node.od["adcs_manager"]["target_lat"].value,
-                self.node.od["adcs_manager"]["target_lon"].value,
-                self.node.od["adcs_manager"]["target_height"].value,
-                )
+            self.node.od["adcs_manager"]["target_lat"].value,
+            self.node.od["adcs_manager"]["target_lon"].value,
+            self.node.od["adcs_manager"]["target_height"].value,
+        )
 
     def _update_detumble_gain(self, _value: float) -> None:
         """
@@ -357,7 +352,7 @@ class ADCSManager(Service):
         upper bound to avoid instability, but maximum works better)
         """
         j_min: float = np.max(np.linalg.eigvals(self.sat_inertia))
-        self.detumble_gain: float = (
+        self.detumble_gain = (
             4
             * np.pi
             / self.node.od["adcs_manager"]["orbital_period"].value
@@ -369,12 +364,25 @@ class ADCSManager(Service):
         if self.control_mode.value == ControlMode.IDLE:
             self.sleep_ms(300000)
             return
-        if self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT) and not self.filter_initialized:
+        if (
+            self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT)
+            and not self.filter_initialized
+        ):
             if not self.is_data_available:
                 self.sleep_ms(5000)
                 return
-            omega = self._sensor_data["adcs"].data.gyro
-            if not self._sensor_data["star_tracker_1"].data.attitude_known:
+            imu_data = self._sensor_data["adcs"].data
+            if not isinstance(imu_data, IMUData):
+                logger.error("Incorrect sensor data type")
+                self.sleep_ms(5000)
+                return
+            omega = imu_data.gyro
+            star_tracker_output = self._sensor_data["star_tracker_1"]
+            if (
+                star_tracker_output
+                and isinstance(star_tracker_output, StarTrackerData)
+                and not star_tracker_output.data.attitude_known
+            ):
                 d_omega = self.spin_omega_target - omega  # desired delta omega
                 # calculate tau, divide by five to smooth control inputs
                 tau = self.sat_inertia @ d_omega / self.update_time / 5
@@ -390,6 +398,10 @@ class ADCSManager(Service):
         # control algorithms
 
         gps_data = self._sensor_data["gps"].data
+        if not isinstance(gps_data, GPSData):
+            logger.error("Incorrect sensor data type")
+            self.sleep_ms(5000)
+            return
         r_ecef = np.asarray(gps_data.position)
         v_ecef = np.asarray(gps_data.velocity)
         t = self.skyfield_timescale.now()  # set ephemeris calculation time
@@ -407,7 +419,10 @@ class ADCSManager(Service):
         elif self.guidance_mode.value == GuidanceMode.NADIR:
             # create orientation quaternion from cartesian target
             new_target = guid.nadir_quat(nadir_vector_ecef, v_ecef, eci_2_ecef)
-        elif self.guidance_mode.value == GuidanceMode.MAX_DRAG or self.guidance_mode.value == GuidanceMode.MIN_DRAG:
+        elif (
+            self.guidance_mode.value == GuidanceMode.MAX_DRAG
+            or self.guidance_mode.value == GuidanceMode.MIN_DRAG
+        ):
             # calculate ram-facing orientation for either +z or +x axis based on min or max drag
             new_target = guid.ram_quaternion(
                 GuidanceMode(self.guidance_mode.value), v_ecef, nadir_vector_ecef, eci_2_ecef
@@ -418,6 +433,12 @@ class ADCSManager(Service):
 
         self.update_target(new_target)
 
+        imu_data = self._sensor_data["adcs"].data
+        if not isinstance(imu_data, IMUData):
+            logger.error("Incorrect sensor data type")
+            self.sleep_ms(5000)
+            return
+        omega = imu_data.gyro
         if self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT):
             # get sensor data and modify for consumption by control algorithms
             wheel_speeds = (
@@ -432,9 +453,13 @@ class ADCSManager(Service):
                 * 2
                 * np.pi
             )
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
-            omega = self._sensor_data["adcs"].data.gyro
-            if star_tracker_output and star_tracker_output.data.attitude_known:
+            star_tracker_output = self.get_sensor_data("star_tracker_1")
+
+            if (
+                star_tracker_output
+                and isinstance(star_tracker_output, StarTrackerData)
+                and star_tracker_output.data.attitude_known
+            ):
                 q_star_tracker = star_tracker_output.data.orientation
                 # rotate star tracker output into body frame
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker)
@@ -498,7 +523,6 @@ class ADCSManager(Service):
 
         elif self.control_mode.value in (ControlMode.DETUMBLE, ControlMode.THERMAL_DETUMBLE):
             # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
-            omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
             # detumble controller as defined by Markley & Crassidis
             desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
@@ -507,7 +531,9 @@ class ADCSManager(Service):
             # TODO: COMMAND MAGNETORQUERS
             logger.debug("Command Magnetorquers: {}", m_cmd)
 
-            if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(np.abs(omega) < 1e-4):
+            if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(
+                np.abs(omega) < 1e-4
+            ):
                 # If angular velocity within threshold, switch to reorient
                 self.control_mode.value = ControlMode.THERMAL_REORIENT.value
                 # reset filter as it hasn't been used since reaction wheels last
@@ -515,7 +541,6 @@ class ADCSManager(Service):
 
         elif self.control_mode.value == ControlMode.THERMAL_SPINUP:
             # spin up about satellite's z-axis using magnetorquer
-            omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
             if omega[2] < self.thermal_spin_rpm * 2 * np.pi / 60:
                 # while satellite is spinning slower than set rate about the z axis, spin up
@@ -527,10 +552,13 @@ class ADCSManager(Service):
                 logger.debug("Command Magnetorquers: {}", m_cmd)
 
         elif self.control_mode.value == ControlMode.MTB_POINTING:
-            omega = self._sensor_data["adcs"].data.gyro
             b = self.get_magnetometer_data()
-            star_tracker_output: Optional[TimestampedData] = self.get_sensor_data("star_tracker_1")
-            if star_tracker_output and star_tracker_output.data.attitude_known:
+            star_tracker_output = self.get_sensor_data("star_tracker_1")
+            if (
+                star_tracker_output
+                and isinstance(star_tracker_output, StarTrackerData)
+                and star_tracker_output.data.attitude_known
+            ):
                 q_star_tracker = star_tracker_output.data.orientation
                 # rotate star tracker output into body frame
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker)
@@ -628,6 +656,8 @@ class ADCSManager(Service):
     def _on_star_tracker_data(
         self, subindex: str, value: Union[bool, float], buf: TimestampedData
     ) -> None:
+        if not isinstance(buf.data, StarTrackerData):
+            return
         if subindex == "orientation_time_since_midnight":
             buf.timestamp = value
         elif subindex == "orientation_attitude_known":
@@ -645,6 +675,8 @@ class ADCSManager(Service):
 
     @adcs_callback("gps")
     def _on_gps_data(self, subindex: str, value: float, buf: TimestampedData) -> None:
+        if not isinstance(buf.data, GPSData):
+            return
         if subindex == "skytraq_time_since_midnight":
             buf.timestamp = value
         elif subindex == "skytraq_ecef_x":
@@ -664,6 +696,8 @@ class ADCSManager(Service):
 
     @adcs_callback("adcs")
     def _on_imu_data(self, subindex: str, value: float, buf: TimestampedData) -> None:
+        if not isinstance(buf.data, IMUData):
+            return
         if subindex == "gyroscope_pitch_rate":
             # Ideally the timestamp would be determined and sent from the card with the IMU
             # but since the ADCS just wants the latest data, this doesn't really get used

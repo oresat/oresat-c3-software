@@ -2,12 +2,12 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 import numpy as np
-from .config import GuidanceMode
 from olaf import logger
 from skyfield.framelib import itrs
 from skyfield.timelib import Timescale
 
 from . import quaternion as quat
+from .config import GuidanceMode
 
 D2R = np.pi / 180.0
 
@@ -110,7 +110,10 @@ def nadir_quat(
 
 
 def ram_quaternion(
-    drag_orientation: GuidanceMode, v_ecef: np.ndarray, nadir_vector_ecef: np.ndarray, eci_2_ecef: np.ndarray
+    drag_orientation: GuidanceMode,
+    v_ecef: np.ndarray,
+    nadir_vector_ecef: np.ndarray,
+    eci_2_ecef: np.ndarray,
 ) -> np.ndarray:
     """
     Creates an orientation quaternion forming based on whether maximum or

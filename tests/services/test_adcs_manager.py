@@ -5,7 +5,6 @@ from olaf import CanNetwork, MasterNode
 from oresat_configs import Mission, OreSatConfig
 
 from oresat_c3.services.adcs_manager import ADCSManager
-from oresat_c3.subsystems.adcs.config import build_config
 
 
 class TestState(unittest.TestCase):
@@ -16,9 +15,8 @@ class TestState(unittest.TestCase):
         self.od = config.od_db["c3"]
         network = CanNetwork("virtual", "vcan0")
         self.node = MasterNode(network, self.od, config.od_db)
-        adcs_config = build_config(str(config.mission))
 
-        self.service = ADCSManager(adcs_config, mock_hw=True)
+        self.service = ADCSManager()
 
         self.node._setup_node()
         self.node._destroy_node()

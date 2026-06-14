@@ -23,8 +23,8 @@ class PointingReference(IntEnum):
     CIRRUS_FLUX = 1
     STAR_TRACKER = 2
 
+
 class GainMode(Enum):
     STANDARD = 0
     TRANSIENT = 1
     FINE_POINTING = 2
-

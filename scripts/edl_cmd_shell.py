@@ -18,6 +18,7 @@ from ccsds_cop.cop_1.fop import (
     DirectiveRequest,
     DirectiveType,
     Fop1,
+    FopState,
     NotificationType,
     RequestToTransferFdu,
     Response,
@@ -30,7 +31,7 @@ from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
 from spacepackets.uslp.frame import FrameType
 
-from oresat_c3.protocols.uslp import SPACECRAFT_ID, SEQ_NUM_LEN, make_frame, unpack_frame
+from oresat_c3.protocols.uslp import SEQ_NUM_LEN, SPACECRAFT_ID, make_frame, unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -142,6 +143,9 @@ class EdlCommandShell(Cmd):
 
     def _send_packet(self, code: EdlCommandCode, args: Union[tuple, None] = None) -> tuple:
         print(f"Request {code.name}: {args} | seq_num: {self._seq_num}")
+        # processing cop sequentially is unusual, so we need to drain any CLCWs
+        # from the previous command before the next frame to prevent timeouts
+        self._drain_clcws()
 
         res_packet = None
         try:
@@ -171,6 +175,25 @@ class EdlCommandShell(Cmd):
                             break
                 except socket.timeout:
                     raise TimeoutError("No C3_COMMAND response")
+                if self._fop1.nn_r != self._fop1.v_s:
+                    self._downlink_socket.settimeout(self._fop1.timer_initial_value)
+                    try:
+                        while (
+                            self._fop1.nn_r != self._fop1.v_s
+                            and self._fop1.state == FopState.ACTIVE
+                        ):
+                            try:
+                                raw = self._downlink_socket.recv(1024)
+                            except socket.timeout:
+                                break
+                            try:
+                                frame = unpack_frame(raw)
+                            except UslpInvalidRawPacketOrFrameLenError:
+                                continue
+                            if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
+                                self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
+                    finally:
+                        self._downlink_socket.settimeout(self._timeout)
             else:
                 # No EDL response expected, but still wait for a CLCW to acknowledge the AD frame
                 for _ in range(10):

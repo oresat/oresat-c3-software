@@ -4,6 +4,7 @@ Most or all of these changes should eventually be submitted upstream.
 """
 
 import time
+from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
 
@@ -316,8 +317,6 @@ class CfdpUser(CfdpUserBase):
 class SourceEntityHandler(Thread):
     def __init__(
         self,
-        base_str: str,
-        verbose_level: int,
         source_handler: SourceHandler,
         put_req_queue: SimpleQueue,
         source_entity_queue: SimpleQueue,
@@ -325,8 +324,6 @@ class SourceEntityHandler(Thread):
         stop_signal: Event,
     ):
         super().__init__()
-        self.base_str = base_str
-        self.verbose_level = verbose_level
         self.source_handler = source_handler
         self.put_req_queue = put_req_queue
         self.source_entity_queue = source_entity_queue
@@ -336,7 +333,7 @@ class SourceEntityHandler(Thread):
     def _idle_handling(self) -> bool:
         try:
             put_req: PutRequest = self.put_req_queue.get(False)
-            logger.info(f"{self.base_str}: Handling Put Request: {put_req}")
+            logger.info(f"Handling Put Request: {put_req}")
             if put_req.destination_id not in [LOCAL_ENTITY_ID, REMOTE_ENTITY_ID]:
                 logger.warning(
                     f"can only handle put requests target towards {REMOTE_ENTITY_ID} or "
@@ -380,7 +377,7 @@ class SourceEntityHandler(Thread):
         """Returns whether a packet was sent."""
 
         if packet is not None:
-            logger.debug(f"{self.base_str}: Inserting {packet}")
+            logger.debug(f"=Inserting {packet}")
         try:
             fsm_result = self.source_handler.state_machine(packet)
         except InvalidDestinationId as e:
@@ -395,14 +392,14 @@ class SourceEntityHandler(Thread):
                 next_pdu_wrapper = self.source_handler.get_next_packet()
                 assert next_pdu_wrapper is not None
                 if self.verbose_level >= 1:
-                    logger.debug(f"{self.base_str}: Sending packet {next_pdu_wrapper.pdu}")
+                    logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
                 # Send all packets which need to be sent.
                 self.tm_queue.put(next_pdu_wrapper.pack())
                 packet_sent = True
         return packet_sent
 
     def run(self) -> None:
-        logger.info(f"Starting {self.base_str}")
+        logger.info("Starting Source Entity Handler")
         while True:
             if self.stop_signal.is_set():
                 break
@@ -416,23 +413,19 @@ class SourceEntityHandler(Thread):
 class DestEntityHandler(Thread):
     def __init__(
         self,
-        base_str: str,
-        verbose_level: int,
         dest_handler: DestHandler,
         dest_entity_queue: SimpleQueue,
         tm_queue: SimpleQueue,
         stop_signal: Event,
     ):
         super().__init__()
-        self.base_str = base_str
-        self.verbose_level = verbose_level
         self.dest_handler = dest_handler
         self.dest_entity_queue = dest_entity_queue
         self.tm_queue = tm_queue
         self.stop_signal = stop_signal
 
     def run(self) -> None:
-        logger.info(f"Starting {self.base_str}. Local ID {self.dest_handler.cfg.local_entity_id}")
+        logger.info(f"Starting Dest Entity Handler. Local ID {self.dest_handler.cfg.local_entity_id}")
         while True:
             packet_received = False
             packet = None
@@ -444,7 +437,7 @@ class DestEntityHandler(Thread):
             except Empty:
                 pass
             if packet is not None:
-                logger.debug(f"{self.base_str}: Inserting {packet}")
+                logger.debug(f"Inserting {packet}")
             fsm_result = self.dest_handler.state_machine(packet)
             packet_sent = False
             if fsm_result.states.num_packets_ready > 0:
@@ -452,7 +445,7 @@ class DestEntityHandler(Thread):
                     next_pdu_wrapper = self.dest_handler.get_next_packet()
                     assert next_pdu_wrapper is not None
                     if self.verbose_level >= 1:
-                        logger.debug(f"{self.base_str}: Sending packet {next_pdu_wrapper.pdu}")
+                        logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
                     self.tm_queue.put(next_pdu_wrapper.pack())
                     packet_sent = True
             # If there is no work to do, put the thread to sleep.

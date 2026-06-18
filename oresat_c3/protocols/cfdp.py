@@ -4,6 +4,7 @@ Most or all of these changes should eventually be submitted upstream.
 """
 
 import time
+from datetime import timedelta
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
@@ -54,6 +55,8 @@ from spacepackets.cfdp.tlv import (
     ProxyPutResponseParams,
     ReservedCfdpMessage,
 )
+from spacepackets.countdown import Countdown
+from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 
@@ -142,6 +145,42 @@ class FixedDestHandler(DestHandler):
         """Same issue as _handle_eof_pdu"""
         eof_pdu.condition_code >>= 4
         return super()._handle_eof_without_previous_metadata(eof_pdu)
+
+
+class CfdpFaultHandler(DefaultFaultHandlerBase):
+    def __init__(self, base_str: str):
+        self.base_str = base_str
+        super().__init__()
+
+    def notice_of_suspension_cb(
+        self, transaction_id: TransactionId, cond: ConditionCode, progress: int
+    ) -> None:
+        logger.warning(
+            f"{self.base_str}: Received Notice of Suspension for transaction {transaction_id!r} "
+            f"with condition code {cond!r}. Progress: {progress}"
+        )
+
+    def notice_of_cancellation_cb(
+        self, transaction_id: TransactionId, cond: ConditionCode, progress: int
+    ) -> None:
+        logger.warning(
+            f"{self.base_str}: Received Notice of Cancellation for transaction {transaction_id!r} "
+            f"with condition code {cond!r}. Progress: {progress}"
+        )
+
+    def abandoned_cb(
+        self, transaction_id: TransactionId, cond: ConditionCode, progress: int
+    ) -> None:
+        logger.warning(
+            f"{self.base_str}: Abandoned fault for transaction {transaction_id!r} "
+            f"with condition code {cond!r}. Progress: {progress}"
+        )
+
+    def ignore_cb(self, transaction_id: TransactionId, cond: ConditionCode, progress: int) -> None:
+        logger.warning(
+            f"{self.base_str}: Ignored fault for transaction {transaction_id!r} "
+            f"with condition code {cond!r}. Progress: {progress}"
+        )
 
 
 class CfdpUser(CfdpUserBase):
@@ -303,41 +342,58 @@ class CfdpUser(CfdpUserBase):
     def eof_recv_indication(self, transaction_id: TransactionId) -> None:
         logger.info(f"{self.base_str}: EOF-Recv.indication for {transaction_id}")
 
+
 # Don't know what this is for yet. TODO: figure that out.
-# class CustomCheckTimerProvider(CheckTimerProvider):
-#     def provide_check_timer(
-#         self,
-#         local_entity_id: ByteFieldU8,
-#         remote_entity_id: ByteFieldU8,
-#         entity_type: EntityType,
-#     ) -> Countdown:
-#         return Countdown(timedelta(seconds=5.0))
+class CustomCheckTimerProvider(CheckTimerProvider):
+    def provide_check_timer(
+        self,
+        local_entity_id: ByteFieldU8,
+        remote_entity_id: ByteFieldU8,
+        entity_type: EntityType,
+    ) -> Countdown:
+        return Countdown(timedelta(seconds=5.0))
 
 
 class SourceEntityHandler(Thread):
+    BASE_STR_SRC = "Source:"
+
     def __init__(
         self,
-        source_handler: SourceHandler,
         put_req_queue: SimpleQueue,
         source_entity_queue: SimpleQueue,
         tm_queue: SimpleQueue,
+        remote_entities: RemoteEntityConfigTable,
+        gnd_id: ByteFieldU8,
+        sat_id: ByteFieldU8,
         stop_signal: Event,
     ):
         super().__init__()
-        self.source_handler = source_handler
+        src_seq_count_provider = SeqCountProvider(16)
+        src_user = CfdpUser(self.BASE_STR_SRC, put_req_queue)
+        check_timer_provider = CustomCheckTimerProvider()
+        self.source_handler = VfsSourceHandler(
+            cfg=LocalEntityConfig(sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_SRC)),
+            seq_num_provider=src_seq_count_provider,
+            remote_cfg_table=remote_entities,
+            user=src_user,
+            check_timer_provider=check_timer_provider,
+        )
+
         self.put_req_queue = put_req_queue
         self.source_entity_queue = source_entity_queue
         self.tm_queue = tm_queue
+        self.gnd_id = gnd_id
+        self.sat_id = sat_id
         self.stop_signal = stop_signal
 
     def _idle_handling(self) -> bool:
         try:
             put_req: PutRequest = self.put_req_queue.get(False)
             logger.info(f"Handling Put Request: {put_req}")
-            if put_req.destination_id not in [LOCAL_ENTITY_ID, REMOTE_ENTITY_ID]:
+            if put_req.destination_id not in [self.sat_id, self.gnd_id]:
                 logger.warning(
-                    f"can only handle put requests target towards {REMOTE_ENTITY_ID} or "
-                    f"{LOCAL_ENTITY_ID}" # These were global variables. TODO: fix
+                    f"can only handle put requests target towards {self.gnd_id} or "
+                    f"{self.sat_id}"
                 )
 
             else:
@@ -411,21 +467,35 @@ class SourceEntityHandler(Thread):
 
 
 class DestEntityHandler(Thread):
+    BASE_STR_DEST = "Dest:"
+
     def __init__(
         self,
-        dest_handler: DestHandler,
+        put_req_queue: SimpleQueue,
         dest_entity_queue: SimpleQueue,
         tm_queue: SimpleQueue,
+        remote_entities: RemoteEntityConfigTable,
+        sat_id: ByteFieldU8,
         stop_signal: Event,
     ):
         super().__init__()
-        self.dest_handler = dest_handler
+
+        dest_user = CfdpUser(self.BASE_STR_DEST, put_req_queue)
+        check_timer_provider = CustomCheckTimerProvider()
+        self.sdest_handler = DestHandler(
+            cfg=LocalEntityConfig(sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_DEST)),
+            user=dest_user,
+            remote_cfg_table=remote_entities,
+            check_timer_provider=check_timer_provider,
+        )
+
         self.dest_entity_queue = dest_entity_queue
         self.tm_queue = tm_queue
+        self.sat_id = sat_id
         self.stop_signal = stop_signal
 
     def run(self) -> None:
-        logger.info(f"Starting Dest Entity Handler. Local ID {self.dest_handler.cfg.local_entity_id}")
+        logger.info(f"Starting Dest Entity Handler. Local ID {self.sat_id}")
         while True:
             packet_received = False
             packet = None

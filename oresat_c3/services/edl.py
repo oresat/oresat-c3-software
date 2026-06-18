@@ -49,7 +49,12 @@ from spacepackets.uslp import TransferFrame
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
-from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
+from ..protocols.cfdp import (
+    DestEntityHandler,
+    FixedDestHandler,
+    SourceEntityHandler,
+    VfsSourceHandler,
+)
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -95,6 +100,12 @@ class EdlService(Service):
         )
         self._node_flasher_service = node_flasher_service
 
+        self._cfdp_tm_queue = SimpleQueue()  # send telemetry pdus from here.
+        self._cfdp_src_queue = SimpleQueue()  # send tc for the source here.
+        self._cfdp_dest_queue = SimpleQueue()  # send tc for the dest here.
+        self.cfdp_source_handler = None
+        self.cfdp_dest_handler = None
+
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
         # objs
@@ -107,6 +118,33 @@ class EdlService(Service):
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+
+    def _init_cfdp(self) -> None:
+        GND_ID = ByteFieldU8(0)
+        SAT_ID = ByteFieldU8(1)
+
+        put_req_queue = SimpleQueue()
+
+        remote_entities = RemoteEntityConfigTable(
+            [
+                RemoteEntityConfig(
+                    entity_id=GND_ID,
+                    max_file_segment_len=None,
+                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
+                    # How does the exact value get determined? Currently it's just a mirror of the
+                    # value in edl_file_upload.py
+                    max_packet_len=950,
+                    closure_requested=False,
+                    crc_on_transmission=False,
+                    default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                    crc_type=ChecksumType.MODULAR,
+                ),
+            ]
+        )
+
+        self.cfdp_source_handler = SourceEntityHandler(put_req_queue, self._cfdp_src_queue, self._cfdp_tm_queue,remote_entities, GND_ID, SAT_ID)
+
+        self.cfdp_dest_handler = DestEntityHandler(put_req_queue, self._cfdp_dest_queue, self._cfdp_tm_queue,remote_entities, SAT_ID)
 
     @property
     def _hmac_key(self) -> bytes:

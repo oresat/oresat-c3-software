@@ -283,7 +283,7 @@ class CfdpUser(CfdpUserBase):
             put_req = PutRequest(
                 destination_id=put_req_params.dest_entity_id,
                 source_file=Path(put_req_params.source_file_as_path),
-                dest_file=Path(put_req_params.dest_file_as_path), # Don't really understand why this needs a path. TODO: understand and fix.
+                dest_file=Path(put_req_params.dest_file_as_path),
                 trans_mode=None,
                 closure_requested=None,
                 msgs_to_user=[
@@ -355,7 +355,7 @@ class CustomCheckTimerProvider(CheckTimerProvider):
 
 
 class SourceEntityHandler(Thread):
-    BASE_STR_SRC = "Source:"
+    BASE_STR_SRC = "Source id"
 
     def __init__(
         self,
@@ -369,10 +369,14 @@ class SourceEntityHandler(Thread):
     ):
         super().__init__()
         src_seq_count_provider = SeqCountProvider(16)
-        src_user = CfdpUser(self.BASE_STR_SRC, put_req_queue)
+        src_user = CfdpUser(self.BASE_STR_SRC + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
         self.source_handler = VfsSourceHandler(
-            cfg=LocalEntityConfig(sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_SRC)),
+            cfg=LocalEntityConfig(
+                sat_id,
+                IndicationConfig(),
+                CfdpFaultHandler(self.BASE_STR_SRC + sat_id.__str__())
+            ),
             seq_num_provider=src_seq_count_provider,
             remote_cfg_table=remote_entities,
             user=src_user,
@@ -447,8 +451,7 @@ class SourceEntityHandler(Thread):
             while fsm_result.states.num_packets_ready > 0:
                 next_pdu_wrapper = self.source_handler.get_next_packet()
                 assert next_pdu_wrapper is not None
-                if self.verbose_level >= 1:
-                    logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
+                logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
                 # Send all packets which need to be sent.
                 self.tm_queue.put(next_pdu_wrapper.pack())
                 packet_sent = True
@@ -458,16 +461,17 @@ class SourceEntityHandler(Thread):
         logger.info("Starting Source Entity Handler")
         while True:
             if self.stop_signal.is_set():
+                logger.info(f"Stopping Source Entity Handler. Local ID {self.sat_id}")
                 break
             if self.source_handler.state == CfdpState.IDLE and not self._idle_handling():
-                time.sleep(0.2)
+                time.sleep(0.1)
                 continue
             if self.source_handler.state == CfdpState.BUSY and not self._busy_handling():
-                time.sleep(0.2)
+                time.sleep(0.1)
 
 
 class DestEntityHandler(Thread):
-    BASE_STR_DEST = "Dest:"
+    BASE_STR_DEST = "Dest id"
 
     def __init__(
         self,
@@ -480,10 +484,14 @@ class DestEntityHandler(Thread):
     ):
         super().__init__()
 
-        dest_user = CfdpUser(self.BASE_STR_DEST, put_req_queue)
+        dest_user = CfdpUser(self.BASE_STR_DEST + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
-        self.sdest_handler = DestHandler(
-            cfg=LocalEntityConfig(sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_DEST)),
+        self.dest_handler = DestHandler(
+            cfg=LocalEntityConfig(
+                sat_id,
+                IndicationConfig(),
+                CfdpFaultHandler(self.BASE_STR_DEST + sat_id.__str__())
+            ),
             user=dest_user,
             remote_cfg_table=remote_entities,
             check_timer_provider=check_timer_provider,
@@ -500,6 +508,7 @@ class DestEntityHandler(Thread):
             packet_received = False
             packet = None
             if self.stop_signal.is_set():
+                logger.info(f"Stopping Dest Entity Handler. Local ID {self.sat_id}")
                 break
             try:
                 packet = self.dest_entity_queue.get(False)
@@ -514,8 +523,7 @@ class DestEntityHandler(Thread):
                 while fsm_result.states.num_packets_ready > 0:
                     next_pdu_wrapper = self.dest_handler.get_next_packet()
                     assert next_pdu_wrapper is not None
-                    if self.verbose_level >= 1:
-                        logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
+                    logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
                     self.tm_queue.put(next_pdu_wrapper.pack())
                     packet_sent = True
             # If there is no work to do, put the thread to sleep.

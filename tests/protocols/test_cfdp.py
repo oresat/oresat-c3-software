@@ -1,3 +1,5 @@
+import threading
+import time
 import unittest
 from datetime import timedelta
 from pathlib import Path
@@ -5,6 +7,7 @@ from queue import Empty, SimpleQueue
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+from cfdppy import get_packet_destination
 from cfdppy.exceptions import PduIgnoredForSource
 from cfdppy.handler import dest, source
 from cfdppy.handler.dest import DestHandler
@@ -26,7 +29,7 @@ from cfdppy.user import (
     TransactionParams,
 )
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransactionId, TransmissionMode
-from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu
+from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu, PduFactory
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
@@ -45,82 +48,10 @@ class CountdownProvider(CheckTimerProvider):
         return Countdown(timedelta(seconds=5.0))
 
 
-class PrintFaults(DefaultFaultHandlerBase):
-    """Prints all faults to stdout"""
-
-    def notice_of_suspension_cb(self, transaction_id, cond, progress):
-        # print(f"Transaction {transaction_id} suspended: {cond}. Progress {progress}")
-        pass
-
-    def notice_of_cancellation_cb(self, transaction_id, cond, progress):
-        # print(f"Transaction {transaction_id} cancelled: {cond}. Progress {progress}")
-        pass
-
-    def abandoned_cb(self, transaction_id, cond, progress):
-        # print(f"Transaction {transaction_id} abandoned: {cond}. Progress {progress}")
-        pass
-
-    def ignore_cb(self, transaction_id, cond, progress):
-        # print(f"Transaction {transaction_id} ignored: {cond}. Progress {progress}")
-        pass
-
-
-class PrintUser(CfdpUserBase):
-    """Prints all indications to sdtout"""
-
-    def transaction_indication(self, transaction_indication_params: TransactionParams):
-        # print(f"Indication: Transaction. {transaction_indication_params}")
-        pass
-
-    def eof_sent_indication(self, transaction_id: TransactionId):
-        # print(f"Indication: EOF Sent for {transaction_id}.")
-        pass
-
-    def transaction_finished_indication(self, params: TransactionFinishedParams):
-        # print(f"Indication: Transaction Finished. {params}")
-        pass
-
-    def metadata_recv_indication(self, params: MetadataRecvParams):
-        # print(f"Indication: Metadata Recv. {params}")
-        pass
-
-    def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
-        # print(f"Indication: File Segment Recv. {params}")
-        pass
-
-    def report_indication(self, transaction_id: TransactionId, status_report: Any):
-        # print("Indication: Report for {transaction_id}. {status_report}")
-        pass
-
-    def suspended_indication(self, transaction_id: TransactionId, cond_code: ConditionCode):
-        # print("Indication: Suspended for {transaction_id}. {cond_code}")
-        pass
-
-    def resumed_indication(self, transaction_id: TransactionId, progress: int):
-        # print("Indication: Resumed for {transaction_id}. {progress}")
-        pass
-
-    def fault_indication(
-        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
-    ):
-        # print("Indication: Fault for {transaction_id}. {cond_code}. {progress}")
-        pass
-
-    def abandoned_indication(
-        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
-    ):
-        # print("Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
-        pass
-
-    def eof_recv_indication(self, transaction_id: TransactionId):
-        # print("Indication: EOF Recv for {transaction_id}")
-        pass
-
-
-def put_request(dest: ByteFieldU8, file_path: str) -> PutRequest:
+def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
     """Creates a simple PutRequest for the file in file_path"""
     return PutRequest(
-        destination_id=dest,
+        destination_id=destination,
         source_file=Path(file_path),
         dest_file=Path(file_path),
         trans_mode=None,
@@ -142,6 +73,7 @@ class TestCfdp(unittest.TestCase):
         self._cfdp_src_queue = SimpleQueue()
         self._cfdp_dest_queue = SimpleQueue()
         self._cfdp_tm_queue = SimpleQueue()
+        self.stop_signal = threading.Event()
 
         # Satellite handling
         remote_entities = RemoteEntityConfigTable(
@@ -166,14 +98,16 @@ class TestCfdp(unittest.TestCase):
             self._cfdp_tm_queue,
             remote_entities,
             self.gnd_id,
-            self.sat_id
+            self.sat_id,
+            self.stop_signal
         )
         self.cfdp_dest_handler = DestEntityHandler(
             self._put_req_queue,
             self._cfdp_dest_queue,
             self._cfdp_tm_queue,
             remote_entities,
-            self.sat_id
+            self.sat_id,
+            self.stop_signal
         )
 
         # Ground station handling
@@ -206,17 +140,29 @@ class TestCfdp(unittest.TestCase):
             self._cfdp_tm_queue_gnd,
             remote_entities_gnd,
             self.sat_id,
-            self.gnd_id
+            self.gnd_id,
+            self.stop_signal
         )
         self.cfdp_dest_handler_gnd = DestEntityHandler(
             self._put_req_queue_gnd,
             self._cfdp_dest_queue_gnd,
             self._cfdp_tm_queue_gnd,
             remote_entities_gnd,
-            self.gnd_id
+            self.gnd_id,
+            self.stop_signal
         )
 
+        self.cfdp_source_handler.start()
+        self.cfdp_dest_handler.start()
+        self.cfdp_source_handler_gnd.start()
+        self.cfdp_dest_handler_gnd.start()
+
     def tearDown(self):
+        self.cfdp_source_handler.join()
+        self.cfdp_dest_handler.join()
+        self.cfdp_source_handler_gnd.join()
+        self.cfdp_dest_handler_gnd.join()
+        self.stop_signal.set()
         self.file.close()
 
     def test_simple_transfer(self):
@@ -228,9 +174,64 @@ class TestCfdp(unittest.TestCase):
         # dst <-- Ack (EoF)
         # dst <-- Finished
         # src --> Ack (Finished)
-        pdus = [MetadataPdu, FileDataPdu, EofPdu, AckPdu, FinishedPdu, AckPdu]
+        # pdus = [MetadataPdu, FileDataPdu, EofPdu, AckPdu, FinishedPdu, AckPdu]
 
-        self.cfdp_source_handler_gnd
+        put = put_request(self.sat_id, self.file.name)
+
+        self._put_req_queue_gnd.put(put)
+
+        time.sleep(0.2)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, MetadataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FileDataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(get_packet_destination(pdu.pdu))
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        time.sleep(1)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+
 
     # @unittest.skip("FIXME: Revisit this after upgrading cfdppy to 0.6.0")
     # def test_missing_ack(self):

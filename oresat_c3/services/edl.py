@@ -100,11 +100,15 @@ class EdlService(Service):
         )
         self._node_flasher_service = node_flasher_service
 
-        self._cfdp_tm_queue = SimpleQueue()  # send telemetry pdus from here.
-        self._cfdp_src_queue = SimpleQueue()  # send tc for the source here.
-        self._cfdp_dest_queue = SimpleQueue()  # send tc for the dest here.
+        self._put_req_queue = SimpleQueue()  # send new put reqs from the sat
+        self._cfdp_tm_queue = SimpleQueue()  # send telemetry pdus from here
+        self._cfdp_src_queue = SimpleQueue()  # send tc for the source here
+        self._cfdp_dest_queue = SimpleQueue()  # send tc for the dest here
         self.cfdp_source_handler = None
         self.cfdp_dest_handler = None
+
+        self.GND_ID = ByteFieldU8(0)
+        self.SAT_ID = ByteFieldU8(1)
 
         self._file_receiver = EdlFileReciever(node.fwrite_cache)
 
@@ -120,15 +124,12 @@ class EdlService(Service):
         self._last_edl_obj = edl_rec["last_timestamp"]
 
     def _init_cfdp(self) -> None:
-        GND_ID = ByteFieldU8(0)
-        SAT_ID = ByteFieldU8(1)
 
-        put_req_queue = SimpleQueue()
 
         remote_entities = RemoteEntityConfigTable(
             [
                 RemoteEntityConfig(
-                    entity_id=GND_ID,
+                    entity_id=self.GND_ID,
                     max_file_segment_len=None,
                     # FIXME this value should come from EdlPacket but EdlPacket does not define it.
                     # How does the exact value get determined? Currently it's just a mirror of the
@@ -142,9 +143,22 @@ class EdlService(Service):
             ]
         )
 
-        self.cfdp_source_handler = SourceEntityHandler(put_req_queue, self._cfdp_src_queue, self._cfdp_tm_queue,remote_entities, GND_ID, SAT_ID)
+        self.cfdp_source_handler = SourceEntityHandler(
+            self.put_req_queue,
+            self._cfdp_src_queue,
+            self._cfdp_tm_queue,
+            remote_entities,
+            self.GND_ID,
+            self.SAT_ID
+        )
 
-        self.cfdp_dest_handler = DestEntityHandler(put_req_queue, self._cfdp_dest_queue, self._cfdp_tm_queue,remote_entities, SAT_ID)
+        self.cfdp_dest_handler = DestEntityHandler(
+            self.put_req_queue,
+            self._cfdp_dest_queue,
+            self._cfdp_tm_queue,
+            remote_entities,
+            self.SAT_ID
+        )
 
     @property
     def _hmac_key(self) -> bytes:

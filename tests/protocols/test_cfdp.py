@@ -30,6 +30,15 @@ from cfdppy.user import (
 )
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransactionId, TransmissionMode
 from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu, PduFactory
+from spacepackets.cfdp.tlv import (
+    DirectoryListingResponse,
+    DirectoryOperationMessageType,
+    OriginatingTransactionId,
+    ProxyMessageType,
+    ProxyPutRequest,
+    ProxyPutResponse,
+    ProxyPutResponseParams,
+)
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
@@ -168,13 +177,12 @@ class TestCfdp(unittest.TestCase):
     def test_simple_transfer(self):
         """A basic transfer that ensures the no-loss path is working"""
         # The simple standard file transfer
-        # src --> Metadata
-        # src --> FileData
-        # src --> EoF
-        # dst <-- Ack (EoF)
-        # dst <-- Finished
-        # src --> Ack (Finished)
-        # pdus = [MetadataPdu, FileDataPdu, EofPdu, AckPdu, FinishedPdu, AckPdu]
+        # src --> dst Metadata
+        # src --> dst FileData
+        # src --> dst EoF
+        # src <-- dst Ack (EoF)
+        # src <-- dst Finished
+        # src --> dst Ack (Finished)
 
         put = put_request(self.sat_id, self.file.name)
 
@@ -241,6 +249,7 @@ class TestCfdp(unittest.TestCase):
 
     # Broken for now. For some reason CFDP stops resending EOFs after recieving a finished PDU,
     # leaving it stuck waiting for an ACK (EOF) without resending EOFs.
+    # @unittest.skip("FIXME: stops resending EoFs after recieving finished")
     def test_dropped_ack(self):
         """What happens if the first ack gets dropped?"""
         # src --> Metadata
@@ -262,6 +271,7 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.2)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
         self.assertIsInstance(pdu.pdu, MetadataPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
@@ -269,6 +279,7 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.15)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
         self.assertIsInstance(pdu.pdu, FileDataPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
@@ -276,7 +287,7 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.15)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(get_packet_destination(pdu.pdu))
+        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
         self.assertIsInstance(pdu.pdu, EofPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
@@ -284,6 +295,8 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
 
         # dst <-- Finished
         time.sleep(0.15)
@@ -331,63 +344,95 @@ class TestCfdp(unittest.TestCase):
             source.TransactionStep.IDLE
         )
 
+    def test_proxy_put_request(self):
+        """
+        The ground asks the spacecraft to send a file to someone (the ground in our case), the
+        spacecraft creates a new transation to send it, then starts a transaction to send a
+        "we've finished" message.
+        """
+        # gnd_src --> s/c_dst Metadata      T1
+        # gnd_src --> s/c_dst Eof           T1
+        # gnd_src <-- s/c_dst Ack (EoF)     T1
+        # gnd_src <-- s/c_dst Finished      T1
+        # gnd_src --> s/c_dst Ack (Fin)     T1
 
-    # @unittest.skip("FIXME: Revisit this after upgrading cfdppy to 0.6.0")
-    # def test_missing_ack(self):
-    #     """What happens if the first ack gets dropped?"""
-    #     # src --> Metadata
-    #     # src --> FileData
-    #     # src --> EoF
-    #     # dst  X  Ack (EoF)
-    #     # dst <-- Finished
-    #     # ??? According to 4.7.1 b) the origional PDU should be re-issued. So:
-    #     # src --> EoF
-    #     # dst <-- Ack (EoF)
-    #     # dst <-- Finished
-    #     # src --> Ack (Finished)
-    #     pdus = [MetadataPdu, FileDataPdu, EofPdu, AckPdu, FinishedPdu, AckPdu]
+        # gnd_dst <-- s/c_src Metadata      T2
+        # gnd_dst <-- s/c_src Filedata      T2
+        # gnd_dst <-- s/c_src Eof           T2
+        # gnd_dst --> s/c_src Ack (EoF)     T2
+        # gnd_dst --> s/c_src Finished      T2
+        # gnd_dst <-- s/c_src Ack (Fin)     T2
 
-    #     put = put_request(self.dst_id, self.file.name)
-    #     self.assertTrue(self.src.put_request(put))
+        # Not entirely clear on how this is supposed to work.
+        # gnd_src <-- s/c_dst Metadata      T3
+        # gnd_src <-- s/c_dst Eof           T3
+        # gnd_src --> s/c_dst Ack (EoF)     T3
+        # gnd_src --> s/c_dst Finished      T3
+        # gnd_src <-- s/c_dst Ack (Fin)     T3
 
-    #     for i, pdutype in enumerate(pdus):
-    #         self.src.state_machine()
-    #         self.dst.state_machine()
+        put = ProxyPutRequest(
+            destination_id=self.gnd_id,
+            source_file=Path(self.file.name),
+            dest_file=Path(self.file.name),
+            trans_mode=None,
+            closure_requested=True,
+        )
 
-    #         print("SRC:", self.src.step, "| DST:", self.src.step)
+        self._put_req_queue_gnd.put(put)
 
-    #         while self.src.packets_ready:
-    #             pdu = self.src.get_next_packet().pdu
-    #             print("\nSRC ", pdu, "\n")
-    #             self.assertIsInstance(pdu, pdutype)
-    #             self.dst.state_machine(pdu)
+        # gnd_src --> s/c_dst Metadata      T1
+        time.sleep(0.2)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, MetadataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
 
-    #         while self.dst.packets_ready:
-    #             pdu = self.dst.get_next_packet().pdu
-    #             self.assertIsInstance(pdu, pdutype)
-    #             if i == 3:  # Skip first Ack
-    #                 break
-    #             print("\nSRC ", pdu, "\n")
-    #             with self.assertRaises(PduIgnoredForSource):
-    #                 self.src.state_machine(pdu)
+        # gnd_src --> s/c_dst Eof           T1
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(get_packet_destination(pdu.pdu))
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
 
-    #     self.src.state_machine()
-    #     self.dst.state_machine()
+        # gnd_src <-- s/c_dst Ack (EoF)     T1
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
 
-    #     self.assertEqual(self.src.step, source.TransactionStep.IDLE)
-    #     self.assertEqual(self.dst.step, dest.TransactionStep.IDLE)
+        # gnd_src <-- s/c_dst Finished      T1
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
 
+        # gnd_src --> s/c_dst Ack (Fin)     T1
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+        time.sleep(1)
+        # End of transaction 1. The queues used for it should be empty, as the next transactions
+        # use the opposite queues.
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
 
-#
-#
-#
-#    def run(self):
-#        while packet := self.downlink.get():
-#            with self.lock:
-#                self.src.state_machine(packet)
-#                self.src.state_machine()
-#                while self.src.packets_ready:
-#                    pdu = self.src.get_next_packet().pdu
-#                    self.uplink.put(pdu)
-#
+        # Make sure we've returned to idle / empty.
+        time.sleep(1)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.IDLE
+        )
 

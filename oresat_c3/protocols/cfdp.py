@@ -464,7 +464,7 @@ class SourceEntityHandler(Thread):
                 logger.info(f"Stopping Source Entity Handler. Local ID {self.sat_id}")
                 break
             if self.source_handler.state == CfdpState.IDLE and not self._idle_handling():
-                time.sleep(0.1)
+                time.sleep(0.2)
                 continue
             if self.source_handler.state == CfdpState.BUSY and not self._busy_handling():
                 time.sleep(0.1)

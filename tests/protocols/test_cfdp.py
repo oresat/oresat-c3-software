@@ -55,7 +55,7 @@ def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
         source_file=Path(file_path),
         dest_file=Path(file_path),
         trans_mode=None,
-        closure_requested=None,
+        closure_requested=True,
     )
 
 
@@ -85,7 +85,7 @@ class TestCfdp(unittest.TestCase):
                     # How does the exact value get determined? Currently it's just a mirror of the
                     # value in edl_file_upload.py
                     max_packet_len=950,
-                    closure_requested=False,
+                    closure_requested=True,
                     crc_on_transmission=False,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,
@@ -127,7 +127,7 @@ class TestCfdp(unittest.TestCase):
                     # How does the exact value get determined? Currently it's just a mirror of the
                     # value in edl_file_upload.py
                     max_packet_len=950,
-                    closure_requested=False,
+                    closure_requested=True,
                     crc_on_transmission=False,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,
@@ -180,18 +180,21 @@ class TestCfdp(unittest.TestCase):
 
         self._put_req_queue_gnd.put(put)
 
+        # src --> Metadata
         time.sleep(0.2)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         self.assertIsInstance(pdu.pdu, MetadataPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
+        # src --> Filedata
         time.sleep(0.15)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         self.assertIsInstance(pdu.pdu, FileDataPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
+        # src --> EoF
         time.sleep(0.15)
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
@@ -199,6 +202,7 @@ class TestCfdp(unittest.TestCase):
         self.assertIsInstance(pdu.pdu, EofPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
+        # dst <-- Ack (EoF)
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         pdu_packed = self._cfdp_tm_queue.get()
@@ -206,12 +210,14 @@ class TestCfdp(unittest.TestCase):
         self.assertIsInstance(pdu.pdu, AckPdu)
         self._cfdp_src_queue_gnd.put(pdu.pdu)
 
+        # dst <-- Finished
         time.sleep(0.15)
         pdu_packed = self._cfdp_tm_queue.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         self.assertIsInstance(pdu.pdu, FinishedPdu)
         self._cfdp_src_queue_gnd.put(pdu.pdu)
 
+        # src --> Ack (Finished)
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue.empty())
         pdu_packed = self._cfdp_tm_queue_gnd.get()
@@ -219,6 +225,99 @@ class TestCfdp(unittest.TestCase):
         self.assertIsInstance(pdu.pdu, AckPdu)
         self._cfdp_dest_queue.put(pdu.pdu)
 
+        # Make sure we've returned to idle / empty.
+        time.sleep(1)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+
+    # Broken for now. For some reason CFDP stops resending EOFs after recieving a finished PDU,
+    # leaving it stuck waiting for an ACK (EOF) without resending EOFs.
+    def test_dropped_ack(self):
+        """What happens if the first ack gets dropped?"""
+        # src --> Metadata
+        # src --> FileData
+        # src --> EoF
+        # dst  X  Ack (EoF)
+        # dst <-- Finished
+        # ??? According to 4.7.1 b) the origional PDU should be re-issued. So:
+        # src --> EoF
+        # dst <-- Ack (EoF)
+        # dst <-- Finished
+        # src --> Ack (Finished)
+
+        put = put_request(self.sat_id, self.file.name)
+
+        self._put_req_queue_gnd.put(put)
+
+        # src --> Metadata
+        time.sleep(0.2)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, MetadataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # src --> Filedata
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FileDataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # src --> EoF
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(get_packet_destination(pdu.pdu))
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # dst <-- Ack (EoF)
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+
+        # dst <-- Finished
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+        time.sleep(1)
+
+        print(self.cfdp_source_handler_gnd.source_handler.step)
+
+        time.sleep(10)
+
+        # dst <-- Finished
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+        time.sleep(1)
+
+        print(self.cfdp_source_handler_gnd.source_handler.step)
+
+        time.sleep(100)
+
+        # src --> Ack (Finished)
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # Make sure we've returned to idle / empty.
         time.sleep(1)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
@@ -291,3 +390,4 @@ class TestCfdp(unittest.TestCase):
 #                    pdu = self.src.get_next_packet().pdu
 #                    self.uplink.put(pdu)
 #
+

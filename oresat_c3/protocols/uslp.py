@@ -65,9 +65,8 @@ def unpack_frame(raw: bytes) -> TransferFrame:
 
     vcid = ((raw[2] & 0b111) << 3) | ((raw[3] >> 5) & 0b111)
 
-    # bypass frames never have an SDLS insert zone
-    is_bypass = bool(raw[6] & 0x80)
-    sdls_header_len = 0 if is_bypass else get_sdls_header_len(vcid)
+    is_command = bool(raw[6] & 0x40)
+    sdls_header_len = 0 if is_command else get_sdls_header_len(vcid)
 
     frame_props = VarFrameProperties(
         has_insert_zone=sdls_header_len != 0,
@@ -140,7 +139,7 @@ def make_frame(
     frame_len = len(payload) + PRIMARY_HEADER_LEN + vcf_count_len + DFH_LEN + FECF_LEN - 1
     if has_clcw:
         frame_len += len(control_word)
-    if not bypass:
+    if not command:
         frame_len += get_sdls_len(vcid)
 
     frame_header = PrimaryHeader(
@@ -164,7 +163,7 @@ def make_frame(
 
     frame = TransferFrame(header=frame_header, tfdf=tfdf, op_ctrl_field=control_word)
 
-    if not bypass:
+    if not command:
         apply_sdls(frame, sequence_number, hmac_key)
 
     return frame

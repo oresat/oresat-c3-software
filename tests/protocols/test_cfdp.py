@@ -28,6 +28,7 @@ from cfdppy.user import (
     TransactionFinishedParams,
     TransactionParams,
 )
+from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransactionId, TransmissionMode
 from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu, PduFactory
 from spacepackets.cfdp.tlv import (
@@ -36,8 +37,10 @@ from spacepackets.cfdp.tlv import (
     OriginatingTransactionId,
     ProxyMessageType,
     ProxyPutRequest,
+    ProxyPutRequestParams,
     ProxyPutResponse,
     ProxyPutResponseParams,
+    ProxyTransmissionMode,
 )
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
@@ -370,12 +373,25 @@ class TestCfdp(unittest.TestCase):
         # gnd_src --> s/c_dst Finished      T3
         # gnd_src <-- s/c_dst Ack (Fin)     T3
 
-        put = ProxyPutRequest(
-            destination_id=self.gnd_id,
-            source_file=Path(self.file.name),
-            dest_file=Path(self.file.name),
+
+        proxy_put = ProxyPutRequest(
+            ProxyPutRequestParams(
+                dest_entity_id=self.gnd_id,
+                source_file_name=CfdpLv.from_str(self.file.name),
+                dest_file_name=CfdpLv.from_str(self.file.name)
+            )
+        ).to_generic_msg_to_user_tlv()
+        # Yamcs will always send a proxy transmission mode message, for both class 1 or class 2.
+        proxy_trans = ProxyTransmissionMode(
+            TransmissionMode.ACKNOWLEDGED
+        ).to_generic_msg_to_user_tlv()
+        put = PutRequest(
+            destination_id=self.sat_id,
+            source_file=None,
+            dest_file=None,
             trans_mode=None,
             closure_requested=True,
+            msgs_to_user=[proxy_put, proxy_trans],
         )
 
         self._put_req_queue_gnd.put(put)
@@ -389,6 +405,7 @@ class TestCfdp(unittest.TestCase):
 
         # gnd_src --> s/c_dst Eof           T1
         time.sleep(0.15)
+        print("\n\n\na\n\n\n")
         pdu_packed = self._cfdp_tm_queue_gnd.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         print(get_packet_destination(pdu.pdu))
@@ -397,6 +414,7 @@ class TestCfdp(unittest.TestCase):
 
         # gnd_src <-- s/c_dst Ack (EoF)     T1
         time.sleep(0.15)
+        print("\n\n\nb\n\n\n")
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         pdu_packed = self._cfdp_tm_queue.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
@@ -405,6 +423,7 @@ class TestCfdp(unittest.TestCase):
 
         # gnd_src <-- s/c_dst Finished      T1
         time.sleep(0.15)
+        print("\n\n\nc\n\n\n")
         pdu_packed = self._cfdp_tm_queue.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         self.assertIsInstance(pdu.pdu, FinishedPdu)
@@ -421,6 +440,102 @@ class TestCfdp(unittest.TestCase):
         # End of transaction 1. The queues used for it should be empty, as the next transactions
         # use the opposite queues.
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        print("\n\n\nDONE WITH TRANSACTION 1\n\n\n")
+
+        # gnd_src --> s/c_dst Metadata      T2
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, MetadataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Metadata      T2
+        time.sleep(0.2)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FileDataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Eof           T2
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(get_packet_destination(pdu.pdu))
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src <-- s/c_dst Ack (EoF)     T2
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        # gnd_src <-- s/c_dst Finished      T2
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Ack (Fin)     T2
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+        time.sleep(1)
+        # End of transaction 2.
+        print("\n\n\nDONE WITH TRANSACTION 2\n\n\n")
+
+
+        # gnd_src --> s/c_dst Metadata      T3
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, MetadataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Metadata      T3
+        time.sleep(0.2)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FileDataPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Eof           T3
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        print(get_packet_destination(pdu.pdu))
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+
+        # gnd_src <-- s/c_dst Ack (EoF)     T3
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        # gnd_src <-- s/c_dst Finished      T3
+        time.sleep(0.15)
+        pdu_packed = self._cfdp_tm_queue.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self._cfdp_src_queue_gnd.put(pdu.pdu)
+
+        # gnd_src --> s/c_dst Ack (Fin)     T3
+        time.sleep(0.15)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        pdu_packed = self._cfdp_tm_queue_gnd.get()
+        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self.assertIsInstance(pdu.pdu, AckPdu)
+        self._cfdp_dest_queue.put(pdu.pdu)
+        time.sleep(1)
+        # End of transaction 3.
+
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)

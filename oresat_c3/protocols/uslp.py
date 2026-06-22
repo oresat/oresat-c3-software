@@ -65,7 +65,9 @@ def unpack_frame(raw: bytes) -> TransferFrame:
 
     vcid = ((raw[2] & 0b111) << 3) | ((raw[3] >> 5) & 0b111)
 
-    sdls_header_len = get_sdls_header_len(vcid)
+    # bypass frames never have an SDLS insert zone
+    is_bypass = bool(raw[6] & 0x80)
+    sdls_header_len = 0 if is_bypass else get_sdls_header_len(vcid)
 
     frame_props = VarFrameProperties(
         has_insert_zone=sdls_header_len != 0,
@@ -132,18 +134,14 @@ def make_frame(
 
     vcf_count_len = 1 if vcf_count is not None else 0
 
-    # USLP transfer frame total length - 1
-    frame_len = len(payload) + PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN - 1
-
     has_clcw = control_word is not None
-    if has_clcw:
-        frame_len += len(control_word)
 
     # USLP transfer frame total length - 1
-    frame_len = len(payload) + PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN - 1
+    frame_len = len(payload) + PRIMARY_HEADER_LEN + vcf_count_len + DFH_LEN + FECF_LEN - 1
     if has_clcw:
         frame_len += len(control_word)
-    frame_len += get_sdls_len(vcid)
+    if not bypass:
+        frame_len += get_sdls_len(vcid)
 
     frame_header = PrimaryHeader(
         scid=SPACECRAFT_ID,
@@ -168,6 +166,7 @@ def make_frame(
 
     frame = TransferFrame(header=frame_header, tfdf=tfdf, op_ctrl_field=control_word)
 
-    apply_sdls(frame, sequence_number, hmac_key)
+    if not bypass:
+        apply_sdls(frame, sequence_number, hmac_key)
 
     return frame

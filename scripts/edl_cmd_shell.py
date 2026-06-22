@@ -31,12 +31,12 @@ from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
 from spacepackets.uslp.frame import FrameType
 
-from oresat_c3.protocols.uslp import SEQ_NUM_LEN, SPACECRAFT_ID, make_frame, unpack_frame
+from oresat_c3.protocols.uslp import SPACECRAFT_ID, make_frame, unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_command import EDL_COMMANDS, EdlCommandCode, EdlCommandRequest
-from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket, EdlVcid, gen_hmac
+from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket, EdlVcid
 
 
 class EdlCommandShell(Cmd):
@@ -73,7 +73,6 @@ class EdlCommandShell(Cmd):
         self._fop1.on_receive_directive(
             DirectiveRequest(self._gvcid, 0, DirectiveType.INITIATE_AD_NO_CLCW)
         )
-        # Signal lower layer ready so FOP-1 can transmit the first frame
         self._fop1.on_receive_response_from_lower_layer(
             Response(self._gvcid, ResponseType.AD_ACCEPTED)
         )
@@ -93,7 +92,8 @@ class EdlCommandShell(Cmd):
                     payload=req.tfdf,
                     vcid=EdlVcid.C3_COMMAND,
                     src_dest=SRC_DEST_ORESAT,
-                    insert_zone=self._seq_num.to_bytes(SEQ_NUM_LEN, "little"),
+                    hmac_key=self._hmac_key,
+                    sequence_number=self._seq_num,
                     vcf_count=None if bypass else req.v_s,
                     bypass=bypass,
                     command=req.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
@@ -149,8 +149,7 @@ class EdlCommandShell(Cmd):
 
         res_packet = None
         try:
-            payload_raw = EdlCommandRequest(code, args).pack()
-            tfdz = payload_raw + gen_hmac(self._hmac_key, payload_raw)
+            tfdz = EdlCommandRequest(code, args).pack()
 
             self._fop1_req_id += 1
             self._fop1.on_receive_request_to_transfer_fdu(
@@ -195,7 +194,7 @@ class EdlCommandShell(Cmd):
                     finally:
                         self._downlink_socket.settimeout(self._timeout)
             else:
-                # No EDL response expected, but still wait for a CLCW to acknowledge the AD frame
+                # no EDL response expected, but still wait for a CLCW to acknowledge the AD frame
                 for _ in range(10):
                     try:
                         raw = self._downlink_socket.recv(1024)
@@ -210,7 +209,6 @@ class EdlCommandShell(Cmd):
                         if self._fop1.nn_r == self._fop1.v_s:
                             break
 
-            # Lower layer ready for next frame
             self._fop1.on_receive_response_from_lower_layer(
                 Response(self._gvcid, ResponseType.AD_ACCEPTED)
             )
@@ -286,7 +284,6 @@ class EdlCommandShell(Cmd):
         if self._fop1.suspend_state != 0:
             print("FOP-1 is suspended; use 'cop_resume' before reinitializing")
             return
-        # Always terminate first — no-op from INITIAL, resets cleanly from any other state
         self._fop1_req_id += 1
         self._fop1.on_receive_directive(
             DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.TERMINATE_AD)
@@ -299,7 +296,7 @@ class EdlCommandShell(Cmd):
 
         if arg.strip():
             v_r = int(arg.strip(), 0)
-            # Bootstrap bc_out=True so FOP-1 can send the BC frame
+            # force bc_out=True so FOP-1 can send the BC frame
             self._fop1.on_receive_response_from_lower_layer(
                 Response(self._gvcid, ResponseType.BC_ACCEPTED)
             )
@@ -311,7 +308,6 @@ class EdlCommandShell(Cmd):
             last = self._last_clcw.get(self._gvcid.vcid)
             target_v_s = last.report_value if last is not None else self._fop1.v_s
             if target_v_s != self._fop1.v_s or self._fop1.nn_r != self._fop1.v_s:
-                # Align V(S) to FARM-1's V(R) without touching FARM-1
                 self._fop1_req_id += 1
                 self._fop1.on_receive_directive(
                     DirectiveRequest(
@@ -333,7 +329,6 @@ class EdlCommandShell(Cmd):
         self._fop1.on_receive_directive(directive)
         self._flush_fop_lower()
 
-        # Consume the immediate ACCEPT (or REJECT) from the directive
         while True:
             try:
                 notif = self._fop1.interface.to_higher.pop()
@@ -343,9 +338,7 @@ class EdlCommandShell(Cmd):
                 if notif.notification_type == NotificationType.REJECT:
                     print(f"FOP-1 init rejected (state={self._fop1.state.name})")
                     return
-                # ACCEPT: proceed to wait for CLCW confirmation
 
-        # Wait for CLCW to trigger POSITIVE_CONFIRM (or NEGATIVE_CONFIRM on alert)
         for _ in range(10):
             try:
                 raw = self._downlink_socket.recv(1024)
@@ -518,15 +511,16 @@ class EdlCommandShell(Cmd):
         if not respone:
             return
 
-        if respone[0] != 0:
-            print(f"SDO error code: 0x{respone[0]:08X}")
+        # response tuple: (node_id, index, subindex, ecode, len_data, data)
+        if respone[3] != 0:
+            print(f"SDO error code: 0x{respone[3]:08X}")
             return
 
         if isinstance(od[index], canopen.objectdictionary.Variable):
             obj = od[index]
         else:
             obj = od[index][subindex]
-        value = obj.decode_raw(respone[2])
+        value = obj.decode_raw(respone[5])
         print("Value from SDO read: ", value)
 
     def help_sdo_write(self):

@@ -350,7 +350,7 @@ class TestCfdp(unittest.TestCase):
     def test_proxy_put_request(self):
         """
         The ground asks the spacecraft to send a file to someone (the ground in our case), the
-        spacecraft creates a new transation to send it, then starts a transaction to send a
+        spacecraft creates a new transaction to send it, then starts a transaction to send a
         "we've finished" message.
         """
         # gnd_src --> s/c_dst Metadata      T1
@@ -366,7 +366,6 @@ class TestCfdp(unittest.TestCase):
         # gnd_dst --> s/c_src Finished      T2
         # gnd_dst <-- s/c_src Ack (Fin)     T2
 
-        # Not entirely clear on how this is supposed to work.
         # gnd_src <-- s/c_dst Metadata      T3
         # gnd_src <-- s/c_dst Eof           T3
         # gnd_src --> s/c_dst Ack (EoF)     T3

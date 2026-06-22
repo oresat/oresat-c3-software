@@ -16,7 +16,7 @@ from cfdppy.exceptions import (
     SourceFileDoesNotExist,
 )
 from cfdppy.handler.dest import CompletionDisposition, DestHandler
-from cfdppy.handler.source import SourceHandler
+from cfdppy.handler.source import SourceHandler, TransactionStep
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -43,7 +43,7 @@ from spacepackets.cfdp import (
     TransmissionMode,
 )
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
-from spacepackets.cfdp.pdu import AbstractFileDirectiveBase, EofPdu, FileDataPdu
+from spacepackets.cfdp.pdu import AbstractFileDirectiveBase, DirectiveType, EofPdu, FileDataPdu
 from spacepackets.cfdp.pdu.file_data import FileDataParams
 from spacepackets.cfdp.tlv import (
     DirectoryListingResponse,
@@ -94,6 +94,37 @@ class VfsSourceHandler(SourceHandler):
         fd_params = FileDataParams(file_data=file_data, offset=offset, segment_metadata=None)
         file_data_pdu = FileDataPdu(pdu_conf=self._params.pdu_conf, params=fd_params)
         self._add_packet_to_be_sent(file_data_pdu)
+
+    def _sending_file_data_fsm(self, packet_holder: PduHolder) -> bool:
+        """Fixes the parent not sending EOFs for metadata only transactions. CCSDS 720.1-G-4 and
+        YAMCS both have proxy put requests sending EOFs, so this brings cfdppy into compliance.
+        """
+        logger.warning("do we get here?")
+        if self.transmission_mode == TransmissionMode.ACKNOWLEDGED and super()._SourceHandler__handle_retransmission(
+            packet_holder
+        ):
+            logger.warning("do we get here?fail")
+            return True
+        logger.warning("do we get here?2")
+        # No need to send a file data PDU for an empty file
+        if (
+            not self._params.fp.metadata_only
+            and self._params.fp.progress < self._params.fp.file_size
+        ):
+            logger.warning("do we get here?what")
+            self._prepare_progressing_file_data_pdu()
+            # Not finished yet. We exit here to allow the user to do flow control.
+            return True
+        logger.warning("do we get here?3")
+        if self._params.fp.empty_file or self._params.fp.metadata_only:
+            self._params.cond_code_eof = ConditionCode.NO_ERROR
+            self.states.step = TransactionStep.SENDING_EOF
+        return False
+
+    def _checksum_calculation(self, size_to_calculate: int) -> bytes:
+        if self._params.fp.metadata_only:
+            return b'\0' * 4
+        return super()._checksum_calculation(size_to_calculate)
 
 
 class FixedDestHandler(DestHandler):

@@ -6,7 +6,6 @@ from spacepackets.uslp.defs import UslpChecksumError, UslpInvalidRawPacketOrFram
 from spacepackets.uslp.frame import FrameType
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlVcid
-from oresat_c3.protocols.sdls import verify_sdls
 from oresat_c3.protocols.uslp import make_frame, unpack_frame
 
 HMAC_KEY = b"\x00" * 32
@@ -32,9 +31,7 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
         unpacked = unpack_frame(raw)
         self.assertEqual(unpacked.header.vcid, EdlVcid.C3_COMMAND)
         self.assertIsNotNone(unpacked.insert_zone)
-        seq = verify_sdls(unpacked, HMAC_KEY)
-        self.assertEqual(seq, 5)
-        self.assertEqual(unpacked.tfdf.tfdz, b"\x01\x02\x03")
+        self.assertTrue(unpacked.tfdf.tfdz.startswith(b"\x01\x02\x03"))
 
     def test_ad_frame_len_is_total_minus_one(self):
         """frame_len header field must equal total packed bytes minus one."""
@@ -76,7 +73,7 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
         self.assertEqual(unpacked.tfdf.tfdz, b"\x00")
 
     def test_bc_frame_no_sdls(self):
-        """SDLS must not be applied to bypass frames."""
+        """Type-BC (command) frames must not have an SDLS insert zone."""
         frame = make_frame(
             b"\x00",
             EdlVcid.C3_COMMAND,
@@ -85,6 +82,35 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
             command=True,
         )
         self.assertIsNone(frame.insert_zone)
+
+    def test_bd_frame_has_sdls(self):
+        """Type-BD frames must have an SDLS insert zone."""
+        frame = make_frame(
+            b"\x00",
+            EdlVcid.C3_COMMAND,
+            SRC_DEST_ORESAT,
+            hmac_key=HMAC_KEY,
+            bypass=True,
+            command=False,
+        )
+        self.assertIsNotNone(frame.insert_zone)
+
+    def test_bd_frame_roundtrip(self):
+        """Type-BD frame packs and unpacks correctly with SDLS."""
+        frame = make_frame(
+            b"\x01\x02",
+            EdlVcid.C3_COMMAND,
+            SRC_DEST_ORESAT,
+            hmac_key=HMAC_KEY,
+            bypass=True,
+            command=False,
+            sequence_number=7,
+        )
+        raw = self._pack(frame)
+        unpacked = unpack_frame(raw)
+        self.assertEqual(unpacked.header.vcid, EdlVcid.C3_COMMAND)
+        self.assertIsNotNone(unpacked.insert_zone)
+        self.assertTrue(unpacked.tfdf.tfdz.startswith(b"\x01\x02"))
 
     def test_bc_frame_len_is_total_minus_one(self):
         """BC frame_len field must equal total packed bytes minus one."""

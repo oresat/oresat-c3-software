@@ -265,11 +265,11 @@ class EdlCommandShell(Cmd):
         self._fop1.on_receive_directive(
             DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.RESUME_AD)
         )
-        while True:
-            try:
+        try:
+            while True:
                 self._fop1.interface.to_higher.pop()
-            except IndexError:
-                break
+        except IndexError:
+            pass
         print(f"FOP-1 resumed: state={self._fop1.state.name}, V(S)={self._fop1.v_s}")
 
     def help_cop_init(self):
@@ -288,11 +288,11 @@ class EdlCommandShell(Cmd):
         self._fop1.on_receive_directive(
             DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.TERMINATE_AD)
         )
-        while True:
-            try:
+        try:
+            while True:
                 self._fop1.interface.to_higher.pop()
-            except IndexError:
-                break
+        except IndexError:
+            pass
 
         if arg.strip():
             v_r = int(arg.strip(), 0)
@@ -317,11 +317,11 @@ class EdlCommandShell(Cmd):
                         target_v_s,
                     )
                 )
-                while True:
-                    try:
+                try:
+                    while True:
                         self._fop1.interface.to_higher.pop()
-                    except IndexError:
-                        break
+                except IndexError:
+                    pass
             directive = DirectiveRequest(
                 self._gvcid, self._fop1_req_id, DirectiveType.INITIATE_AD_WITH_CLCW
             )
@@ -365,7 +365,8 @@ class EdlCommandShell(Cmd):
                 if isinstance(notif, DirectiveNotification):
                     if notif.notification_type == NotificationType.POSITIVE_CONFIRM:
                         print(
-                            f"FOP-1 initialized: state={self._fop1.state.name}, V(S)={self._fop1.v_s}"
+                            f"FOP-1 initialized: state={self._fop1.state.name},"
+                            f" V(S)={self._fop1.v_s}"
                         )
                     else:
                         print(

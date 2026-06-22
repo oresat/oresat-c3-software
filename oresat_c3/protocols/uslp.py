@@ -153,9 +153,7 @@ def make_frame(
         vcf_count=vcf_count,
         op_ctrl_flag=has_clcw,
         prot_ctrl_cmd_flag=(
-            ProtocolCommandFlag.PROTOCOL_INFORMATION
-            if command
-            else ProtocolCommandFlag.USER_DATA
+            ProtocolCommandFlag.PROTOCOL_INFORMATION if command else ProtocolCommandFlag.USER_DATA
         ),
         bypass_seq_ctrl_flag=(
             BypassSequenceControlFlag.EXPEDITED_QOS

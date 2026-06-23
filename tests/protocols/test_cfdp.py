@@ -170,11 +170,11 @@ class TestCfdp(unittest.TestCase):
         self.cfdp_dest_handler_gnd.start()
 
     def tearDown(self):
+        self.stop_signal.set()
         self.cfdp_source_handler.join()
         self.cfdp_dest_handler.join()
         self.cfdp_source_handler_gnd.join()
         self.cfdp_dest_handler_gnd.join()
-        self.stop_signal.set()
         self.file.close()
 
     def test_simple_transfer(self):

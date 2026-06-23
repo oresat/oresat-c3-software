@@ -16,7 +16,9 @@ from cfdppy.exceptions import (
     SourceFileDoesNotExist,
 )
 from cfdppy.handler.dest import CompletionDisposition, DestHandler
-from cfdppy.handler.source import SourceHandler, TransactionStep
+from cfdppy.handler.dest import TransactionStep as DestTransactionStep
+from cfdppy.handler.source import SourceHandler
+from cfdppy.handler.source import TransactionStep as SrcTransactionStep
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -43,7 +45,13 @@ from spacepackets.cfdp import (
     TransmissionMode,
 )
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
-from spacepackets.cfdp.pdu import AbstractFileDirectiveBase, DirectiveType, EofPdu, FileDataPdu
+from spacepackets.cfdp.pdu import (
+    AbstractFileDirectiveBase,
+    DirectiveType,
+    EofPdu,
+    FileDataPdu,
+    MetadataPdu,
+)
 from spacepackets.cfdp.pdu.file_data import FileDataParams
 from spacepackets.cfdp.tlv import (
     DirectoryListingResponse,
@@ -54,6 +62,7 @@ from spacepackets.cfdp.tlv import (
     ProxyPutResponse,
     ProxyPutResponseParams,
     ReservedCfdpMessage,
+    TlvType,
 )
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
@@ -99,26 +108,21 @@ class VfsSourceHandler(SourceHandler):
         """Fixes the parent not sending EOFs for metadata only transactions. CCSDS 720.1-G-4 and
         YAMCS both have proxy put requests sending EOFs, so this brings cfdppy into compliance.
         """
-        logger.warning("do we get here?")
         if self.transmission_mode == TransmissionMode.ACKNOWLEDGED and super()._SourceHandler__handle_retransmission(
             packet_holder
         ):
-            logger.warning("do we get here?fail")
             return True
-        logger.warning("do we get here?2")
         # No need to send a file data PDU for an empty file
         if (
             not self._params.fp.metadata_only
             and self._params.fp.progress < self._params.fp.file_size
         ):
-            logger.warning("do we get here?what")
             self._prepare_progressing_file_data_pdu()
             # Not finished yet. We exit here to allow the user to do flow control.
             return True
-        logger.warning("do we get here?3")
         if self._params.fp.empty_file or self._params.fp.metadata_only:
             self._params.cond_code_eof = ConditionCode.NO_ERROR
-            self.states.step = TransactionStep.SENDING_EOF
+            self.states.step = SrcTransactionStep.SENDING_EOF
         return False
 
     def _checksum_calculation(self, size_to_calculate: int) -> bytes:
@@ -176,6 +180,51 @@ class FixedDestHandler(DestHandler):
         """Same issue as _handle_eof_pdu"""
         eof_pdu.condition_code >>= 4
         return super()._handle_eof_without_previous_metadata(eof_pdu)
+
+    def _handle_metadata_packet(self, metadata_pdu: MetadataPdu) -> None:
+        """Fixes the desthandler ending as soon as a proxy put request Metadata PDU is received."""
+        assert self._params.transaction_id is not None
+        self._params.checksum_type = metadata_pdu.checksum_type
+        self._params.closure_requested = metadata_pdu.closure_requested
+        self._params.acked_params.metadata_missing = False
+        if metadata_pdu.dest_file_name is None or metadata_pdu.source_file_name is None:
+            self._params.fp.metadata_only = True
+            self._params.finished_params.delivery_code = DeliveryCode.DATA_COMPLETE
+        else:
+            self._params.fp.file_name = Path(metadata_pdu.dest_file_name)
+        self._params.fp.file_size = metadata_pdu.file_size
+        # To be fully standard-compliant or at least allow the flexibility to be standard-compliant
+        # in the future, we should require that a remote entity configuration exists for each CFDP
+        # sender.
+        if self._params.remote_cfg is None:
+            logger.warning(
+                f"No remote configuration found for remote ID {metadata_pdu.dest_entity_id}"
+            )
+            raise NoRemoteEntityConfigFound(metadata_pdu.dest_entity_id)
+        self.states.step = DestTransactionStep.RECEIVING_FILE_DATA
+        logger.warning("do we get here?")
+        if not self._params.fp.metadata_only:
+            assert metadata_pdu.source_file_name is not None
+            self._init_vfs_handling(Path(metadata_pdu.source_file_name).name)
+        msgs_to_user_list: None | list[MessageToUserTlv] = None
+        options = metadata_pdu.options_as_tlv()
+        if options is not None:
+            msgs_to_user_list = []
+            for tlv in options:
+                if tlv.tlv_type == TlvType.MESSAGE_TO_USER:
+                    msgs_to_user_list.append(MessageToUserTlv.from_tlv(tlv))
+        file_size_for_indication = (
+            None if metadata_pdu.source_file_name is None else metadata_pdu.file_size
+        )
+        params = MetadataRecvParams(
+            transaction_id=self._params.transaction_id,
+            file_size=file_size_for_indication,
+            source_id=metadata_pdu.source_entity_id,
+            dest_file_name=metadata_pdu.dest_file_name,
+            source_file_name=metadata_pdu.source_file_name,
+            msgs_to_user=msgs_to_user_list,
+        )
+        self.user.metadata_recv_indication(params)
 
 
 class CfdpFaultHandler(DefaultFaultHandlerBase):
@@ -468,7 +517,7 @@ class SourceEntityHandler(Thread):
         """Returns whether a packet was sent."""
 
         if packet is not None:
-            logger.debug(f"=Inserting {packet}")
+            logger.debug(f"Source received {packet}")
         try:
             fsm_result = self.source_handler.state_machine(packet)
         except InvalidDestinationId as e:
@@ -495,7 +544,7 @@ class SourceEntityHandler(Thread):
                 logger.info(f"Stopping Source Entity Handler. Local ID {self.sat_id}")
                 break
             if self.source_handler.state == CfdpState.IDLE and not self._idle_handling():
-                time.sleep(0.2)
+                time.sleep(1)
                 continue
             if self.source_handler.state == CfdpState.BUSY and not self._busy_handling():
                 time.sleep(0.1)
@@ -517,7 +566,7 @@ class DestEntityHandler(Thread):
 
         dest_user = CfdpUser(self.BASE_STR_DEST + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
-        self.dest_handler = DestHandler(
+        self.dest_handler = FixedDestHandler(
             cfg=LocalEntityConfig(
                 sat_id,
                 IndicationConfig(),
@@ -547,7 +596,7 @@ class DestEntityHandler(Thread):
             except Empty:
                 pass
             if packet is not None:
-                logger.debug(f"Inserting {packet}")
+                logger.debug(f"Dest received {packet}")
             fsm_result = self.dest_handler.state_machine(packet)
             packet_sent = False
             if fsm_result.states.num_packets_ready > 0:
@@ -559,5 +608,5 @@ class DestEntityHandler(Thread):
                     packet_sent = True
             # If there is no work to do, put the thread to sleep.
             if not packet_received and not packet_sent:
-                time.sleep(0.5)
+                time.sleep(0.1)
 

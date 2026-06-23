@@ -31,7 +31,7 @@ dependencies = [
     "skyfield>=1.54",
     "smbus2",
     "spacepackets>=0.30.1",
-    "ccsds-cop>=0.0.0",
+    "ccsds-cop>=0.1.1",
     "typing-extensions>=4.13.0"
 ]
 

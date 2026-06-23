@@ -108,8 +108,9 @@ class VfsSourceHandler(SourceHandler):
         """Fixes the parent not sending EOFs for metadata only transactions. CCSDS 720.1-G-4 and
         YAMCS both have proxy put requests sending EOFs, so this brings cfdppy into compliance.
         """
-        if self.transmission_mode == TransmissionMode.ACKNOWLEDGED and super()._SourceHandler__handle_retransmission(
-            packet_holder
+        if (
+            self.transmission_mode == TransmissionMode.ACKNOWLEDGED
+            and super()._SourceHandler__handle_retransmission(packet_holder)
         ):
             return True
         # No need to send a file data PDU for an empty file
@@ -129,6 +130,23 @@ class VfsSourceHandler(SourceHandler):
         if self._params.fp.metadata_only:
             return b'\0' * 4
         return super()._checksum_calculation(size_to_calculate)
+
+    def _transaction_start(self) -> None:
+        # seems to be an issue where proxy put responses are expected by the source handler to have
+        # a file size. This alters the assert to allow for metadata only PDUs from the source.
+        originating_transaction_id = self._check_for_originating_id()
+        self._prepare_file_params()
+        assert self._params.fp.file_size is not None or self._params.fp.metadata_only
+        self._prepare_pdu_conf(self._params.fp.file_size)
+        self._get_next_transfer_seq_num()
+        self._calculate_max_file_seg_len()
+        self._params.transaction_id = TransactionId(
+            source_entity_id=self.cfg.local_entity_id,
+            transaction_seq_num=self.transaction_seq_num,
+        )
+        self.user.transaction_indication(
+            TransactionParams(self._params.transaction_id, originating_transaction_id)
+        )
 
 
 class FixedDestHandler(DestHandler):
@@ -202,7 +220,6 @@ class FixedDestHandler(DestHandler):
             )
             raise NoRemoteEntityConfigFound(metadata_pdu.dest_entity_id)
         self.states.step = DestTransactionStep.RECEIVING_FILE_DATA
-        logger.warning("do we get here?")
         if not self._params.fp.metadata_only:
             assert metadata_pdu.source_file_name is not None
             self._init_vfs_handling(Path(metadata_pdu.source_file_name).name)

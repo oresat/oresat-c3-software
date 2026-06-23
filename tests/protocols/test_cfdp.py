@@ -189,53 +189,21 @@ class TestCfdp(unittest.TestCase):
         # src --> dst Ack (Finished)
 
         put = put_request(self.sat_id, self.file.name)
-
         self._put_req_queue_gnd.put(put)
+        time.sleep(0.2)
 
         # src --> Metadata
-        time.sleep(0.2)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, MetadataPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, MetadataPdu)
         # src --> Filedata
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, FileDataPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, FileDataPdu)
         # src --> EoF
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(get_packet_destination(pdu.pdu))
-        self.assertIsInstance(pdu.pdu, EofPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, EofPdu)
         # dst <-- Ack (EoF)
-        time.sleep(0.15)
-        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, AckPdu)
-        self._cfdp_src_queue_gnd.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, AckPdu)
         # dst <-- Finished
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, FinishedPdu)
-        self._cfdp_src_queue_gnd.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, FinishedPdu)
         # src --> Ack (Finished)
-        time.sleep(0.15)
-        self.assertTrue(self._cfdp_tm_queue.empty())
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, AckPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
+        self.src_gnd_to_sc_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)
@@ -268,51 +236,24 @@ class TestCfdp(unittest.TestCase):
         # src --> Ack (Finished)
 
         put = put_request(self.sat_id, self.file.name)
-
         self._put_req_queue_gnd.put(put)
+        time.sleep(0.2)
 
         # src --> Metadata
-        time.sleep(0.2)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
-        self.assertIsInstance(pdu.pdu, MetadataPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, MetadataPdu)
         # src --> Filedata
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
-        self.assertIsInstance(pdu.pdu, FileDataPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
+        self.src_gnd_to_sc_dest(0.15, FileDataPdu)
         # src --> EoF
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue_gnd.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
-        self.assertIsInstance(pdu.pdu, EofPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
-
-        # dst <-- Ack (EoF)
+        self.src_gnd_to_sc_dest(0.15, EofPdu)
+        # dst X-- Ack (EoF)
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         pdu_packed = self._cfdp_tm_queue.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        print(f"\n\n{get_packet_destination(pdu.pdu)}\n\n")
-
         # dst <-- Finished
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, FinishedPdu)
-        self._cfdp_src_queue_gnd.put(pdu.pdu)
-        time.sleep(1)
+        self.dest_sc_to_gnd_src(0.15, FinishedPdu)
 
         print(self.cfdp_source_handler_gnd.source_handler.step)
-
-        time.sleep(10)
 
         # dst <-- Finished
         time.sleep(0.15)
@@ -407,10 +348,8 @@ class TestCfdp(unittest.TestCase):
         # gnd_src <-- s/c_dst Finished      T1
         self.dest_sc_to_gnd_src(0.15, FinishedPdu)
         # gnd_src --> s/c_dst Ack (Fin)     T1
-        self.src_gnd_to_sc_dest(0.4, AckPdu)
+        self.src_gnd_to_sc_dest(0.15, AckPdu)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
-        # End of transaction 1. The queues used for it should be empty, as the next transactions
-        # use the opposite queues.
 
         # gnd_dst <-- s/c_src Metadata      T2
         self.src_sc_to_gnd_dest(0.15, MetadataPdu)
@@ -425,8 +364,16 @@ class TestCfdp(unittest.TestCase):
         # gnd_dst <-- s/c_src Ack (Fin)     T2
         self.src_sc_to_gnd_dest(0.15, AckPdu)
 
-
-
+        # gnd_dst <-- s/c_src Metadata      T3
+        self.src_sc_to_gnd_dest(0.15, MetadataPdu)
+        # gnd_dst <-- s/c_src Eof           T3
+        self.src_sc_to_gnd_dest(0.15, EofPdu)
+        # gnd_dst --> s/c_src Ack (EoF)     T3
+        self.dest_gnd_to_sc_src(0.15, AckPdu)
+        # gnd_dst --> s/c_src Finished      T3
+        self.dest_gnd_to_sc_src(0.15, FinishedPdu)
+        # gnd_dst <-- s/c_src Ack (Fin)     T3
+        self.src_sc_to_gnd_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)

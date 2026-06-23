@@ -4,47 +4,27 @@ import unittest
 from abc import ABCMeta
 from datetime import timedelta
 from pathlib import Path
-from queue import Empty, SimpleQueue
+from queue import SimpleQueue
 from tempfile import NamedTemporaryFile
-from typing import Any
 
-from cfdppy import get_packet_destination
-from cfdppy.exceptions import PduIgnoredForSource
 from cfdppy.handler import dest, source
-from cfdppy.handler.dest import DestHandler
-from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
-    DefaultFaultHandlerBase,
-    IndicationConfig,
-    LocalEntityConfig,
     RemoteEntityConfig,
     RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
-from cfdppy.user import (
-    CfdpUserBase,
-    FileSegmentRecvdParams,
-    MetadataRecvParams,
-    TransactionFinishedParams,
-    TransactionParams,
-)
 from spacepackets.cfdp import CfdpLv
-from spacepackets.cfdp.defs import ChecksumType, ConditionCode, TransactionId, TransmissionMode
+from spacepackets.cfdp.defs import ChecksumType, TransmissionMode
 from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu, PduFactory
 from spacepackets.cfdp.tlv import (
-    DirectoryListingResponse,
-    DirectoryOperationMessageType,
-    OriginatingTransactionId,
-    ProxyMessageType,
+    DirectoryListingRequest,
+    DirectoryParams,
     ProxyPutRequest,
     ProxyPutRequestParams,
-    ProxyPutResponse,
-    ProxyPutResponseParams,
     ProxyTransmissionMode,
 )
 from spacepackets.countdown import Countdown
-from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from oresat_c3.protocols.cfdp import DestEntityHandler, SourceEntityHandler
@@ -72,7 +52,6 @@ def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
     )
 
 
-# @unittest.skip("FIXME: Revisit this after upgrading cfdppy to 0.6.0")
 class TestCfdp(unittest.TestCase):
     def setUp(self):
         self.file = NamedTemporaryFile()
@@ -94,9 +73,7 @@ class TestCfdp(unittest.TestCase):
                 RemoteEntityConfig(
                     entity_id=self.gnd_id,
                     max_file_segment_len=None,
-                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
-                    # How does the exact value get determined? Currently it's just a mirror of the
-                    # value in edl_file_upload.py
+                    # FIXME this value should come from EdlPacket.
                     max_packet_len=950,
                     closure_requested=True,
                     crc_on_transmission=False,
@@ -124,8 +101,6 @@ class TestCfdp(unittest.TestCase):
         )
 
         # Ground station handling
-
-
         self._put_req_queue_gnd = SimpleQueue()
         self._cfdp_src_queue_gnd = SimpleQueue()
         self._cfdp_dest_queue_gnd = SimpleQueue()
@@ -136,9 +111,6 @@ class TestCfdp(unittest.TestCase):
                 RemoteEntityConfig(
                     entity_id=self.sat_id,
                     max_file_segment_len=None,
-                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
-                    # How does the exact value get determined? Currently it's just a mirror of the
-                    # value in edl_file_upload.py
                     max_packet_len=950,
                     closure_requested=True,
                     crc_on_transmission=False,
@@ -193,17 +165,17 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.2)
 
         # src --> Metadata
-        self.src_gnd_to_sc_dest(0.15, MetadataPdu)
+        self._src_gnd_to_sc_dest(0.15, MetadataPdu)
         # src --> Filedata
-        self.src_gnd_to_sc_dest(0.15, FileDataPdu)
+        self._src_gnd_to_sc_dest(0.15, FileDataPdu)
         # src --> EoF
-        self.src_gnd_to_sc_dest(0.15, EofPdu)
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
         # dst <-- Ack (EoF)
-        self.src_gnd_to_sc_dest(0.15, AckPdu)
+        self._src_gnd_to_sc_dest(0.15, AckPdu)
         # dst <-- Finished
-        self.src_gnd_to_sc_dest(0.15, FinishedPdu)
+        self._src_gnd_to_sc_dest(0.15, FinishedPdu)
         # src --> Ack (Finished)
-        self.src_gnd_to_sc_dest(0.15, AckPdu)
+        self._src_gnd_to_sc_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)
@@ -240,18 +212,18 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.2)
 
         # src --> Metadata
-        self.src_gnd_to_sc_dest(0.15, MetadataPdu)
+        self._src_gnd_to_sc_dest(0.15, MetadataPdu)
         # src --> Filedata
-        self.src_gnd_to_sc_dest(0.15, FileDataPdu)
+        self._src_gnd_to_sc_dest(0.15, FileDataPdu)
         # src --> EoF
-        self.src_gnd_to_sc_dest(0.15, EofPdu)
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
         # dst X-- Ack (EoF)
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
         pdu_packed = self._cfdp_tm_queue.get()
         pdu = PduFactory.from_raw_to_holder(pdu_packed)
         # dst <-- Finished
-        self.dest_sc_to_gnd_src(0.15, FinishedPdu)
+        self._dest_sc_to_gnd_src(0.15, FinishedPdu)
 
         print(self.cfdp_source_handler_gnd.source_handler.step)
 
@@ -289,7 +261,7 @@ class TestCfdp(unittest.TestCase):
             source.TransactionStep.IDLE
         )
 
-    def test_proxy_put_request(self):
+    def test_proxy_put_operation(self):
         """
         The ground asks the spacecraft to send a file to someone (the ground in our case), the
         spacecraft creates a new transaction to send it, then starts a transaction to send a
@@ -339,41 +311,41 @@ class TestCfdp(unittest.TestCase):
         time.sleep(0.2)
 
         # gnd_src --> s/c_dst Metadata      T1
-        self.src_gnd_to_sc_dest(0.15, MetadataPdu)
+        self._src_gnd_to_sc_dest(0.15, MetadataPdu)
         # gnd_src --> s/c_dst Eof           T1
-        self.src_gnd_to_sc_dest(0.15, EofPdu)
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
         # gnd_src <-- s/c_dst Ack (EoF)     T1
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
-        self.dest_sc_to_gnd_src(0.15, AckPdu)
+        self._dest_sc_to_gnd_src(0.15, AckPdu)
         # gnd_src <-- s/c_dst Finished      T1
-        self.dest_sc_to_gnd_src(0.15, FinishedPdu)
+        self._dest_sc_to_gnd_src(0.15, FinishedPdu)
         # gnd_src --> s/c_dst Ack (Fin)     T1
-        self.src_gnd_to_sc_dest(0.15, AckPdu)
+        self._src_gnd_to_sc_dest(0.15, AckPdu)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
 
         # gnd_dst <-- s/c_src Metadata      T2
-        self.src_sc_to_gnd_dest(0.15, MetadataPdu)
+        self._src_sc_to_gnd_dest(0.15, MetadataPdu)
         # gnd_dst <-- s/c_src Filedata      T2
-        self.src_sc_to_gnd_dest(0.15, FileDataPdu)
+        self._src_sc_to_gnd_dest(0.15, FileDataPdu)
         # gnd_dst <-- s/c_src Eof           T2
-        self.src_sc_to_gnd_dest(0.15, EofPdu)
+        self._src_sc_to_gnd_dest(0.15, EofPdu)
         # gnd_dst --> s/c_src Ack (EoF)     T2
-        self.dest_gnd_to_sc_src(0.15, AckPdu)
+        self._dest_gnd_to_sc_src(0.15, AckPdu)
         # gnd_dst --> s/c_src Finished      T2
-        self.dest_gnd_to_sc_src(0.15, FinishedPdu)
+        self._dest_gnd_to_sc_src(0.15, FinishedPdu)
         # gnd_dst <-- s/c_src Ack (Fin)     T2
-        self.src_sc_to_gnd_dest(0.15, AckPdu)
+        self._src_sc_to_gnd_dest(0.15, AckPdu)
 
         # gnd_dst <-- s/c_src Metadata      T3
-        self.src_sc_to_gnd_dest(0.15, MetadataPdu)
+        self._src_sc_to_gnd_dest(0.15, MetadataPdu)
         # gnd_dst <-- s/c_src Eof           T3
-        self.src_sc_to_gnd_dest(0.15, EofPdu)
+        self._src_sc_to_gnd_dest(0.15, EofPdu)
         # gnd_dst --> s/c_src Ack (EoF)     T3
-        self.dest_gnd_to_sc_src(0.15, AckPdu)
+        self._dest_gnd_to_sc_src(0.15, AckPdu)
         # gnd_dst --> s/c_src Finished      T3
-        self.dest_gnd_to_sc_src(0.15, FinishedPdu)
+        self._dest_gnd_to_sc_src(0.15, FinishedPdu)
         # gnd_dst <-- s/c_src Ack (Fin)     T3
-        self.src_sc_to_gnd_dest(0.15, AckPdu)
+        self._src_sc_to_gnd_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)
@@ -389,28 +361,108 @@ class TestCfdp(unittest.TestCase):
             source.TransactionStep.IDLE
         )
 
-    def src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
+    def test_directory_listing(self):
+        """
+        The ground asks the spacecraft for the vfs root directory listing to be sent back
+        as a file. The spacecraft sends the directory listing as a file.
+
+        This will attempt to mimic the YAMCS request since it breaks the upstream spacepackets.py
+        package.
+        """
+        # gnd_src --> s/c_dst Metadata      T1
+        # gnd_src --> s/c_dst Eof           T1
+        # gnd_src <-- s/c_dst Ack (EoF)     T1
+        # gnd_src <-- s/c_dst Finished      T1
+        # gnd_src --> s/c_dst Ack (Fin)     T1
+
+        # gnd_dst <-- s/c_src Metadata      T2
+        # gnd_dst <-- s/c_src Filedata      T2
+        # gnd_dst <-- s/c_src Eof           T2
+        # gnd_dst --> s/c_src Ack (EoF)     T2
+        # gnd_dst --> s/c_src Finished      T2
+        # gnd_dst <-- s/c_src Ack (Fin)     T2
+        dir_req = DirectoryListingRequest(
+            DirectoryParams(
+                dir_path=CfdpLv.from_str(""),
+                dir_file_name=CfdpLv.from_str(".dirlist.notsaved")
+            )
+        ).to_generic_msg_to_user_tlv()
+        put = PutRequest(
+            destination_id=self.sat_id,
+            source_file=None,
+            dest_file=None,
+            trans_mode=None,
+            closure_requested=True,
+            msgs_to_user=[dir_req],
+        )
+        self._put_req_queue_gnd.put(put)
+        time.sleep(0.2)
+
+        # gnd_src --> s/c_dst Metadata      T1
+        self._src_gnd_to_sc_dest(0.15, MetadataPdu)
+        # gnd_src --> s/c_dst Eof           T1
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
+        # gnd_src <-- s/c_dst Ack (EoF)     T1
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self._dest_sc_to_gnd_src(0.15, AckPdu)
+        # gnd_src <-- s/c_dst Finished      T1
+        self._dest_sc_to_gnd_src(0.15, FinishedPdu)
+        # gnd_src --> s/c_dst Ack (Fin)     T1
+        self._src_gnd_to_sc_dest(0.15, AckPdu)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+
+        time.sleep(100)
+
+        # gnd_dst <-- s/c_src Metadata      T2
+        self._src_sc_to_gnd_dest(0.15, MetadataPdu)
+        # gnd_dst <-- s/c_src Filedata      T2
+        self._src_sc_to_gnd_dest(0.15, FileDataPdu)
+        # gnd_dst <-- s/c_src Eof           T2
+        self._src_sc_to_gnd_dest(0.15, EofPdu)
+        # gnd_dst --> s/c_src Ack (EoF)     T2
+        self._dest_gnd_to_sc_src(0.15, AckPdu)
+        # gnd_dst --> s/c_src Finished      T2
+        self._dest_gnd_to_sc_src(0.15, FinishedPdu)
+        # gnd_dst <-- s/c_src Ack (Fin)     T2
+        self._src_sc_to_gnd_dest(0.15, AckPdu)
+
+        # Make sure we've returned to idle / empty.
+        time.sleep(1)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+
+
+    def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
-    def dest_gnd_to_sc_src(self, delay: float, expected_type: ABCMeta) -> None:
+    def _dest_gnd_to_sc_src(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
-    def src_sc_to_gnd_dest(self, delay: float, expected_type: ABCMeta) -> None:
+    def _src_sc_to_gnd_dest(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue.get())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue_gnd.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
-    def dest_sc_to_gnd_src(self, delay: float, expected_type: ABCMeta) -> None:
+    def _dest_sc_to_gnd_src(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue.get())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue_gnd.put(pdu)

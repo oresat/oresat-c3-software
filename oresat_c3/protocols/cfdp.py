@@ -364,6 +364,8 @@ class CfdpUser(CfdpUserBase):
     ) -> None:
         if reserved_cfdp_msg.is_cfdp_proxy_operation():
             self._handle_cfdp_proxy_operation(transaction_id, reserved_cfdp_msg)
+        elif reserved_cfdp_msg.is_directory_operation():
+            self._handle_directory_operation(transaction_id, reserved_cfdp_msg)
         elif reserved_cfdp_msg.is_originating_transaction_id():
             logger.info(
                 f"Received originating transaction ID: "
@@ -391,6 +393,31 @@ class CfdpUser(CfdpUserBase):
         elif reserved_cfdp_msg.get_cfdp_proxy_message_type() == ProxyMessageType.PUT_RESPONSE:
             put_response_params = reserved_cfdp_msg.get_proxy_put_response_params()
             logger.info(f"Received Proxy Put Response: {put_response_params}")
+
+    def _handle_directory_operation(
+            self, transaction_id: TransactionId, reserved_cfdp_msg: ReservedCfdpMessage
+        ) -> None:
+        params = reserved_cfdp_msg.get_dir_listing_request_params()
+        if reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_REQUEST:  # noqa: E501
+            self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
+            put_req = PutRequest(
+                destination_id=transaction_id.source_id,
+                source_file=params.dir_file_name_as_path,
+                dest_file=params.dir_file_name_as_path,
+                trans_mode=None,
+                closure_requested=True,
+                msgs_to_user=[
+                    DirectoryListingResponse(
+                        listing_success=True,
+                        dir_params=params,
+                    ).to_generic_msg_to_user_tlv(),
+                    OriginatingTransactionId(transaction_id).to_generic_msg_to_user_tlv(),
+                ],
+            )
+            self.put_req_queue.put(put_req)
+        elif reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_RESPONSE:  # noqa: E501
+            dir_list_response_params = reserved_cfdp_msg.get_dir_listing_response_params()
+            logger.info(f"Received Directory Listing Response: {dir_list_response_params}")
 
     def file_segment_recv_indication(self, params: FileSegmentRecvdParams) -> None:
         logger.info(f"{self.base_str}: File-Segment-Recv.indication for {params.transaction_id}.")

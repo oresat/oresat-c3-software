@@ -68,6 +68,8 @@ from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
+from .cachestore import CacheStore
+
 
 class VfsSourceHandler(SourceHandler):
     """A SourceHandler but modified to always and only use Filestore operations"""
@@ -281,13 +283,13 @@ class CfdpFaultHandler(DefaultFaultHandlerBase):
 
 
 class CfdpUser(CfdpUserBase):
-    def __init__(self, base_str: str, put_req_queue: SimpleQueue):
+    def __init__(self, file_cache: CacheStore, base_str: str, put_req_queue: SimpleQueue):
         self.base_str = base_str
         self.put_req_queue = put_req_queue
         # This is a dictionary where the key is the current transaction ID for a transaction which
         # was triggered by a proxy request with an originating ID.
         self.active_proxy_put_reqs: dict[TransactionId, TransactionId] = {}
-        super().__init__()
+        super().__init__(file_cache)
 
     def transaction_indication(
         self,
@@ -486,6 +488,7 @@ class SourceEntityHandler(Thread):
         put_req_queue: SimpleQueue,
         source_entity_queue: SimpleQueue,
         tm_queue: SimpleQueue,
+        file_cache: CacheStore,
         remote_entities: RemoteEntityConfigTable,
         gnd_id: ByteFieldU8,
         sat_id: ByteFieldU8,
@@ -493,7 +496,7 @@ class SourceEntityHandler(Thread):
     ):
         super().__init__()
         src_seq_count_provider = SeqCountProvider(16)
-        src_user = CfdpUser(self.BASE_STR_SRC + sat_id.__str__(), put_req_queue)
+        src_user = CfdpUser(file_cache, self.BASE_STR_SRC + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
         self.source_handler = VfsSourceHandler(
             cfg=LocalEntityConfig(
@@ -602,13 +605,14 @@ class DestEntityHandler(Thread):
         put_req_queue: SimpleQueue,
         dest_entity_queue: SimpleQueue,
         tm_queue: SimpleQueue,
+        file_cache: CacheStore,
         remote_entities: RemoteEntityConfigTable,
         sat_id: ByteFieldU8,
         stop_signal: Event,
     ):
         super().__init__()
 
-        dest_user = CfdpUser(self.BASE_STR_DEST + sat_id.__str__(), put_req_queue)
+        dest_user = CfdpUser(file_cache, self.BASE_STR_DEST + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
         self.dest_handler = FixedDestHandler(
             cfg=LocalEntityConfig(

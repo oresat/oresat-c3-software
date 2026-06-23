@@ -123,7 +123,7 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
 
-    def _init_cfdp(self) -> None:
+    def _init_cfdp(self, fwrite_cache: CacheStore) -> None:
 
 
         remote_entities = RemoteEntityConfigTable(
@@ -147,6 +147,7 @@ class EdlService(Service):
             self.put_req_queue,
             self._cfdp_src_queue,
             self._cfdp_tm_queue,
+            fwrite_cache,
             remote_entities,
             self.GND_ID,
             self.SAT_ID
@@ -156,6 +157,7 @@ class EdlService(Service):
             self.put_req_queue,
             self._cfdp_dest_queue,
             self._cfdp_tm_queue,
+            fwrite_cache,
             remote_entities,
             self.SAT_ID
         )

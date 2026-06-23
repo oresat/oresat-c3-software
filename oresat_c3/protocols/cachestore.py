@@ -2,6 +2,7 @@
 
 import os
 import struct
+import subprocess
 from bisect import insort_left
 from pathlib import Path
 from typing import BinaryIO, Optional
@@ -28,6 +29,12 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                     with open(self._dir + f.name, "rb") as rf:
                         rf.seek(offset or 0)
                         return rf.read(read_len)
+            # Yamcs needs a filename that does not comply with the oresat filename schema.
+            # We will as a fallback look for .dirlist* after failing to find a normal file.
+            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
+                with open(self._dir + file.name, "rb") as rf:
+                    rf.seek(offset or 0)
+                    return rf.read(read_len)
             raise FileNotFoundError(file)
 
     def file_size(self, file: Path) -> int:
@@ -47,7 +54,10 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
 
     def file_exists(self, path: Path) -> bool:
         with self._lock:
-            return any(path.name == f.name for f in self._data)
+            return (
+                any(path.name == f.name for f in self._data)
+                or (".dirlist" in path.name and (Path(self._dir) / path).exists())
+            )
 
     def stat(self, file: Path) -> os.stat_result:
         """Implements os.stat() but for a filestore
@@ -61,6 +71,8 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
             for f in self._data:
                 if file.name == f.name:
                     return Path(self._dir, f.name).stat()
+            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
+                return Path(self._dir, file.name).stat()
             raise FileNotFoundError(file)
 
     def truncate_file(self, file: Path) -> None:
@@ -69,6 +81,9 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                 if file.name == f.name:
                     with open(self._dir + f.name, "w"):
                         return
+            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
+                with open(self._dir + file.name, "w"):
+                    return
             raise FileNotFoundError(file)
 
     def write_data(self, file: Path, data: bytes, offset: Optional[int] = None) -> None:
@@ -106,6 +121,9 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                     os.remove(self._dir + f.name)
                     self._data.remove(f)
                     return FilestoreResult.DELETE_SUCCESS
+            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
+                os.remove(self._dir + file.name)
+                return FilestoreResult.DELETE_SUCCESS
             return FilestoreResult.DELETE_FILE_DOES_NOT_EXIST
 
     def rename_file(self, old_file: Path, new_file: Path) -> FilestoreResult:
@@ -148,18 +166,16 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
     def list_directory(
         self, _dir_name: Path, file_name: Path, recursive: bool = False
     ) -> FilestoreResult:
-        # dir_name is ignored, there are no directories to be considered
-        try:
-            listing = OreSatFile(file_name.name)
-        except ValueError:
-            return FilestoreResult.NOT_PERFORMED
-
-        with self._lock, open(self._dir + file_name.name, "w") as f:
-            insort_left(self._data, listing)
-            # Explicitly not reading from self._data here to help report invalid states
-            for line in os.walk(self._dir) if recursive else os.listdir(self._dir):
-                f.write(f"{line}\n")
-            return FilestoreResult.SUCCESS
+        cmd = ["ls", "-al"]
+        fullpath = Path(self._dir) / file_name
+        with open(fullpath, "w") as of:
+            of.write(f"Contents of directory {_dir_name} generated with '{cmd}':\n")
+            try:
+                result = subprocess.run(cmd, check=True, capture_output=True, cwd=self._dir)
+            except (subprocess.CalledProcessError, OSError):
+                return FilestoreResult.NOT_PERFORMED
+            of.write(result.stdout.decode())
+        return FilestoreResult.SUCCESS
 
     def calc_modular_checksum(self, file_path: Path) -> bytes:
         """Calculates the modular checksum of the file in file_path.

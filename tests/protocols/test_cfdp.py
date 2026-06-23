@@ -5,7 +5,7 @@ from abc import ABCMeta
 from datetime import timedelta
 from pathlib import Path
 from queue import SimpleQueue
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 
 from cfdppy.handler import dest, source
 from cfdppy.mib import (
@@ -14,9 +14,18 @@ from cfdppy.mib import (
     RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
+from cfdppy.restricted_filestore import RestrictedFilestore
 from spacepackets.cfdp import CfdpLv
 from spacepackets.cfdp.defs import ChecksumType, TransmissionMode
-from spacepackets.cfdp.pdu import AckPdu, EofPdu, FileDataPdu, FinishedPdu, MetadataPdu, PduFactory
+from spacepackets.cfdp.pdu import (
+    AckPdu,
+    EofPdu,
+    FileDataPdu,
+    FinishedPdu,
+    MetadataPdu,
+    NakPdu,
+    PduFactory,
+)
 from spacepackets.cfdp.tlv import (
     DirectoryListingRequest,
     DirectoryParams,
@@ -27,6 +36,7 @@ from spacepackets.cfdp.tlv import (
 from spacepackets.countdown import Countdown
 from spacepackets.util import ByteFieldU8
 
+from oresat_c3.protocols.cachestore import CacheStore
 from oresat_c3.protocols.cfdp import DestEntityHandler, SourceEntityHandler
 
 
@@ -54,9 +64,17 @@ def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
 
 class TestCfdp(unittest.TestCase):
     def setUp(self):
-        self.file = NamedTemporaryFile()
-        self.file.write(b"This is some example data\x01\x02\x03")
-        self.file.flush()
+        self.sat_file = Path("c3_tmp_123")
+        self.cachedir = TemporaryDirectory()
+        self.cache = CacheStore(self.cachedir.name)
+        self.cache.create_file(self.sat_file)
+        self.cache.write_data(self.sat_file, b"This is some example data\x01\x02\x03")
+
+        self.cachedir_gnd = TemporaryDirectory()
+        self.cache_gnd = RestrictedFilestore(Path(self.cachedir_gnd.name))
+        self.gnd_file = Path("c3_tmp_1234")
+        self.cache_gnd.create_file(self.gnd_file)
+        self.cache_gnd.write_data(self.gnd_file, b"This is some example data\x01\x02\x03", None)
 
         self.gnd_id = ByteFieldU8(0)
         self.sat_id = ByteFieldU8(1)
@@ -86,6 +104,7 @@ class TestCfdp(unittest.TestCase):
             self._put_req_queue,
             self._cfdp_src_queue,
             self._cfdp_tm_queue,
+            self.cache,
             remote_entities,
             self.gnd_id,
             self.sat_id,
@@ -95,6 +114,7 @@ class TestCfdp(unittest.TestCase):
             self._put_req_queue,
             self._cfdp_dest_queue,
             self._cfdp_tm_queue,
+            self.cache,
             remote_entities,
             self.sat_id,
             self.stop_signal
@@ -123,6 +143,7 @@ class TestCfdp(unittest.TestCase):
             self._put_req_queue_gnd,
             self._cfdp_src_queue_gnd,
             self._cfdp_tm_queue_gnd,
+            self.cache_gnd,
             remote_entities_gnd,
             self.sat_id,
             self.gnd_id,
@@ -132,6 +153,7 @@ class TestCfdp(unittest.TestCase):
             self._put_req_queue_gnd,
             self._cfdp_dest_queue_gnd,
             self._cfdp_tm_queue_gnd,
+            self.cache_gnd,
             remote_entities_gnd,
             self.gnd_id,
             self.stop_signal
@@ -143,6 +165,8 @@ class TestCfdp(unittest.TestCase):
         self.cfdp_dest_handler_gnd.start()
 
     def tearDown(self):
+        self.cachedir.cleanup()
+        self.cachedir_gnd.cleanup()
         self.stop_signal.set()
         self.cfdp_source_handler.join()
         self.cfdp_dest_handler.join()
@@ -160,7 +184,7 @@ class TestCfdp(unittest.TestCase):
         # src <-- dst Finished
         # src --> dst Ack (Finished)
 
-        put = put_request(self.sat_id, self.file.name)
+        put = put_request(self.sat_id, self.gnd_file.name)
         self._put_req_queue_gnd.put(put)
         time.sleep(0.2)
 
@@ -171,9 +195,9 @@ class TestCfdp(unittest.TestCase):
         # src --> EoF
         self._src_gnd_to_sc_dest(0.15, EofPdu)
         # dst <-- Ack (EoF)
-        self._src_gnd_to_sc_dest(0.15, AckPdu)
+        self._dest_sc_to_gnd_src(0.15, AckPdu)
         # dst <-- Finished
-        self._src_gnd_to_sc_dest(0.15, FinishedPdu)
+        self._dest_sc_to_gnd_src(0.15, FinishedPdu)
         # src --> Ack (Finished)
         self._src_gnd_to_sc_dest(0.15, AckPdu)
 
@@ -190,6 +214,11 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler_gnd.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertEqual(
+            self.cache.read_data(self.gnd_file),
+            self.cache_gnd.read_data(self.gnd_file)
+        )
+        self.cache.delete_file(self.gnd_file)
 
     # Broken for now. For some reason CFDP stops resending EOFs after recieving a finished PDU,
     # leaving it stuck waiting for an ACK (EOF) without resending EOFs.
@@ -260,6 +289,11 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler_gnd.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertEqual(
+            self.cache.read_data(self.gnd_file),
+            self.cache_gnd.read_data(self.gnd_file)
+        )
+        self.cache.delete_file(self.gnd_file)
 
     def test_proxy_put_operation(self):
         """
@@ -285,13 +319,11 @@ class TestCfdp(unittest.TestCase):
         # gnd_src --> s/c_dst Ack (EoF)     T3
         # gnd_src --> s/c_dst Finished      T3
         # gnd_src <-- s/c_dst Ack (Fin)     T3
-
-
         proxy_put = ProxyPutRequest(
             ProxyPutRequestParams(
                 dest_entity_id=self.gnd_id,
-                source_file_name=CfdpLv.from_str(self.file.name),
-                dest_file_name=CfdpLv.from_str(self.file.name + "2")
+                source_file_name=CfdpLv.from_str(self.sat_file.name),
+                dest_file_name=CfdpLv.from_str(self.sat_file.name)
             )
         ).to_generic_msg_to_user_tlv()
         # Yamcs will always send a proxy transmission mode message, for both class 1 or class 2.
@@ -360,11 +392,17 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler_gnd.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertEqual(
+            self.cache.read_data(self.sat_file),
+            self.cache_gnd.read_data(self.sat_file)
+        )
+        self.cache_gnd.delete_file(self.sat_file)
 
     def test_directory_listing(self):
         """
         The ground asks the spacecraft for the vfs root directory listing to be sent back
-        as a file. The spacecraft sends the directory listing as a file.
+        as a file. The spacecraft sends the directory listing as a file. The ground requests
+        that the spacecraft send a proxy put response (T3).
 
         This will attempt to mimic the YAMCS request since it breaks the upstream spacepackets.py
         package.
@@ -381,10 +419,20 @@ class TestCfdp(unittest.TestCase):
         # gnd_dst --> s/c_src Ack (EoF)     T2
         # gnd_dst --> s/c_src Finished      T2
         # gnd_dst <-- s/c_src Ack (Fin)     T2
+
+        # gnd_src <-- s/c_dst Metadata      T3
+        # gnd_src <-- s/c_dst Eof           T3
+        # gnd_src --> s/c_dst Ack (EoF)     T3
+        # gnd_src --> s/c_dst Finished      T3
+        # gnd_src <-- s/c_dst Ack (Fin)     T3
+
+        # this is put into the working directory. This is awful and should be fixed, but that would
+        # require breaking cachestore even more.
+        dir_listing_gnd = ".dirlist.notsaved"
         dir_req = DirectoryListingRequest(
             DirectoryParams(
                 dir_path=CfdpLv.from_str(""),
-                dir_file_name=CfdpLv.from_str(".dirlist.notsaved")
+                dir_file_name=CfdpLv.from_str(dir_listing_gnd)
             )
         ).to_generic_msg_to_user_tlv()
         put = PutRequest(
@@ -411,8 +459,6 @@ class TestCfdp(unittest.TestCase):
         self._src_gnd_to_sc_dest(0.15, AckPdu)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
 
-        time.sleep(100)
-
         # gnd_dst <-- s/c_src Metadata      T2
         self._src_sc_to_gnd_dest(0.15, MetadataPdu)
         # gnd_dst <-- s/c_src Filedata      T2
@@ -424,6 +470,17 @@ class TestCfdp(unittest.TestCase):
         # gnd_dst --> s/c_src Finished      T2
         self._dest_gnd_to_sc_src(0.15, FinishedPdu)
         # gnd_dst <-- s/c_src Ack (Fin)     T2
+        self._src_sc_to_gnd_dest(0.15, AckPdu)
+
+        # gnd_dst <-- s/c_src Metadata      T3
+        self._src_sc_to_gnd_dest(0.15, MetadataPdu)
+        # gnd_dst <-- s/c_src Eof           T3
+        self._src_sc_to_gnd_dest(0.15, EofPdu)
+        # gnd_dst --> s/c_src Ack (EoF)     T3
+        self._dest_gnd_to_sc_src(0.15, AckPdu)
+        # gnd_dst --> s/c_src Finished      T3
+        self._dest_gnd_to_sc_src(0.15, FinishedPdu)
+        # gnd_dst <-- s/c_src Ack (Fin)     T3
         self._src_sc_to_gnd_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
@@ -439,6 +496,12 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler_gnd.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertEqual(
+            self.cache.read_data(Path(dir_listing_gnd)),
+            self.cache_gnd.read_data(Path(dir_listing_gnd), None)
+        )
+        self.cache.delete_file(Path(dir_listing_gnd))
+        self.cache_gnd.delete_file(Path(dir_listing_gnd))
 
 
     def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:

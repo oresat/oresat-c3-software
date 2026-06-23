@@ -9,7 +9,7 @@ from pathlib import Path
 from queue import Empty, SimpleQueue
 from threading import Event, Thread
 
-from cfdppy import CfdpState, PacketDestination, get_packet_destination
+from cfdppy import CfdpState
 from cfdppy.exceptions import (
     InvalidDestinationId,
     NoRemoteEntityConfigFound,
@@ -26,7 +26,6 @@ from cfdppy.mib import (
     EntityType,
     IndicationConfig,
     LocalEntityConfig,
-    RemoteEntityConfig,
     RemoteEntityConfigTable,
 )
 from cfdppy.request import PutRequest
@@ -39,14 +38,11 @@ from cfdppy.user import (
 )
 from olaf import logger
 from spacepackets.cfdp import (
-    ChecksumType,
     ConditionCode,
-    FaultHandlerCode,
     PduHolder,
-    PduType,
     TransmissionMode,
 )
-from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
+from spacepackets.cfdp.defs import DeliveryCode, TransactionId
 from spacepackets.cfdp.pdu import (
     AbstractFileDirectiveBase,
     DirectiveType,

@@ -2,14 +2,12 @@ import threading
 import time
 import unittest
 from abc import ABCMeta
-from datetime import timedelta
 from pathlib import Path
 from queue import SimpleQueue
 from tempfile import TemporaryDirectory
 
 from cfdppy.handler import dest, source
 from cfdppy.mib import (
-    CheckTimerProvider,
     RemoteEntityConfig,
     RemoteEntityConfigTable,
 )
@@ -23,7 +21,7 @@ from spacepackets.cfdp.pdu import (
     FileDataPdu,
     FinishedPdu,
     MetadataPdu,
-    NakPdu,
+    NakPdu,  # noqa: F401
     PduFactory,
 )
 from spacepackets.cfdp.tlv import (
@@ -33,7 +31,6 @@ from spacepackets.cfdp.tlv import (
     ProxyPutRequestParams,
     ProxyTransmissionMode,
 )
-from spacepackets.countdown import Countdown
 from spacepackets.util import ByteFieldU8
 
 from oresat_c3.protocols.cachestore import CacheStore

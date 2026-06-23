@@ -13,6 +13,7 @@ from cfdppy import CfdpState, PacketDestination, get_packet_destination
 from cfdppy.exceptions import (
     InvalidDestinationId,
     NoRemoteEntityConfigFound,
+    PduIgnoredForSource,
     SourceFileDoesNotExist,
 )
 from cfdppy.handler.dest import CompletionDisposition, DestHandler
@@ -42,6 +43,7 @@ from spacepackets.cfdp import (
     ConditionCode,
     FaultHandlerCode,
     PduHolder,
+    PduType,
     TransmissionMode,
 )
 from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
@@ -200,6 +202,15 @@ class FixedDestHandler(DestHandler):
         """Same issue as _handle_eof_pdu"""
         eof_pdu.condition_code >>= 4
         return super()._handle_eof_without_previous_metadata(eof_pdu)
+
+    def _handle_waiting_for_finished_ack(self, packet_holder: PduHolder) -> None:
+        # For some reason the upstream package will not re-send the EOF_ACK if it gets dropped.
+        if (
+            packet_holder.pdu is not None
+            and packet_holder.pdu_directive_type == DirectiveType.EOF_PDU
+        ):
+            self._handle_eof_pdu(packet_holder.pdu)
+        super()._handle_waiting_for_finished_ack(packet_holder)
 
     def _handle_metadata_packet(self, metadata_pdu: MetadataPdu) -> None:
         """Fixes the desthandler ending as soon as a proxy put request Metadata PDU is received."""
@@ -572,6 +583,9 @@ class SourceEntityHandler(Thread):
                 f"invalid destination ID {e.found_dest_id} on packet {packet}, expected "
                 f"{e.expected_dest_id}"
             )
+            fsm_result = self.source_handler.state_machine(None)
+        except PduIgnoredForSource as e:
+            logger.warning(f"Ignoring PDU: {e.reason}")
             fsm_result = self.source_handler.state_machine(None)
         packet_sent = False
         if fsm_result.states.num_packets_ready > 0:

@@ -40,17 +40,6 @@ from oresat_c3.protocols.cachestore import CacheStore
 from oresat_c3.protocols.cfdp import DestEntityHandler, SourceEntityHandler
 
 
-class CountdownProvider(CheckTimerProvider):
-    """Copied from the cfdppy example.
-
-    I think this is to allow for custom timeouts based on latency between local and remote
-    entities? It doesn't set all the timers though, ACK timer I'm looking at you.
-    """
-
-    def provide_check_timer(self, local_entity_id, remote_entity_id, entity_type) -> Countdown:
-        return Countdown(timedelta(seconds=5.0))
-
-
 def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
     """Creates a simple PutRequest for the file in file_path"""
     return PutRequest(
@@ -71,8 +60,9 @@ class TestCfdp(unittest.TestCase):
         self.cache.write_data(self.sat_file, b"This is some example data\x01\x02\x03")
 
         self.cachedir_gnd = TemporaryDirectory()
-        self.cache_gnd = RestrictedFilestore(Path(self.cachedir_gnd.name))
         self.gnd_file = Path("c3_tmp_1234")
+        # A less restricted filestore than the oresat one, so that we don't have to break that more.
+        self.cache_gnd = RestrictedFilestore(Path(self.cachedir_gnd.name))
         self.cache_gnd.create_file(self.gnd_file)
         self.cache_gnd.write_data(self.gnd_file, b"This is some example data\x01\x02\x03", None)
 
@@ -216,13 +206,10 @@ class TestCfdp(unittest.TestCase):
         )
         self.assertEqual(
             self.cache.read_data(self.gnd_file),
-            self.cache_gnd.read_data(self.gnd_file)
+            self.cache_gnd.read_data(self.gnd_file, None)
         )
         self.cache.delete_file(self.gnd_file)
 
-    # Broken for now. For some reason CFDP stops resending EOFs after recieving a finished PDU,
-    # leaving it stuck waiting for an ACK (EOF) without resending EOFs.
-    # @unittest.skip("FIXME: stops resending EoFs after recieving finished")
     def test_dropped_ack(self):
         """What happens if the first ack gets dropped?"""
         # src --> Metadata
@@ -232,11 +219,12 @@ class TestCfdp(unittest.TestCase):
         # dst <-- Finished
         # ??? According to 4.7.1 b) the origional PDU should be re-issued. So:
         # src --> EoF
+        # dst <-- Finished # same timeout as the EOF, not acked so re-issued as well.
         # dst <-- Ack (EoF)
         # dst <-- Finished
         # src --> Ack (Finished)
 
-        put = put_request(self.sat_id, self.file.name)
+        put = put_request(self.sat_id, self.gnd_file.name)
         self._put_req_queue_gnd.put(put)
         time.sleep(0.2)
 
@@ -249,32 +237,18 @@ class TestCfdp(unittest.TestCase):
         # dst X-- Ack (EoF)
         time.sleep(0.15)
         self.assertTrue(self._cfdp_tm_queue_gnd.empty())
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
+        self._cfdp_tm_queue.get() # drop the pdu
         # dst <-- Finished
         self._dest_sc_to_gnd_src(0.15, FinishedPdu)
-
-        print(self.cfdp_source_handler_gnd.source_handler.step)
-
+        # A timeout will occur here.
+        # src --> EoF
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
+        # dst <-- Ack (EoF)
+        self._dest_sc_to_gnd_src(0.15, AckPdu)
         # dst <-- Finished
-        time.sleep(0.15)
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, FinishedPdu)
-        self._cfdp_src_queue_gnd.put(pdu.pdu)
-        time.sleep(1)
-
-        print(self.cfdp_source_handler_gnd.source_handler.step)
-
-        time.sleep(100)
-
+        self._dest_sc_to_gnd_src(0.15, FinishedPdu)
         # src --> Ack (Finished)
-        time.sleep(0.15)
-        self.assertTrue(self._cfdp_tm_queue.empty())
-        pdu_packed = self._cfdp_tm_queue.get()
-        pdu = PduFactory.from_raw_to_holder(pdu_packed)
-        self.assertIsInstance(pdu.pdu, AckPdu)
-        self._cfdp_dest_queue.put(pdu.pdu)
+        self._src_gnd_to_sc_dest(0.15, AckPdu)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)
@@ -291,7 +265,7 @@ class TestCfdp(unittest.TestCase):
         )
         self.assertEqual(
             self.cache.read_data(self.gnd_file),
-            self.cache_gnd.read_data(self.gnd_file)
+            self.cache_gnd.read_data(self.gnd_file, None)
         )
         self.cache.delete_file(self.gnd_file)
 
@@ -394,7 +368,7 @@ class TestCfdp(unittest.TestCase):
         )
         self.assertEqual(
             self.cache.read_data(self.sat_file),
-            self.cache_gnd.read_data(self.sat_file)
+            self.cache_gnd.read_data(self.sat_file, None)
         )
         self.cache_gnd.delete_file(self.sat_file)
 

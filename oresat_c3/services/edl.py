@@ -70,12 +70,12 @@ class EdlService(Service):
         )
         self._node_flasher_service = node_flasher_service
 
-        self._put_req_queue = SimpleQueue()  # send new put reqs from the sat
+        self.put_req_queue = SimpleQueue()  # send new put requests from here
         self._cfdp_tm_queue = SimpleQueue()  # send telemetry pdus from here
         self._cfdp_src_queue = SimpleQueue()  # send tc for the source here
         self._cfdp_dest_queue = SimpleQueue()  # send tc for the dest here
-        self.cfdp_source_handler = None
-        self.cfdp_dest_handler = None
+        self._cfdp_source_handler = None
+        self._cfdp_dest_handler = None
 
         self.GND_ID = ByteFieldU8(0)
         self.SAT_ID = ByteFieldU8(1)
@@ -93,9 +93,20 @@ class EdlService(Service):
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
 
+    def __del__(self) -> None:
+        # redefinition of the service destructor to handle the cfdp threads
+        if not self._event.is_set():
+            self._event.set()
+
+        if self._cfdp_source_handler.is_alive():
+            self._thread.join()
+        if self._cfdp_dest_handler.is_alive():
+            self._thread.join()
+
+        if self._thread.is_alive():
+            self._thread.join()
+
     def _init_cfdp(self, fwrite_cache: CacheStore) -> None:
-
-
         remote_entities = RemoteEntityConfigTable(
             [
                 RemoteEntityConfig(
@@ -112,25 +123,27 @@ class EdlService(Service):
                 ),
             ]
         )
-        self.cfdp_source_handler = SourceEntityHandler(
-            self._put_req_queue,
+        self._cfdp_source_handler = SourceEntityHandler(
+            self.put_req_queue,
             self._cfdp_src_queue,
             self._cfdp_tm_queue,
-            self.fwrite_cache,
+            fwrite_cache,
             remote_entities,
-            self.gnd_id,
-            self.sat_id,
-            self.stop_signal
+            self.GND_ID,
+            self.SAT_ID,
+            self._event
         )
-        self.cfdp_dest_handler = DestEntityHandler(
-            self._put_req_queue,
+        self._cfdp_dest_handler = DestEntityHandler(
+            self.put_req_queue,
             self._cfdp_dest_queue,
             self._cfdp_tm_queue,
-            self.fwrite_cache,
+            fwrite_cache,
             remote_entities,
-            self.sat_id,
-            self.stop_signal
+            self.SAT_ID,
+            self._event
         )
+        self._cfdp_source_handler.start()
+        self._cfdp_dest_handler.start()
 
     @property
     def _hmac_key(self) -> bytes:
@@ -222,15 +235,14 @@ class EdlService(Service):
             req_packet = None
 
         if req_packet is not None:
-            self._handle_pdu(req_packet)
+            self._handle_pdu(req_packet.payload)
 
         while not self._cfdp_tm_queue.empty():
             next_tm = self._cfdp_tm_queue.get(False)
-            self._respond(EdlVcid.FILE_TRANSFER, next_tm)
+            self._respond(EdlVcid.FILE_TRANSFER, next_tm.pdu)
 
     def _handle_pdu(self, pdu: AbstractFileDirectiveBase):
         packet_dest = get_packet_destination(pdu)
-        logger.debug(f"UDP server: Routing {pdu} to {packet_dest}")
         if packet_dest == PacketDestination.DEST_HANDLER:
             self._cfdp_dest_queue.put(pdu)
         elif packet_dest == PacketDestination.SOURCE_HANDLER:

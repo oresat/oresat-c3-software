@@ -476,28 +476,28 @@ class TestCfdp(unittest.TestCase):
 
 
     def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _dest_gnd_to_sc_src(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _src_sc_to_gnd_dest(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue_gnd.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _dest_sc_to_gnd_src(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue_gnd.put(pdu)
         if delay > 0:

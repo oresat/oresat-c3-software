@@ -13,6 +13,7 @@ from cfdppy import CfdpState
 from cfdppy.exceptions import (
     InvalidDestinationId,
     NoRemoteEntityConfigFound,
+    PduIgnoredForDest,
     PduIgnoredForSource,
     SourceFileDoesNotExist,
 )
@@ -590,7 +591,7 @@ class SourceEntityHandler(Thread):
                 assert next_pdu_wrapper is not None
                 logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
                 # Send all packets which need to be sent.
-                self.tm_queue.put(next_pdu_wrapper.pack())
+                self.tm_queue.put(next_pdu_wrapper)
                 packet_sent = True
         return packet_sent
 
@@ -655,14 +656,17 @@ class DestEntityHandler(Thread):
                 pass
             if packet is not None:
                 logger.debug(f"Dest received {packet}")
-            fsm_result = self.dest_handler.state_machine(packet)
+            try:
+                fsm_result = self.dest_handler.state_machine(packet)
+            except PduIgnoredForDest as e:
+                logger.warning(f"Ignoring PDU: {e.reason}")
             packet_sent = False
             if fsm_result.states.num_packets_ready > 0:
                 while fsm_result.states.num_packets_ready > 0:
                     next_pdu_wrapper = self.dest_handler.get_next_packet()
                     assert next_pdu_wrapper is not None
                     logger.debug(f"Sending packet {next_pdu_wrapper.pdu}")
-                    self.tm_queue.put(next_pdu_wrapper.pack())
+                    self.tm_queue.put(next_pdu_wrapper)
                     packet_sent = True
             # If there is no work to do, put the thread to sleep.
             if not packet_received and not packet_sent:

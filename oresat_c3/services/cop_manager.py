@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from queue import Empty, SimpleQueue
 from typing import Optional
 
-from ccsds_cop.cop_1 import CopService, Gvcid
+from ccsds_cop.cop_1 import ControlWord, CopService, Gvcid
 from ccsds_cop.cop_1.farm import (
     Farm1,
     FarmHigherServiceInterface,
@@ -37,6 +37,7 @@ class FopInstance:
         rid = self._next_rid
         self._next_rid += 1
         return rid
+
 
 class CopManagerService(Service):
     """COP-1 Services Manager
@@ -132,12 +133,19 @@ class CopManagerService(Service):
                 elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
                     pass
 
-
     def create_farm_service(self, vcid: EdlVcid) -> SimpleQueue[TransferFrame]:
         logger.info(f"Creating FARM-1 Service for VCID {vcid}")
         q: SimpleQueue[TransferFrame] = SimpleQueue()
         self._farms[vcid] = (Farm1(w=20, vcf_count_length=1), q)
         return q
+
+    def dispatch_clcw(self, clcw: ControlWord) -> None:
+        """Hand a control word to the COP Manager for automatic routing to a FOP-1 instance."""
+        instance = self._fops.get(clcw.vcid)
+        if instance is not None:
+            instance.service.on_clcw_arrived(clcw)
+        else:
+            logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
 
     def get_service(self, vcid: EdlVcid) -> Optional[CopService]:
         entry = self._farms.get(vcid)

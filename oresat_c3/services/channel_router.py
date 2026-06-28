@@ -35,6 +35,9 @@ class ChannelRouterService(Service):
         self._downlink_routes: dict[EdlVcid, SimpleQueue[bytes]] = {}
         self._last_clcw_time = 0.0
 
+    def on_start(self) -> None:
+        self._send_clcws()
+
     def on_loop(self) -> None:
         for dl in self._downlink_routes.values():
             while True:
@@ -47,16 +50,7 @@ class ChannelRouterService(Service):
         if self.node.od["status"].value == C3State.EDL:
             now = monotonic()
             if now - self._last_clcw_time >= self._CLCW_INTERVAL:
-                for clcw in self._get_all_clcw():
-                    frame = make_frame(
-                        payload=bytes(1),
-                        vcid=EdlVcid.IDLE,
-                        src_dest=SourceOrDestField.SOURCE,
-                        control_word=clcw.pack(),
-                    )
-                    self._radios_service.send_edl_response(
-                        frame.pack(frame_type=FrameType.VARIABLE)
-                    )
+                self._send_clcws()
                 self._last_clcw_time = now
 
         try:
@@ -66,6 +60,8 @@ class ChannelRouterService(Service):
 
         try:
             frame = unpack_frame(message)
+            if frame.op_ctrl_field is not None:
+                self._cop_service.dispatch_clcw(ControlWord.unpack(frame.op_ctrl_field))
             vcid = frame.header.vcid
             if vcid in self._uplink_routes:
                 self._uplink_routes[vcid].put_nowait(frame)
@@ -76,6 +72,18 @@ class ChannelRouterService(Service):
             logger.debug(message)
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
+
+    def _send_clcws(self) -> None:
+        for clcw in self._get_all_clcw():
+            frame = make_frame(
+                payload=bytes(1),
+                vcid=EdlVcid.IDLE,
+                src_dest=SourceOrDestField.SOURCE,
+                control_word=clcw.pack(),
+            )
+            self._radios_service.send_edl_response(
+                frame.pack(frame_type=FrameType.VARIABLE)
+            )
 
     def request_uplink_route(
         self, vcid: EdlVcid, use_cop: bool = False

@@ -1,5 +1,6 @@
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from enum import Enum
 from queue import Empty, SimpleQueue
 from typing import Optional, TypeVar
 
@@ -12,6 +13,7 @@ from ccsds_cop.cop_1.farm import (
 )
 from ccsds_cop.cop_1.fop import (
     AbortRequest,
+    Alert,
     AsyncNotification,
     AsyncNotificationType,
     DirectiveNotification,
@@ -45,13 +47,24 @@ def _drain(getter: Callable[[], T], exc: type[BaseException]) -> Iterator[T]:
         return
 
 
+class FopSupervisorState(Enum):
+    IDLE = 0
+    INTIATING = 1
+    ACTIVE = 2
+    RECOVERING = 3
+    SUSPENDED = 4
+    BD_FALLBACK = 5
+
+
 @dataclass
 class FopInstance:
     service: Fop1
     fdu_queue: SimpleQueue[bytes]
     send_queue: SimpleQueue[bytes]
     requests: dict[int, bool] = field(default_factory=dict)
+    state: FopSupervisorState = FopSupervisorState.IDLE
     _next_rid = 0
+    _last_clcw: float = 0.0
 
     def next_rid(self) -> int:
         rid = self._next_rid
@@ -138,7 +151,9 @@ class CopManagerService(Service):
                         gvcid=Gvcid(0b1100, SPACECRAFT_ID, vcid),
                         request_id=instance.next_rid(),
                         fdu=fdu,
-                        service_type=ServiceType.AD,
+                        service_type=ServiceType.AD
+                        if instance.state == FopSupervisorState.ACTIVE
+                        else ServiceType.BD,
                     ),
                 )
             for i in _drain(instance.service.interface.to_higher.pop, IndexError):
@@ -149,7 +164,8 @@ class CopManagerService(Service):
                         # TODO: notify the user
                         del instance.requests[i.request_id]
                     elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                        # TODO: notify user of completion
+                        if instance.state == FopSupervisorState.RECOVERING:
+                            instance.state = FopSupervisorState.ACTIVE
                         del instance.requests[i.request_id]
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
                         # TODO: notify the user, note: an alert will always be received before
@@ -157,7 +173,7 @@ class CopManagerService(Service):
                         del instance.requests[i.request_id]
                 elif isinstance(i, AsyncNotification):
                     if i.notification_type == AsyncNotificationType.ALERT:
-                        pass  # TODO: notify user
+                        self._recover(instance, i.notification_qualifier)
                 elif isinstance(i, TransferNotification):
                     if i.notification_type == NotificationType.ACCEPT:
                         pass
@@ -172,9 +188,24 @@ class CopManagerService(Service):
         for clcw in _drain(self._clcw_queue.get_nowait, Empty):
             instance = self._fops.get(EdlVcid(clcw.vcid))
             if instance is not None:
+                if instance.state in (FopSupervisorState.IDLE, FopSupervisorState.SUSPENDED):
+                    # TODO: send INITIATE_AD_WITH_SET_V_R directive
+                    instance.state = FopSupervisorState.INTIATING
                 instance.service.on_clcw_arrived(clcw)
             else:
                 logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
+
+    def _recover(self, instance: FopInstance, alert: Alert) -> None:
+        instance.state = FopSupervisorState.RECOVERING
+        if alert == Alert.LOCKOUT:
+            pass  # init ad with unlock
+        elif alert in (Alert.SYNCH, Alert.NNR, Alert.CLCW):
+            pass  # init ad with set vr (from last CLCW)
+        elif alert in (Alert.LIMIT, Alert.T1, Alert.LLIF):
+            pass  # init with clcw
+        elif alert == Alert.TERM:
+            # unrecoverable: go to IDLE
+            instance.state = FopSupervisorState.IDLE
 
     def create_farm_service(self, vcid: EdlVcid) -> SimpleQueue[TransferFrame]:
         logger.info(f"Creating FARM-1 Service for VCID {vcid}")

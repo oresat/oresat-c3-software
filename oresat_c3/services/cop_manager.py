@@ -110,27 +110,24 @@ class CopManagerService(Service):
 
     def _process_fop_lower(self) -> None:
         for instance in self._fops.values():
-            try:
-                i = instance.service.interface.to_lower.pop()
-            except IndexError:
-                continue
-            if isinstance(i, TransmitRequestForFrame):
-                fr = make_frame(
-                    payload=i.tfdf,
-                    vcid=i.gvcid.vcid,
-                    src_dest=SourceOrDestField.SOURCE,
-                    vcf_count=i.v_s
-                    if i.bypass_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS
-                    else None,
-                    bypass=i.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS,
-                    command=i.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
-                )
-                instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
-            elif isinstance(i, AbortRequest):
-                # TODO: if anything is being processed for the GVCID, abort them
-                pass
-            else:
-                logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
+            for i in _drain(instance.service.interface.to_lower.pop, IndexError):
+                if isinstance(i, TransmitRequestForFrame):
+                    fr = make_frame(
+                        payload=i.tfdf,
+                        vcid=i.gvcid.vcid,
+                        src_dest=SourceOrDestField.SOURCE,
+                        vcf_count=i.v_s
+                        if i.bypass_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS
+                        else None,
+                        bypass=i.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS,
+                        command=i.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                    )
+                    instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
+                elif isinstance(i, AbortRequest):
+                    # TODO: if anything is being processed for the GVCID, abort them
+                    pass
+                else:
+                    logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
 
     def _process_fop_higher(self) -> None:
         for vcid, instance in self._fops.items():
@@ -144,35 +141,32 @@ class CopManagerService(Service):
                         service_type=ServiceType.AD,
                     ),
                 )
-            try:
-                i = instance.service.interface.to_higher.pop()
-            except IndexError:
-                continue
-            if isinstance(i, DirectiveNotification):
-                if i.notification_type == NotificationType.ACCEPT:
-                    instance.requests[i.request_id] = True
-                elif i.notification_type == NotificationType.REJECT:
-                    # TODO: notify the user
-                    del instance.requests[i.request_id]
-                elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                    # TODO: notify user of completion
-                    del instance.requests[i.request_id]
-                elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                    # TODO: notify the user, note: an alert will always be received before
-                    #  NEGATIVE_CONFIRM
-                    del instance.requests[i.request_id]
-            elif isinstance(i, AsyncNotification):
-                if i.notification_type == AsyncNotificationType.ALERT:
-                    pass  # TODO: notify user
-            elif isinstance(i, TransferNotification):
-                if i.notification_type == NotificationType.ACCEPT:
-                    pass
-                elif i.notification_type == NotificationType.REJECT:
-                    pass
-                elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                    pass
-                elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                    pass
+            for i in _drain(instance.service.interface.to_higher.pop, IndexError):
+                if isinstance(i, DirectiveNotification):
+                    if i.notification_type == NotificationType.ACCEPT:
+                        instance.requests[i.request_id] = True
+                    elif i.notification_type == NotificationType.REJECT:
+                        # TODO: notify the user
+                        del instance.requests[i.request_id]
+                    elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
+                        # TODO: notify user of completion
+                        del instance.requests[i.request_id]
+                    elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
+                        # TODO: notify the user, note: an alert will always be received before
+                        #  NEGATIVE_CONFIRM
+                        del instance.requests[i.request_id]
+                elif isinstance(i, AsyncNotification):
+                    if i.notification_type == AsyncNotificationType.ALERT:
+                        pass  # TODO: notify user
+                elif isinstance(i, TransferNotification):
+                    if i.notification_type == NotificationType.ACCEPT:
+                        pass
+                    elif i.notification_type == NotificationType.REJECT:
+                        pass
+                    elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
+                        pass
+                    elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
+                        pass
 
     def _process_clcw(self) -> None:
         for clcw in _drain(self._clcw_queue.get_nowait, Empty):

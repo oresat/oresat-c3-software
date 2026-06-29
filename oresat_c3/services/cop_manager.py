@@ -1,6 +1,7 @@
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from queue import Empty, SimpleQueue
-from typing import Optional
+from typing import Optional, TypeVar
 
 from ccsds_cop.cop_1 import ControlWord, CopService, Gvcid
 from ccsds_cop.cop_1.farm import (
@@ -16,20 +17,39 @@ from ccsds_cop.cop_1.fop import (
     DirectiveNotification,
     Fop1,
     NotificationType,
+    RequestToTransferFdu,
+    ServiceType,
     TransferNotification,
     TransmitRequestForFrame,
 )
 from olaf import Service, logger
-from spacepackets.uslp import SourceOrDestField, TransferFrame
-from uslp import make_frame
+from spacepackets.uslp import (
+    BypassSequenceControlFlag,
+    ProtocolCommandFlag,
+    SourceOrDestField,
+    TransferFrame,
+)
+from spacepackets.uslp.frame import FrameType
+from uslp import SPACECRAFT_ID, make_frame
 
 from ..protocols.edl_packet import EdlVcid
+
+T = TypeVar("T")
+
+
+def _drain(getter: Callable[[], T], exc: type[BaseException]) -> Iterator[T]:
+    try:
+        while True:
+            yield getter()
+    except exc:
+        return
 
 
 @dataclass
 class FopInstance:
     service: Fop1
-    recv_queue: SimpleQueue[TransferFrame] = field(default_factory=SimpleQueue)
+    fdu_queue: SimpleQueue[bytes]
+    send_queue: SimpleQueue[bytes]
     requests: dict[int, bool] = field(default_factory=dict)
     _next_rid = 0
 
@@ -49,11 +69,15 @@ class CopManagerService(Service):
         super().__init__()
         self._farms: dict[EdlVcid, tuple[CopService, SimpleQueue[TransferFrame]]] = {}
         self._fops: dict[EdlVcid, FopInstance] = {}
+        self._clcw_queue: SimpleQueue[ControlWord] = SimpleQueue()
         self.recv_queue: SimpleQueue[TransferFrame] = SimpleQueue()
 
     def on_loop(self) -> None:
         self._process_farm_higher()
         self._process_farm_lower()
+        self._process_clcw()
+        self._process_fop_higher()
+        self._process_fop_lower()
         self.sleep_ms(50)
 
     def _process_farm_lower(self) -> None:
@@ -85,16 +109,23 @@ class CopManagerService(Service):
                 continue
 
     def _process_fop_lower(self) -> None:
-        for srv, q in self._fops.values():
-            i = srv.interface.to_lower.pop()
+        for instance in self._fops.values():
+            try:
+                i = instance.service.interface.to_lower.pop()
+            except IndexError:
+                continue
             if isinstance(i, TransmitRequestForFrame):
                 fr = make_frame(
                     payload=i.tfdf,
                     vcid=i.gvcid.vcid,
                     src_dest=SourceOrDestField.SOURCE,
-                    vcf_count=i.v_s,
+                    vcf_count=i.v_s
+                    if i.bypass_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS
+                    else None,
+                    bypass=i.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS,
+                    command=i.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
                 )
-                q.put_nowait(fr)
+                instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
             elif isinstance(i, AbortRequest):
                 # TODO: if anything is being processed for the GVCID, abort them
                 pass
@@ -102,7 +133,17 @@ class CopManagerService(Service):
                 logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
 
     def _process_fop_higher(self) -> None:
-        for instance in self._fops.values():
+        for vcid, instance in self._fops.items():
+            instance.service.drain_timer_events()
+            for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
+                instance.service.on_receive_request_to_transfer_fdu(
+                    RequestToTransferFdu(
+                        gvcid=Gvcid(0b1100, SPACECRAFT_ID, vcid),
+                        request_id=instance.next_rid(),
+                        fdu=fdu,
+                        service_type=ServiceType.AD,
+                    ),
+                )
             try:
                 i = instance.service.interface.to_higher.pop()
             except IndexError:
@@ -133,19 +174,49 @@ class CopManagerService(Service):
                 elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
                     pass
 
+    def _process_clcw(self) -> None:
+        for clcw in _drain(self._clcw_queue.get_nowait, Empty):
+            instance = self._fops.get(EdlVcid(clcw.vcid))
+            if instance is not None:
+                instance.service.on_clcw_arrived(clcw)
+            else:
+                logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
+
     def create_farm_service(self, vcid: EdlVcid) -> SimpleQueue[TransferFrame]:
         logger.info(f"Creating FARM-1 Service for VCID {vcid}")
         q: SimpleQueue[TransferFrame] = SimpleQueue()
         self._farms[vcid] = (Farm1(w=20, vcf_count_length=1), q)
         return q
 
+    def create_fop_service(
+        self, vcid: EdlVcid, send_queue: SimpleQueue[bytes]
+    ) -> SimpleQueue[bytes]:
+        """Create a FOP-1 Service for a VCID.
+
+        Parameters
+        ----------
+        vcid
+            The VCID to assoociate with the FOP-1 Service.
+        send_queue
+            The queue into which FOP-1 will place frames assembled by the Lower Procedures.
+
+        Returns
+        -------
+        SimpleQueue[bytes]
+            A queue of FDUs for FOP-1.
+        """
+        logger.info(f"Creating FOP-1 Service for VCID {vcid}")
+        q: SimpleQueue[bytes] = SimpleQueue()
+        self._fops[vcid] = FopInstance(
+            service=Fop1(Gvcid(0b1100, SPACECRAFT_ID, vcid)),
+            fdu_queue=q,
+            send_queue=send_queue,
+        )
+        return q
+
     def dispatch_clcw(self, clcw: ControlWord) -> None:
         """Hand a control word to the COP Manager for automatic routing to a FOP-1 instance."""
-        instance = self._fops.get(clcw.vcid)
-        if instance is not None:
-            instance.service.on_clcw_arrived(clcw)
-        else:
-            logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
+        self._clcw_queue.put_nowait(clcw)
 
     def get_service(self, vcid: EdlVcid) -> Optional[CopService]:
         entry = self._farms.get(vcid)

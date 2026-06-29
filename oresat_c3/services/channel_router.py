@@ -81,9 +81,7 @@ class ChannelRouterService(Service):
                 src_dest=SourceOrDestField.SOURCE,
                 control_word=clcw.pack(),
             )
-            self._radios_service.send_edl_response(
-                frame.pack(frame_type=FrameType.VARIABLE)
-            )
+            self._radios_service.send_edl_response(frame.pack(frame_type=FrameType.VARIABLE))
 
     def request_uplink_route(
         self, vcid: EdlVcid, use_cop: bool = False
@@ -117,13 +115,15 @@ class ChannelRouterService(Service):
             self._uplink_routes[vcid] = q
         return q
 
-    def request_downlink_route(self, vcid: EdlVcid) -> SimpleQueue[bytes]:
+    def request_downlink_route(self, vcid: EdlVcid, use_cop: bool = False) -> SimpleQueue[bytes]:
         """Request a downlink Virtual Channel route.
 
         Parameters
         ----------
         vcid
             The VCID used to identify the route.
+        use_cop
+            True enables COP-1 (FOP-1) on this route.
 
         Returns
         -------
@@ -138,11 +138,14 @@ class ChannelRouterService(Service):
 
         if vcid in self._downlink_routes:
             raise KeyError(f"Downlink route for VCID={vcid} already exists")
+        if use_cop:
+            send_queue: SimpleQueue[bytes] = SimpleQueue()
+            q = self._cop_service.create_fop_service(vcid, send_queue)
+            self._downlink_routes[vcid] = send_queue
         else:
-            q: SimpleQueue[bytes] = SimpleQueue()
+            q = SimpleQueue()
             self._downlink_routes[vcid] = q
-            logger.info(f"Created downlink route for VCID {vcid}")
-            return q
+        return q
 
     def _get_all_clcw(self) -> list[ControlWord]:
         clcws = []

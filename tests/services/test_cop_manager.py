@@ -160,6 +160,12 @@ class TestFopManagerSupervisor(unittest.TestCase):
         )
         self.service._process_fop_higher(self.instance)
 
+    def test_bd_fallback_to_initiating_on_clcw(self) -> None:
+        self.instance.state = FopSupervisorState.BD_FALLBACK
+        self.service.dispatch_clcw(self._clcw())
+        self.service._process_clcw()
+        self.assertEqual(self.instance.state, FopSupervisorState.INITIATING)
+
     def test_unknown_vcid_in_clcw_does_not_raise(self) -> None:
         self.service.dispatch_clcw(_make_clcw(vcid=63))
         self.service._process_clcw()

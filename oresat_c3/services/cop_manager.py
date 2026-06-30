@@ -216,7 +216,11 @@ class CopManagerService(Service):
                 continue
             instance = self._fops.get(vcid)
             if instance is not None:
-                if instance.state in (FopSupervisorState.IDLE, FopSupervisorState.SUSPENDED):
+                if instance.state in (
+                    FopSupervisorState.IDLE,
+                    FopSupervisorState.SUSPENDED,
+                    FopSupervisorState.BD_FALLBACK,
+                ):
                     instance.service.on_receive_directive(
                         DirectiveRequest(
                             gvcid=instance.gvcid,

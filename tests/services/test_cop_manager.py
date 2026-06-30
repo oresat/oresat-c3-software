@@ -66,26 +66,26 @@ class TestFopManagerSupervisor(unittest.TestCase):
     def test_active_on_positive_confirm(self) -> None:
         self.instance.state = FopSupervisorState.INITIATING
         self._push_to_higher(self._directive_notification(NotificationType.POSITIVE_CONFIRM))
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.ACTIVE)
 
     def test_initiating_resets_recovery_attempts(self) -> None:
         self.instance.state = FopSupervisorState.INITIATING
         self.instance.recovery_attempts = 2
         self._push_to_higher(self._directive_notification(NotificationType.POSITIVE_CONFIRM))
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.recovery_attempts, 0)
 
     def test_suspend_notification(self) -> None:
         self.instance.state = FopSupervisorState.ACTIVE
         self._push_to_higher(self._suspend())
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.SUSPENDED)
 
     def test_active_to_recovering_on_alert(self) -> None:
         self.instance.state = FopSupervisorState.ACTIVE
         self._push_to_higher(self._alert(Alert.SYNCH))
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.RECOVERING)
 
     def test_suspend_to_initiating_on_clcw(self) -> None:
@@ -97,45 +97,45 @@ class TestFopManagerSupervisor(unittest.TestCase):
     def test_recovering_on_positive_confirm(self) -> None:
         self.instance.state = FopSupervisorState.RECOVERING
         self._push_to_higher(self._directive_notification(NotificationType.POSITIVE_CONFIRM))
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.ACTIVE)
 
     def test_recovering_to_bd_fallback(self) -> None:
         self.instance.state = FopSupervisorState.ACTIVE
         for _ in range(self.service.MAX_RECOVERY_ATTEMPTS + 1):
             self._push_to_higher(self._alert(Alert.SYNCH))
-            self.service._process_fop_higher()
+            self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.BD_FALLBACK)
 
     def test_term_alert_goes_to_idle(self) -> None:
         self.instance.state = FopSupervisorState.ACTIVE
         self.instance.recovery_attempts = self.service.MAX_RECOVERY_ATTEMPTS + 5
         self._push_to_higher(self._alert(Alert.TERM))
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertEqual(self.instance.state, FopSupervisorState.IDLE)
 
     def test_fdus_not_drained_when_idle(self) -> None:
         self.instance.state = FopSupervisorState.IDLE
         self.fdu_queue.put_nowait(b"data")
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertFalse(self.fdu_queue.empty())
 
     def test_fdus_not_drained_when_initiating(self) -> None:
         self.instance.state = FopSupervisorState.INITIATING
         self.fdu_queue.put_nowait(b"data")
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertFalse(self.fdu_queue.empty())
 
     def test_fdus_not_drained_when_recovering(self) -> None:
         self.instance.state = FopSupervisorState.RECOVERING
         self.fdu_queue.put_nowait(b"data")
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertFalse(self.fdu_queue.empty())
 
     def test_fdus_not_drained_when_suspended(self) -> None:
         self.instance.state = FopSupervisorState.SUSPENDED
         self.fdu_queue.put_nowait(b"data")
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
         self.assertFalse(self.fdu_queue.empty())
 
     def test_transfer_reject_does_not_raise(self) -> None:
@@ -147,7 +147,7 @@ class TestFopManagerSupervisor(unittest.TestCase):
                 notification_type=NotificationType.REJECT,
             )
         )
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
 
     def test_transfer_negative_confirm_does_not_raise(self) -> None:
         self.instance.state = FopSupervisorState.ACTIVE
@@ -158,7 +158,7 @@ class TestFopManagerSupervisor(unittest.TestCase):
                 notification_type=NotificationType.NEGATIVE_CONFIRM,
             )
         )
-        self.service._process_fop_higher()
+        self.service._process_fop_higher(self.instance)
 
     def test_unknown_vcid_in_clcw_does_not_raise(self) -> None:
         self.service.dispatch_clcw(_make_clcw(vcid=63))

@@ -98,8 +98,9 @@ class CopManagerService(Service):
         self._process_farm_higher()
         self._process_farm_lower()
         self._process_clcw()
-        self._process_fop_higher()
-        self._process_fop_lower()
+        for instance in self._fops.values():
+            self._process_fop_higher(instance)
+            self._process_fop_lower(instance)
         self.sleep_ms(50)
 
     def _process_farm_lower(self) -> None:
@@ -130,85 +131,81 @@ class CopManagerService(Service):
             except IndexError:
                 continue
 
-    def _process_fop_lower(self) -> None:
-        for instance in self._fops.values():
-            for i in _drain(instance.service.interface.to_lower.pop, IndexError):
-                if isinstance(i, TransmitRequestForFrame):
-                    fr = make_frame(
-                        payload=i.tfdf,
-                        vcid=i.gvcid.vcid,
-                        src_dest=SourceOrDestField.SOURCE,
-                        vcf_count=i.v_s
-                        if i.bypass_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS
-                        else None,
-                        bypass=i.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS,
-                        command=i.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
-                    )
-                    instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
-                elif isinstance(i, AbortRequest):
-                    for _ in _drain(instance.send_queue.get_nowait, Empty):
-                        pass
-                else:
-                    logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
+    def _process_fop_lower(self, instance: FopInstance) -> None:
+        for i in _drain(instance.service.interface.to_lower.pop, IndexError):
+            if isinstance(i, TransmitRequestForFrame):
+                fr = make_frame(
+                    payload=i.tfdf,
+                    vcid=i.gvcid.vcid,
+                    src_dest=SourceOrDestField.SOURCE,
+                    vcf_count=i.v_s
+                    if i.bypass_flag == BypassSequenceControlFlag.SEQ_CTRLD_QOS
+                    else None,
+                    bypass=i.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS,
+                    command=i.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                )
+                instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
+            elif isinstance(i, AbortRequest):
+                for _ in _drain(instance.send_queue.get_nowait, Empty):
+                    pass
+            else:
+                logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
 
-    def _process_fop_higher(self) -> None:
-        for instance in self._fops.values():
-            instance.service.drain_timer_events()
-            if (
-                instance.state == FopSupervisorState.BD_FALLBACK
-                and time.monotonic() >= instance.init_retry_at
-            ):
-                instance.service.on_receive_directive(
-                    DirectiveRequest(
+    def _process_fop_higher(self, instance: FopInstance) -> None:
+        instance.service.drain_timer_events()
+        if (
+            instance.state == FopSupervisorState.BD_FALLBACK
+            and time.monotonic() >= instance.init_retry_at
+        ):
+            instance.service.on_receive_directive(
+                DirectiveRequest(
+                    gvcid=instance.gvcid,
+                    request_id=instance.next_rid(),
+                    directive_type=DirectiveType.INITIATE_AD_WITH_SET_V_R,
+                    directive_qualifier=instance.last_nr,
+                )
+            )
+            instance.state = FopSupervisorState.INITIATING
+        if instance.state in (FopSupervisorState.ACTIVE, FopSupervisorState.BD_FALLBACK):
+            for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
+                instance.service.on_receive_request_to_transfer_fdu(
+                    RequestToTransferFdu(
                         gvcid=instance.gvcid,
                         request_id=instance.next_rid(),
-                        directive_type=DirectiveType.INITIATE_AD_WITH_SET_V_R,
-                        directive_qualifier=instance.last_nr,
-                    )
+                        fdu=fdu,
+                        service_type=ServiceType.BD
+                        if instance.state == FopSupervisorState.BD_FALLBACK
+                        else ServiceType.AD,
+                    ),
                 )
-                instance.state = FopSupervisorState.INITIATING
-            if instance.state in (FopSupervisorState.ACTIVE, FopSupervisorState.BD_FALLBACK):
-                for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
-                    instance.service.on_receive_request_to_transfer_fdu(
-                        RequestToTransferFdu(
-                            gvcid=instance.gvcid,
-                            request_id=instance.next_rid(),
-                            fdu=fdu,
-                            service_type=ServiceType.BD
-                            if instance.state == FopSupervisorState.BD_FALLBACK
-                            else ServiceType.AD,
-                        ),
+        for i in _drain(instance.service.interface.to_higher.pop, IndexError):
+            if isinstance(i, DirectiveNotification):
+                if i.notification_type == NotificationType.ACCEPT:
+                    instance.requests.add(i.request_id)
+                elif i.notification_type == NotificationType.REJECT:
+                    instance.requests.discard(i.request_id)
+                elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
+                    if instance.state in (
+                        FopSupervisorState.RECOVERING,
+                        FopSupervisorState.INITIATING,
+                    ):
+                        instance.state = FopSupervisorState.ACTIVE
+                        instance.recovery_attempts = 0
+                    instance.requests.discard(i.request_id)
+                elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
+                    instance.requests.discard(i.request_id)
+            elif isinstance(i, AsyncNotification):
+                if i.notification_type == AsyncNotificationType.ALERT:
+                    self._recover(instance, i.notification_qualifier)
+                elif i.notification_type == AsyncNotificationType.SUSPEND:
+                    instance.state = FopSupervisorState.SUSPENDED
+            elif isinstance(i, TransferNotification):
+                if i.notification_type == NotificationType.REJECT:
+                    logger.warning(f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU rejected")
+                elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
+                    logger.warning(
+                        f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU delivery failed"
                     )
-            for i in _drain(instance.service.interface.to_higher.pop, IndexError):
-                if isinstance(i, DirectiveNotification):
-                    if i.notification_type == NotificationType.ACCEPT:
-                        instance.requests.add(i.request_id)
-                    elif i.notification_type == NotificationType.REJECT:
-                        instance.requests.discard(i.request_id)
-                    elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                        if instance.state in (
-                            FopSupervisorState.RECOVERING,
-                            FopSupervisorState.INITIATING,
-                        ):
-                            instance.state = FopSupervisorState.ACTIVE
-                            instance.recovery_attempts = 0
-                        instance.requests.discard(i.request_id)
-                    elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                        instance.requests.discard(i.request_id)
-                elif isinstance(i, AsyncNotification):
-                    if i.notification_type == AsyncNotificationType.ALERT:
-                        self._recover(instance, i.notification_qualifier)
-                    elif i.notification_type == AsyncNotificationType.SUSPEND:
-                        instance.state = FopSupervisorState.SUSPENDED
-                elif isinstance(i, TransferNotification):
-                    if i.notification_type == NotificationType.REJECT:
-                        logger.warning(
-                            f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU rejected"
-                        )
-                    elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                        logger.warning(
-                            f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU delivery failed"
-                        )
 
     def _process_clcw(self) -> None:
         for clcw in _drain(self._clcw_queue.get_nowait, Empty):

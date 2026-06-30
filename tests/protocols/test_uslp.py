@@ -46,7 +46,7 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
         self.assertEqual(frame.header.frame_len, len(raw) - 1)
 
     def test_ad_frame_sdls(self):
-        """Type-AD frames must have SDLS trailer (in insert zone)."""
+        """Type-AD frames must have SDLS header."""
         frame = make_frame(
             b"\x00",
             EdlVcid.C3_COMMAND,
@@ -73,7 +73,7 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
         self.assertEqual(unpacked.tfdf.tfdz, b"\x00")
 
     def test_bc_frame_no_sdls(self):
-        """Type-BC (command) frames must not have an SDLS insert zone."""
+        """Type-BC (command) frames must not have an SDLS header."""
         frame = make_frame(
             b"\x00",
             EdlVcid.C3_COMMAND,
@@ -84,7 +84,7 @@ class TestMakeFrameUnpackFrame(unittest.TestCase):
         self.assertIsNone(frame.insert_zone)
 
     def test_bd_frame_has_sdls(self):
-        """Type-BD frames must have an SDLS insert zone."""
+        """Type-BD frames must have an SDLS header."""
         frame = make_frame(
             b"\x00",
             EdlVcid.C3_COMMAND,

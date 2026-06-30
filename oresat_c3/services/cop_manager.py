@@ -17,6 +17,8 @@ from ccsds_cop.cop_1.fop import (
     AsyncNotification,
     AsyncNotificationType,
     DirectiveNotification,
+    DirectiveRequest,
+    DirectiveType,
     Fop1,
     NotificationType,
     RequestToTransferFdu,
@@ -59,11 +61,13 @@ class FopSupervisorState(Enum):
 @dataclass
 class FopInstance:
     service: Fop1
+    gvcid: Gvcid
     fdu_queue: SimpleQueue[bytes]
     send_queue: SimpleQueue[bytes]
     requests: set[int] = field(default_factory=set)
     state: FopSupervisorState = FopSupervisorState.IDLE
-    _next_rid = 0
+    last_nr: int = 0
+    _next_rid: int = 0
 
     def next_rid(self) -> int:
         rid = self._next_rid
@@ -76,6 +80,8 @@ class CopManagerService(Service):
     This service acts as both the Higher and Lower procedures for any number of FARM-1
     or FOP-1 COP-1 services
     """
+
+    MAX_RECOVERY_ATTEMPTS = 3
 
     def __init__(self) -> None:
         super().__init__()
@@ -142,12 +148,12 @@ class CopManagerService(Service):
                     logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
 
     def _process_fop_higher(self) -> None:
-        for vcid, instance in self._fops.items():
+        for instance in self._fops.values():
             instance.service.drain_timer_events()
             for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
                 instance.service.on_receive_request_to_transfer_fdu(
                     RequestToTransferFdu(
-                        gvcid=Gvcid(0b1100, SPACECRAFT_ID, vcid),
+                        gvcid=instance.gvcid,
                         request_id=instance.next_rid(),
                         fdu=fdu,
                         service_type=ServiceType.BD
@@ -163,7 +169,10 @@ class CopManagerService(Service):
                         # TODO: notify the user
                         instance.requests.remove(i.request_id)
                     elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                        if instance.state == FopSupervisorState.RECOVERING:
+                        if instance.state in (
+                            FopSupervisorState.RECOVERING,
+                            FopSupervisorState.INITIATING,
+                        ):
                             instance.state = FopSupervisorState.ACTIVE
                         instance.requests.remove(i.request_id)
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
@@ -190,20 +199,47 @@ class CopManagerService(Service):
             instance = self._fops.get(EdlVcid(clcw.vcid))
             if instance is not None:
                 if instance.state in (FopSupervisorState.IDLE, FopSupervisorState.SUSPENDED):
-                    # TODO: send INITIATE_AD_WITH_SET_V_R directive
+                    instance.service.on_receive_directive(
+                        DirectiveRequest(
+                            gvcid=instance.gvcid,
+                            request_id=instance.next_rid(),
+                            directive_type=DirectiveType.INITIATE_AD_WITH_SET_V_R,
+                            directive_qualifier=clcw.report_value,
+                        )
+                    )
                     instance.state = FopSupervisorState.INITIATING
                 instance.service.on_clcw_arrived(clcw)
+                instance.last_nr = clcw.report_value
             else:
                 logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
 
     def _recover(self, instance: FopInstance, alert: Alert) -> None:
         instance.state = FopSupervisorState.RECOVERING
         if alert == Alert.LOCKOUT:
-            pass  # init ad with unlock
+            instance.service.on_receive_directive(
+                DirectiveRequest(
+                    gvcid=instance.gvcid,
+                    request_id=instance.next_rid(),
+                    directive_type=DirectiveType.INITIATE_AD_WITH_UNLOCK,
+                )
+            )
         elif alert in (Alert.SYNCH, Alert.NNR, Alert.CLCW):
-            pass  # init ad with set vr (from last CLCW)
+            instance.service.on_receive_directive(
+                DirectiveRequest(
+                    gvcid=instance.gvcid,
+                    request_id=instance.next_rid(),
+                    directive_type=DirectiveType.INITIATE_AD_WITH_SET_V_R,
+                    directive_qualifier=instance.last_nr,
+                )
+            )
         elif alert in (Alert.LIMIT, Alert.T1, Alert.LLIF):
-            pass  # init with clcw
+            instance.service.on_receive_directive(
+                DirectiveRequest(
+                    gvcid=instance.gvcid,
+                    request_id=instance.next_rid(),
+                    directive_type=DirectiveType.INITIATE_AD_WITH_CLCW,
+                )
+            )
         elif alert == Alert.TERM:
             # unrecoverable: go to IDLE
             instance.state = FopSupervisorState.IDLE
@@ -233,8 +269,10 @@ class CopManagerService(Service):
         """
         logger.info(f"Creating FOP-1 Service for VCID {vcid}")
         q: SimpleQueue[bytes] = SimpleQueue()
+        gvcid = Gvcid(0b1100, SPACECRAFT_ID, vcid)
         self._fops[vcid] = FopInstance(
-            service=Fop1(Gvcid(0b1100, SPACECRAFT_ID, vcid)),
+            service=Fop1(gvcid=gvcid),
+            gvcid=gvcid,
             fdu_queue=q,
             send_queue=send_queue,
         )

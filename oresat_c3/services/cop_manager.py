@@ -146,8 +146,8 @@ class CopManagerService(Service):
                     )
                     instance.send_queue.put_nowait(fr.pack(FrameType.VARIABLE))
                 elif isinstance(i, AbortRequest):
-                    # TODO: if anything is being processed for the GVCID, abort them
-                    pass
+                    for _ in _drain(instance.send_queue.get_nowait, Empty):
+                        pass
                 else:
                     logger.error(f"Unknown FOP-1 Lower Procedures request of type {type(i)}")
 
@@ -183,7 +183,6 @@ class CopManagerService(Service):
                     if i.notification_type == NotificationType.ACCEPT:
                         instance.requests.add(i.request_id)
                     elif i.notification_type == NotificationType.REJECT:
-                        # TODO: notify the user
                         instance.requests.discard(i.request_id)
                     elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
                         if instance.state in (
@@ -194,8 +193,6 @@ class CopManagerService(Service):
                             instance.recovery_attempts = 0
                         instance.requests.discard(i.request_id)
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                        # TODO: notify the user, note: an alert will always be received before
-                        #  NEGATIVE_CONFIRM
                         instance.requests.discard(i.request_id)
                 elif isinstance(i, AsyncNotification):
                     if i.notification_type == AsyncNotificationType.ALERT:
@@ -203,14 +200,14 @@ class CopManagerService(Service):
                     elif i.notification_type == AsyncNotificationType.SUSPEND:
                         instance.state = FopSupervisorState.SUSPENDED
                 elif isinstance(i, TransferNotification):
-                    if i.notification_type == NotificationType.ACCEPT:
-                        pass
-                    elif i.notification_type == NotificationType.REJECT:
-                        pass
-                    elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
-                        pass
+                    if i.notification_type == NotificationType.REJECT:
+                        logger.warning(
+                            f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU rejected"
+                        )
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
-                        pass
+                        logger.warning(
+                            f"FOP-1 vcid={i.gvcid.vcid}, rid={i.request_id}: FDU delivery failed"
+                        )
 
     def _process_clcw(self) -> None:
         for clcw in _drain(self._clcw_queue.get_nowait, Empty):

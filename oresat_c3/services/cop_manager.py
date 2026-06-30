@@ -64,7 +64,6 @@ class FopInstance:
     requests: set[int] = field(default_factory=set)
     state: FopSupervisorState = FopSupervisorState.IDLE
     _next_rid = 0
-    _last_clcw: float = 0.0
 
     def next_rid(self) -> int:
         rid = self._next_rid
@@ -174,6 +173,8 @@ class CopManagerService(Service):
                 elif isinstance(i, AsyncNotification):
                     if i.notification_type == AsyncNotificationType.ALERT:
                         self._recover(instance, i.notification_qualifier)
+                    elif i.notification_type == AsyncNotificationType.SUSPEND:
+                        instance.state = FopSupervisorState.SUSPENDED
                 elif isinstance(i, TransferNotification):
                     if i.notification_type == NotificationType.ACCEPT:
                         pass

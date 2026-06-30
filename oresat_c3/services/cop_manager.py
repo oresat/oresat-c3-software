@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from enum import Enum
@@ -67,6 +68,8 @@ class FopInstance:
     requests: set[int] = field(default_factory=set)
     state: FopSupervisorState = FopSupervisorState.IDLE
     last_nr: int = 0
+    recovery_attempts: int = 0
+    init_retry_at: float = 0.0
     _next_rid: int = 0
 
     def next_rid(self) -> int:
@@ -82,6 +85,7 @@ class CopManagerService(Service):
     """
 
     MAX_RECOVERY_ATTEMPTS = 3
+    INIT_RETRY_INTERVAL = 30
 
     def __init__(self) -> None:
         super().__init__()
@@ -150,6 +154,19 @@ class CopManagerService(Service):
     def _process_fop_higher(self) -> None:
         for instance in self._fops.values():
             instance.service.drain_timer_events()
+            if (
+                instance.state == FopSupervisorState.BD_FALLBACK
+                and time.monotonic() >= instance.init_retry_at
+            ):
+                instance.service.on_receive_directive(
+                    DirectiveRequest(
+                        gvcid=instance.gvcid,
+                        request_id=instance.next_rid(),
+                        directive_type=DirectiveType.INITIATE_AD_WITH_SET_V_R,
+                        directive_qualifier=instance.last_nr,
+                    )
+                )
+                instance.state = FopSupervisorState.INITIATING
             for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
                 instance.service.on_receive_request_to_transfer_fdu(
                     RequestToTransferFdu(
@@ -167,18 +184,19 @@ class CopManagerService(Service):
                         instance.requests.add(i.request_id)
                     elif i.notification_type == NotificationType.REJECT:
                         # TODO: notify the user
-                        instance.requests.remove(i.request_id)
+                        instance.requests.discard(i.request_id)
                     elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
                         if instance.state in (
                             FopSupervisorState.RECOVERING,
                             FopSupervisorState.INITIATING,
                         ):
                             instance.state = FopSupervisorState.ACTIVE
-                        instance.requests.remove(i.request_id)
+                            instance.recovery_attempts = 0
+                        instance.requests.discard(i.request_id)
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
                         # TODO: notify the user, note: an alert will always be received before
                         #  NEGATIVE_CONFIRM
-                        instance.requests.remove(i.request_id)
+                        instance.requests.discard(i.request_id)
                 elif isinstance(i, AsyncNotification):
                     if i.notification_type == AsyncNotificationType.ALERT:
                         self._recover(instance, i.notification_qualifier)
@@ -214,6 +232,15 @@ class CopManagerService(Service):
                 logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")
 
     def _recover(self, instance: FopInstance, alert: Alert) -> None:
+        if alert == Alert.TERM:
+            # unrecoverable: go to IDLE
+            instance.state = FopSupervisorState.IDLE
+            return
+        instance.recovery_attempts += 1
+        if instance.recovery_attempts > self.MAX_RECOVERY_ATTEMPTS:
+            instance.state = FopSupervisorState.BD_FALLBACK
+            instance.init_retry_at = time.monotonic() + self.INIT_RETRY_INTERVAL
+            return
         instance.state = FopSupervisorState.RECOVERING
         if alert == Alert.LOCKOUT:
             instance.service.on_receive_directive(
@@ -240,9 +267,6 @@ class CopManagerService(Service):
                     directive_type=DirectiveType.INITIATE_AD_WITH_CLCW,
                 )
             )
-        elif alert == Alert.TERM:
-            # unrecoverable: go to IDLE
-            instance.state = FopSupervisorState.IDLE
 
     def create_farm_service(self, vcid: EdlVcid) -> SimpleQueue[TransferFrame]:
         logger.info(f"Creating FARM-1 Service for VCID {vcid}")

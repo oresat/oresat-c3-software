@@ -63,7 +63,7 @@ class ChannelRouterService(Service):
             if frame.op_ctrl_field is not None:
                 self._cop_service.dispatch_clcw(ControlWord.unpack(frame.op_ctrl_field))
             vcid = frame.header.vcid
-            if vcid in self._uplink_routes:
+            if vcid != EdlVcid.IDLE and vcid in self._uplink_routes:
                 self._uplink_routes[vcid].put_nowait(frame)
             else:
                 logger.error(f"No route for VCID {frame.header.vcid}")

@@ -151,9 +151,9 @@ class CopManagerService(Service):
                         gvcid=Gvcid(0b1100, SPACECRAFT_ID, vcid),
                         request_id=instance.next_rid(),
                         fdu=fdu,
-                        service_type=ServiceType.AD
-                        if instance.state == FopSupervisorState.ACTIVE
-                        else ServiceType.BD,
+                        service_type=ServiceType.BD
+                        if instance.state == FopSupervisorState.BD_FALLBACK
+                        else ServiceType.AD,
                     ),
                 )
             for i in _drain(instance.service.interface.to_higher.pop, IndexError):

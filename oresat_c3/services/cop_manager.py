@@ -35,9 +35,9 @@ from spacepackets.uslp import (
     TransferFrame,
 )
 from spacepackets.uslp.frame import FrameType
-from uslp import SPACECRAFT_ID, make_frame
 
 from ..protocols.edl_packet import EdlVcid
+from ..protocols.uslp import SPACECRAFT_ID, make_frame
 
 T = TypeVar("T")
 
@@ -167,17 +167,18 @@ class CopManagerService(Service):
                     )
                 )
                 instance.state = FopSupervisorState.INITIATING
-            for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
-                instance.service.on_receive_request_to_transfer_fdu(
-                    RequestToTransferFdu(
-                        gvcid=instance.gvcid,
-                        request_id=instance.next_rid(),
-                        fdu=fdu,
-                        service_type=ServiceType.BD
-                        if instance.state == FopSupervisorState.BD_FALLBACK
-                        else ServiceType.AD,
-                    ),
-                )
+            if instance.state in (FopSupervisorState.ACTIVE, FopSupervisorState.BD_FALLBACK):
+                for fdu in _drain(instance.fdu_queue.get_nowait, Empty):
+                    instance.service.on_receive_request_to_transfer_fdu(
+                        RequestToTransferFdu(
+                            gvcid=instance.gvcid,
+                            request_id=instance.next_rid(),
+                            fdu=fdu,
+                            service_type=ServiceType.BD
+                            if instance.state == FopSupervisorState.BD_FALLBACK
+                            else ServiceType.AD,
+                        ),
+                    )
             for i in _drain(instance.service.interface.to_higher.pop, IndexError):
                 if isinstance(i, DirectiveNotification):
                     if i.notification_type == NotificationType.ACCEPT:
@@ -211,7 +212,12 @@ class CopManagerService(Service):
 
     def _process_clcw(self) -> None:
         for clcw in _drain(self._clcw_queue.get_nowait, Empty):
-            instance = self._fops.get(EdlVcid(clcw.vcid))
+            try:
+                vcid = EdlVcid(clcw.vcid)
+            except ValueError:
+                logger.error(f"Received CLCW with unknown VCID: {clcw.vcid}")
+                continue
+            instance = self._fops.get(vcid)
             if instance is not None:
                 if instance.state in (FopSupervisorState.IDLE, FopSupervisorState.SUSPENDED):
                     instance.service.on_receive_directive(

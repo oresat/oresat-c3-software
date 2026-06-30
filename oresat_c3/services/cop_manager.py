@@ -49,7 +49,7 @@ def _drain(getter: Callable[[], T], exc: type[BaseException]) -> Iterator[T]:
 
 class FopSupervisorState(Enum):
     IDLE = 0
-    INTIATING = 1
+    INITIATING = 1
     ACTIVE = 2
     RECOVERING = 3
     SUSPENDED = 4
@@ -190,7 +190,7 @@ class CopManagerService(Service):
             if instance is not None:
                 if instance.state in (FopSupervisorState.IDLE, FopSupervisorState.SUSPENDED):
                     # TODO: send INITIATE_AD_WITH_SET_V_R directive
-                    instance.state = FopSupervisorState.INTIATING
+                    instance.state = FopSupervisorState.INITIATING
                 instance.service.on_clcw_arrived(clcw)
             else:
                 logger.error(f"Received invalid VCID in CLCW: {clcw.vcid}")

@@ -61,7 +61,7 @@ class FopInstance:
     service: Fop1
     fdu_queue: SimpleQueue[bytes]
     send_queue: SimpleQueue[bytes]
-    requests: dict[int, bool] = field(default_factory=dict)
+    requests: set[int] = field(default_factory=set)
     state: FopSupervisorState = FopSupervisorState.IDLE
     _next_rid = 0
     _last_clcw: float = 0.0
@@ -159,18 +159,18 @@ class CopManagerService(Service):
             for i in _drain(instance.service.interface.to_higher.pop, IndexError):
                 if isinstance(i, DirectiveNotification):
                     if i.notification_type == NotificationType.ACCEPT:
-                        instance.requests[i.request_id] = True
+                        instance.requests.add(i.request_id)
                     elif i.notification_type == NotificationType.REJECT:
                         # TODO: notify the user
-                        del instance.requests[i.request_id]
+                        instance.requests.remove(i.request_id)
                     elif i.notification_type == NotificationType.POSITIVE_CONFIRM:
                         if instance.state == FopSupervisorState.RECOVERING:
                             instance.state = FopSupervisorState.ACTIVE
-                        del instance.requests[i.request_id]
+                        instance.requests.remove(i.request_id)
                     elif i.notification_type == NotificationType.NEGATIVE_CONFIRM:
                         # TODO: notify the user, note: an alert will always be received before
                         #  NEGATIVE_CONFIRM
-                        del instance.requests[i.request_id]
+                        instance.requests.remove(i.request_id)
                 elif isinstance(i, AsyncNotification):
                     if i.notification_type == AsyncNotificationType.ALERT:
                         self._recover(instance, i.notification_qualifier)

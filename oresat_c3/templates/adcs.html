@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+  </style>
+  <b>The current branch is for testing the ADCS service!</b>
+  <br/>
+  <form>
+    <input id="apply_button" type="button" value="APPLY"></input>
+    <input id="reset_button" type="button" value="RESET"></input>
+    <br/>
+    <div id="adcsMgrTableDiv">
+      <table id="adcsMgrTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Current State</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+ 
+    <h1>Old stuff</h1>
+    <br/>
+    <input id="apply_button_old" type="button" value="APPLY"></input>
+    <input id="calibrate_button_old" type="button" value="--- CALIBRATE ---"></input>
+    <input id="reset_button_old" type="reset" value="RESET"></input>
+    <br/>
+    <div id="adcsMgrTableDivOld">
+      <table id="adcsMgrTableOld">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Control Signal Form</td>
+            <td>Applied Control Signal</td>
+            <td>Feedback Signal</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+<script>
+  async function buildTable() {
+    let tbodyRef = document.getElementById('adcsMgrTable').getElementsByTagName('tbody')[0];
+    let guidance_mode_json = await readValue("adcs_manager", "mode");
+    let control_mode_json = await readValue("adcs_manager", "control_mode");
+    let pointing_reference_json = await readValue("adcs_manager", "pointing_reference");
+
+    console.log(guidance_mode_json);
+    console.log(control_mode_json);
+    console.log(pointing_reference_json);
+
+    // Add guidance mode
+    var newRow = tbodyRef.insertRow();
+
+    var nameCell = newRow.insertCell();
+    var nameText = document.createTextNode("Guidance Mode");
+    nameCell.appendChild(nameText);
+    
+    // add form
+    var inputCell = newRow.insertCell();
+    var inputField = document.createElement("select");
+    inputField.id = "guidance-mode-form";
+
+    // add options
+    for (var option in guidance_mode_json.value_descriptions) {
+      console.log(option);
+      // add options
+      var inputOption = document.createElement("option");
+      var inputOptionText = document.createTextNode((guidance_mode_json.value_descriptions[option]).toUpperCase());
+      inputOption.appendChild(inputOptionText);
+      inputField.appendChild(inputOption);
+
+    }
+
+    // finally, add the field to the cell
+    inputCell.appendChild(inputField)
+
+    // add readout
+    var statusCell = newRow.insertCell();
+    var statusText = document.createTextNode((guidance_mode_json.value_descriptions[guidance_mode_json.value]).toUpperCase())
+    statusCell.appendChild(statusText)
+
+
+
+    // Add control mode
+    var newRow = tbodyRef.insertRow();
+
+    var nameCell = newRow.insertCell();
+    var nameText = document.createTextNode("Control Mode");
+    nameCell.appendChild(nameText);
+    
+    // add form
+    var inputCell = newRow.insertCell();
+    var inputField = document.createElement("select");
+    inputField.id = "control-mode-form";
+
+    // add options
+    for (var option in control_mode_json.value_descriptions) {
+      console.log(option);
+      // add options
+      var inputOption = document.createElement("option");
+      var inputOptionText = document.createTextNode((control_mode_json.value_descriptions[option]).toUpperCase());
+      inputOption.appendChild(inputOptionText);
+      inputField.appendChild(inputOption);
+
+    }
+
+    // finally, add the field to the cell
+    inputCell.appendChild(inputField)
+
+    // add readout
+    var statusCell = newRow.insertCell();
+    var statusText = document.createTextNode((control_mode_json.value_descriptions[control_mode_json.value]).toUpperCase())
+    statusCell.appendChild(statusText)
+
+
+  }
+
+  buildTable();
+</script>
+{% endblock %}

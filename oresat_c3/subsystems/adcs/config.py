@@ -16,6 +16,7 @@ class ControlMode(IntEnum):
     THERMAL_DETUMBLE = 4
     THERMAL_REORIENT = 5
     THERMAL_SPINUP = 6
+    CUSTOM = 7
 
 
 class PointingReference(IntEnum):

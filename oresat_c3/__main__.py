@@ -74,6 +74,12 @@ def keys_template():
     return render_olaf_template("keys.html", name="Keys")
 
 
+@rest_api.app.route("/adcs")
+def adcs_template():
+    """Render adcs template."""
+    return render_olaf_template("adcs.html", name="ADCS")
+
+
 def watchdog():
     """Pet the watchdog app (which pets the watchdog circuit)."""
 

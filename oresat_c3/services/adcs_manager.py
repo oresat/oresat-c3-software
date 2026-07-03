@@ -360,10 +360,53 @@ class ADCSManager(Service):
             * j_min
         )
 
+    def _command_mtb(self, m_cmd: np.ndarray) -> None:
+        """Write setpoints for magnetorquers."""
+        self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
+        self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
+        self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+
     def on_loop(self) -> None:
+        logger.info("Start of loop on ADCSManager.")
+        logger.debug("The control mode is " + str(self.control_mode.value))
+
+        # check if the modes have been updated externally
+        self.control_mode = self.node.od["adcs_manager"]["control_mode"]
+        self.guidance_mode = self.node.od["adcs_manager"]["mode"]
+        self.pointing_reference = self.node.od["adcs_manager"]["pointing_reference"]
+
+        logger.debug("The control mode is " + str(self.control_mode.value))
+        logger.debug("The guidance mode is " + str(self.guidance_mode.value))
+        logger.debug("The pointing reference is " + str(self.pointing_reference.value))
+
         if self.control_mode.value == ControlMode.IDLE:
-            self.sleep_ms(300000)
+            # temporarily have the adcs idle mode be 10 seconds.
+            self.sleep_ms(10e3)
             return
+
+        if self.control_mode.value == ControlMode.CUSTOM:
+            logger.info("ADCSManager using CUSTOM control mode.")
+            # custom mode for integration debugging
+            # the current units for magnetorquers is microamps
+            self._command_mtb(np.ndarray([10e3, 0, 0]))
+            self.sleep_ms(3e3)
+
+            self._command_mtb(np.ndarray([0, 10e3, 0]))
+            self.sleep_ms(3e3)
+
+            self._command_mtb(np.ndarray([0, 0, 10e3]))
+            self.sleep_ms(3e3)
+
+            self._command_mtb(np.ndarray([-10e3, 0, 0]))
+            self.sleep_ms(3e3)
+
+            self._command_mtb(np.ndarray([0, -10e3, 0]))
+            self.sleep_ms(3e3)
+
+            self._command_mtb(np.ndarray([0, 0, -10e3]))
+            self.sleep_ms(3e3)
+            return
+
         if (
             self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT)
             and not self.filter_initialized

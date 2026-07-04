@@ -386,24 +386,25 @@ class ADCSManager(Service):
 
         if self.control_mode.value == ControlMode.CUSTOM:
             logger.info("ADCSManager using CUSTOM control mode.")
+            
             # custom mode for integration debugging
             # the current units for magnetorquers is microamps
-            self._command_mtb(np.ndarray([10e3, 0, 0]))
+            self._command_mtb(np.array([10000, 0, 0]))
             self.sleep_ms(3e3)
 
-            self._command_mtb(np.ndarray([0, 10e3, 0]))
+            self._command_mtb(np.array([0, 10000, 0]))
             self.sleep_ms(3e3)
 
-            self._command_mtb(np.ndarray([0, 0, 10e3]))
+            self._command_mtb(np.array([0, 0, 10000]))
             self.sleep_ms(3e3)
 
-            self._command_mtb(np.ndarray([-10e3, 0, 0]))
+            self._command_mtb(np.array([-10000, 0, 0]))
             self.sleep_ms(3e3)
 
-            self._command_mtb(np.ndarray([0, -10e3, 0]))
+            self._command_mtb(np.array([0, -10000, 0]))
             self.sleep_ms(3e3)
 
-            self._command_mtb(np.ndarray([0, 0, -10e3]))
+            self._command_mtb(np.array([0, 0, -10000]))
             self.sleep_ms(3e3)
             return
 
@@ -440,6 +441,7 @@ class ADCSManager(Service):
         # portion of the code, and just defines the target which is fed into the
         # control algorithms
 
+        
         gps_data = self._sensor_data["gps"].data
         if not isinstance(gps_data, GPSData):
             logger.error("Incorrect sensor data type")
@@ -475,7 +477,7 @@ class ADCSManager(Service):
             logger.warning(f"Unknown guidance mode: {self.guidance_mode.value}")
 
         self.update_target(new_target)
-
+        
         imu_data = self._sensor_data["adcs"].data
         if not isinstance(imu_data, IMUData):
             logger.error("Incorrect sensor data type")

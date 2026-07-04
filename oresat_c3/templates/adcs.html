@@ -16,127 +16,226 @@
       text-align: left;
       padding: 8px;
     }
+    canvas {
+      border: 1px solid #dddddd;
+    }
   </style>
   <b>The current branch is for testing the ADCS service!</b>
   <br/>
   <form>
-    <input id="apply_button" type="button" value="APPLY"></input>
-    <input id="reset_button" type="button" value="RESET"></input>
+
+    <h1>Mode Dashboard</h1>
+    <input id="apply_modes_button" type="button" value="APPLY MODES"></input>
+    <input id="reset_modes_button" type="button" value="RESET MODES"></input>
     <br/>
-    <div id="adcsMgrTableDiv">
-      <table id="adcsMgrTable">
+    <div id="adcsMgrModeTableDiv">
+      <table id="adcsMgrModeTable">
         <thead>
           <tr>
             <td>Name</td>
 	    <td>Desired State</td>
-            <td>Current State</td>
+            <td>Present State</td>
           </tr>
         </thead>
         <tbody>
         </tbody>
       </table>
     </div>
- 
-    <h1>Old stuff</h1>
-    <br/>
-    <input id="apply_button_old" type="button" value="APPLY"></input>
-    <input id="calibrate_button_old" type="button" value="--- CALIBRATE ---"></input>
-    <input id="reset_button_old" type="reset" value="RESET"></input>
-    <br/>
-    <div id="adcsMgrTableDivOld">
-      <table id="adcsMgrTableOld">
+   
+    <h1>Sensor Dashboard</h1>
+    <div id="gyroSensorTableDiv">
+      <table id="gyroSensorTable">
         <thead>
           <tr>
-            <td>Name</td>
-	    <td>Control Signal Form</td>
-            <td>Applied Control Signal</td>
-            <td>Feedback Signal</td>
+            <td align="center" colspan=3>GYROSCOPE</td>
           </tr>
         </thead>
         <tbody>
         </tbody>
       </table>
     </div>
-  </form>
+    
+    <div id="accelSensorTableDiv">
+      <table id="accelSensorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=3>ACCELEROMETER</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    
+    <div id="magSensorTableDiv">
+      <table id="magSensorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=3>MAGNETOMETERS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+
+
+
 
 <script>
-  async function buildTable() {
-    let tbodyRef = document.getElementById('adcsMgrTable').getElementsByTagName('tbody')[0];
-    let guidance_mode_json = await readValue("adcs_manager", "mode");
-    let control_mode_json = await readValue("adcs_manager", "control_mode");
-    let pointing_reference_json = await readValue("adcs_manager", "pointing_reference");
 
-    console.log(guidance_mode_json);
-    console.log(control_mode_json);
-    console.log(pointing_reference_json);
+  async function buildModeRow(tbodyRef, index, subindex) {
+    let mode = await readValue(index, subindex)
 
     // Add guidance mode
-    var newRow = tbodyRef.insertRow();
-
-    var nameCell = newRow.insertCell();
-    var nameText = document.createTextNode("Guidance Mode");
+    let newRow = tbodyRef.insertRow();
+    let nameCell = newRow.insertCell();
+    nameCell.id = subindex + "_info"
+    let nameText = document.createTextNode(subindex);
     nameCell.appendChild(nameText);
-    
-    // add form
+    // add input cell
     var inputCell = newRow.insertCell();
+    inputCell.id = subindex + "_form"
     var inputField = document.createElement("select");
-    inputField.id = "guidance-mode-form";
-
-    // add options
-    for (var option in guidance_mode_json.value_descriptions) {
-      console.log(option);
-      // add options
+    inputField.id = subindex + "_form_input";
+    // add options to input
+    for (var option in mode.value_descriptions) {
       var inputOption = document.createElement("option");
-      var inputOptionText = document.createTextNode((guidance_mode_json.value_descriptions[option]).toUpperCase());
+      var inputOptionText = document.createTextNode((mode.value_descriptions[option]).toUpperCase());
       inputOption.appendChild(inputOptionText);
       inputField.appendChild(inputOption);
-
     }
-
-    // finally, add the field to the cell
+    // finally, add the elements to the input cell
     inputCell.appendChild(inputField)
-
-    // add readout
+    // add readout at end of row
     var statusCell = newRow.insertCell();
-    var statusText = document.createTextNode((guidance_mode_json.value_descriptions[guidance_mode_json.value]).toUpperCase())
+    statusCell.id = subindex + "_state"
+    var statusText = document.createTextNode((mode.value_descriptions[mode.value]).toUpperCase())
     statusCell.appendChild(statusText)
-
-
-
-    // Add control mode
-    var newRow = tbodyRef.insertRow();
-
-    var nameCell = newRow.insertCell();
-    var nameText = document.createTextNode("Control Mode");
-    nameCell.appendChild(nameText);
-    
-    // add form
-    var inputCell = newRow.insertCell();
-    var inputField = document.createElement("select");
-    inputField.id = "control-mode-form";
-
-    // add options
-    for (var option in control_mode_json.value_descriptions) {
-      console.log(option);
-      // add options
-      var inputOption = document.createElement("option");
-      var inputOptionText = document.createTextNode((control_mode_json.value_descriptions[option]).toUpperCase());
-      inputOption.appendChild(inputOptionText);
-      inputField.appendChild(inputOption);
-
-    }
-
-    // finally, add the field to the cell
-    inputCell.appendChild(inputField)
-
-    // add readout
-    var statusCell = newRow.insertCell();
-    var statusText = document.createTextNode((control_mode_json.value_descriptions[control_mode_json.value]).toUpperCase())
-    statusCell.appendChild(statusText)
-
-
   }
 
-  buildTable();
+  async function updateModeRow(tbodyRef, index, subindex) {
+    // get the most recent data
+    let mode = await readValue(index, subindex)
+    // get the element to update
+    let statusCell = document.getElementById(subindex + "_state")
+    // replace the contents of the element
+    statusCell.replaceChildren(
+      document.createTextNode(
+        (mode.value_descriptions[mode.value]).toUpperCase()
+      )
+    );
+  }
+
+
+  async function buildSensorTable(tbodyRef, index, subindex_list) {
+    let infoRow = tbodyRef.insertRow();
+    for (s_idx in subindex_list) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = subindex_list[s_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Description: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Value [, ]: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Scale Factor: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Eng. Value: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (s_idx in subindex_list) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = subindex_list[s_idx] + "_canvas";
+      plotCanvas.width = 600;
+      plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateSensorInfoPlot(index, subindex, plot_min, plot_max) {
+    let sensor = await readValue(index, subindex);
+    // update the information
+    infoCell = document.getElementById(subindex + "_info")
+    infoCell.replaceChildren(
+      document.createTextNode("Name: "+sensor.name),
+      document.createElement("br"),
+      document.createTextNode("Description: "+sensor.description),
+      document.createElement("br"),
+      document.createTextNode("Value ["+sensor.high_limit+", "+sensor.low_limit+"]: "+sensor.value),
+      document.createElement("br"),
+      document.createTextNode("Scale Factor: " + sensor.scale_factor),
+      document.createElement("br"),
+      document.createTextNode("Eng. Value: " + sensor.eng_value + " " + sensor.unit)
+    )
+    // update the plot
+    let plotCanvas = document.getElementById(subindex + "_canvas")
+    let ctx = plotCanvas.getContext("2d");
+    let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+    ctx.putImageData(imageData, 0, 0);
+    ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+    if (iter_count % iter_count_mod == 0) {
+      console.log(window.performance.now())
+      ctx.beginPath();
+      ctx.moveTo(ctx.canvas.width, 0);
+      ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
+      ctx.stroke();
+    }
+    // plot the data point
+    let factor = (plot_max - sensor.eng_value) / (plot_max - plot_min);
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    console.log("Hey: " + sensor.name + " factor " + (factor * ctx.canvas.height));
+    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2)
+  }
+
+
+  async function buildTables() {
+
+    let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
+    buildModeRow(mode_tbodyRef, "adcs_manager", "mode");
+    buildModeRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    buildModeRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+ 
+    let gyro_tbodyRef = document.getElementById('gyroSensorTable').getElementsByTagName('tbody')[0];
+    buildSensorTable(gyro_tbodyRef, "adcs", ["gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"]);
+    
+    let accel_tbodyRef = document.getElementById('accelSensorTable').getElementsByTagName('tbody')[0];
+    buildSensorTable(accel_tbodyRef, "adcs", ["accelerometer_x", "accelerometer_y", "accelerometer_z"]);
+    
+    updateTables();
+  }
+
+
+  async function updateTables() {
+    let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
+    updateModeRow(mode_tbodyRef, "adcs_manager", "mode");
+    updateModeRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    updateModeRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+  
+    //updateSensorTable("adcs", ["accelerometer_x", "accelerometer_y", "accelerometer_z"]);
+    updateSensorInfoPlot("adcs", "gyroscope_pitch_rate", - 100, 100);
+    updateSensorInfoPlot("adcs", "gyroscope_yaw_rate", - 100, 100);
+    updateSensorInfoPlot("adcs", "gyroscope_roll_rate", - 100, 100);
+    updateSensorInfoPlot("adcs", "accelerometer_x", - 1, 1);
+    updateSensorInfoPlot("adcs", "accelerometer_y", - 1, 1);
+    updateSensorInfoPlot("adcs", "accelerometer_z", - 1, 1);
+    
+  }
+
+
+  buildTables();
+  let iter_count = 0;
+  let iter_count_mod = 20;
+  const interval = setInterval(function() {
+      updateTables();
+      iter_count++;
+  }, 100);
+
 </script>
 {% endblock %}

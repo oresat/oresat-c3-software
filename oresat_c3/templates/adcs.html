@@ -19,16 +19,20 @@
     canvas {
       border: 1px solid #dddddd;
     }
+    .table-container { 
+      display: flex;
+      justify-content: space-between; 
+      margin: 20px; 
+    } 
   </style>
-  <b>The current branch is for testing the ADCS service!</b>
-  <br/>
   <form>
-
-    <h1>Mode Dashboard</h1>
-    <input id="apply_modes_button" type="button" value="APPLY MODES"></input>
-    <input id="reset_modes_button" type="button" value="RESET MODES"></input>
-    <br/>
-    <div id="adcsMgrModeTableDiv">
+    <h1>Manager Dashboard</h1>
+    <div id="adcsMgrTableDiv" class="table-container">
+      <span>
+      <h2>Modes</h2>
+      <input id="apply_modes_button" type="button" value="APPLY MODES"></input>
+      <input id="reset_modes_button" type="button" value="RESET MODES"></input>
+ 
       <table id="adcsMgrModeTable">
         <thead>
           <tr>
@@ -40,16 +44,54 @@
         <tbody>
         </tbody>
       </table>
-    </div>
-   
-    <h1>Sensor Dashboard</h1>
-    <div id="gyroSensorTableDiv">
-      <table id="gyroSensorTable">
+      </span>
+
+      <span>
+      <h2>Reaction Wheel LQR Tuning</h2>
+      <input id="apply_rw_lqr_button" type="button" value="APPLY LQR"></input>
+      <input id="reset_rw_lqr_button" type="button" value="RESET LQR"></input>
+ 
+      <table id="adcsMgrLQRRWTable">
         <thead>
           <tr>
-            <td align="center" colspan=3>GYROSCOPE</td>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Present State</td>
           </tr>
         </thead>
+        <tbody>
+        </tbody>
+      </table>
+      </span>
+
+      <span>
+      <h2>Magnetorquer LQR Tuning</h2>
+      <input id="apply_mt_lqr_button" type="button" value="APPLY LQR"></input>
+      <input id="reset_mt_lqr_button" type="button" value="RESET LQR"></input>
+      <table id="adcsMgrLQRMTTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Present State</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+      </span>
+
+    </div>
+    
+   
+    <h1>Sensor Dashboard</h1>
+    <div style="overflow:scroll; height:400px; border: 4px solid #000000">
+
+    <div id="gyroSensorTableDiv">
+      <table id="gyroSensorTable">
+	<thead>
+            <td align="center" colspan=3>GYROSCOPE</td>
+	</thead>
         <tbody>
         </tbody>
       </table>
@@ -57,11 +99,10 @@
     
     <div id="accelSensorTableDiv">
       <table id="accelSensorTable">
-        <thead>
-          <tr>
-            <td align="center" colspan=3>ACCELEROMETER</td>
-          </tr>
-        </thead>
+	<thead>
+            <td align="center" colspan=3>ACCELEROMETER
+	    </td>
+	</thead>
         <tbody>
         </tbody>
       </table>
@@ -80,22 +121,35 @@
     </div>
 
 
+    
+    <div id="rwActuatorTableDiv">
+      <table id="rwActuatorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=4>REACTION WHEELS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    </div>
 
 
 <script>
 
-  async function buildModeRow(tbodyRef, index, subindex) {
-    let mode = await readValue(index, subindex)
+  async function buildMngrRow(tbodyRef, index, subindex) {
+    let mode = await readValue(index, subindex);
 
     // Add guidance mode
     let newRow = tbodyRef.insertRow();
     let nameCell = newRow.insertCell();
-    nameCell.id = subindex + "_info"
+    nameCell.id = subindex + "_info";
     let nameText = document.createTextNode(subindex);
-    nameCell.appendChild(nameText);
+    nameCell.appendChild(document.createTextNode(subindex));
     // add input cell
     var inputCell = newRow.insertCell();
-    inputCell.id = subindex + "_form"
+    inputCell.id = subindex + "_form";
     var inputField = document.createElement("select");
     inputField.id = subindex + "_form_input";
     // add options to input
@@ -106,23 +160,61 @@
       inputField.appendChild(inputOption);
     }
     // finally, add the elements to the input cell
-    inputCell.appendChild(inputField)
+    inputCell.appendChild(inputField);
     // add readout at end of row
     var statusCell = newRow.insertCell();
-    statusCell.id = subindex + "_state"
-    var statusText = document.createTextNode((mode.value_descriptions[mode.value]).toUpperCase())
-    statusCell.appendChild(statusText)
+    statusCell.id = subindex + "_state";
+    var statusText = document.createTextNode((mode.value_descriptions[mode.value]).toUpperCase());
+    statusCell.appendChild(statusText);
   }
 
-  async function updateModeRow(tbodyRef, index, subindex) {
+  async function updateMngrRow(tbodyRef, index, subindex) {
     // get the most recent data
-    let mode = await readValue(index, subindex)
+    let mode = await readValue(index, subindex);
     // get the element to update
-    let statusCell = document.getElementById(subindex + "_state")
+    let statusCell = document.getElementById(subindex + "_state");
     // replace the contents of the element
     statusCell.replaceChildren(
       document.createTextNode(
         (mode.value_descriptions[mode.value]).toUpperCase()
+      )
+    );
+  }
+
+
+  async function buildInputRow(tbodyRef, index, subindex) {
+    let mode = await readValue(index, subindex);
+    // console.log(mode);
+    // Add guidance mode
+    let newRow = tbodyRef.insertRow();
+    let nameCell = newRow.insertCell();
+    nameCell.id = subindex + "_info";
+    nameCell.appendChild(document.createTextNode(subindex + " (initially "+mode.value+ ")"));
+    // add input cell
+    var inputCell = newRow.insertCell();
+    inputCell.id = subindex + "_form";
+    var inputField = document.createElement("input");
+    inputField.id = subindex + "_form_input";
+    inputField.type = "number";
+    // finally, add the elements to the input cell
+    inputCell.appendChild(inputField);
+    // add readout at end of row
+    var statusCell = newRow.insertCell();
+    statusCell.id = subindex + "_state";
+    var statusText = document.createTextNode(mode.value);
+    statusCell.appendChild(statusText);
+  }
+
+
+  async function updateInputRow(tbodyRef, index, subindex) {
+    // get the most recent data
+    let mode = await readValue(index, subindex);
+    // get the element to update
+    let statusCell = document.getElementById(subindex + "_state");
+    // replace the contents of the element
+    statusCell.replaceChildren(
+      document.createTextNode(
+        (mode.value)
       )
     );
   }
@@ -150,8 +242,8 @@
       let plotCell = plotRow.insertCell();
       let plotCanvas = document.createElement("canvas");
       plotCanvas.id = subindex_list[s_idx] + "_canvas";
-      plotCanvas.width = 600;
-      plotCanvas.height = 300;
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
       let ctx = plotCanvas.getContext("2d");
       ctx.fillStyle = "rgb(0 0 0)";
       ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
@@ -162,9 +254,9 @@
   async function updateSensorInfoPlot(index, subindex, plot_min, plot_max) {
     let sensor = await readValue(index, subindex);
     // update the information
-    infoCell = document.getElementById(subindex + "_info")
+    infoCell = document.getElementById(subindex + "_info");
     infoCell.replaceChildren(
-      document.createTextNode("Name: "+sensor.name),
+      document.createTextNode("Name: [" + index + "] " +sensor.name),
       document.createElement("br"),
       document.createTextNode("Description: "+sensor.description),
       document.createElement("br"),
@@ -175,13 +267,12 @@
       document.createTextNode("Eng. Value: " + sensor.eng_value + " " + sensor.unit)
     )
     // update the plot
-    let plotCanvas = document.getElementById(subindex + "_canvas")
+    let plotCanvas = document.getElementById(subindex + "_canvas");
     let ctx = plotCanvas.getContext("2d");
     let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
     ctx.putImageData(imageData, 0, 0);
     ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
     if (iter_count % iter_count_mod == 0) {
-      console.log(window.performance.now())
       ctx.beginPath();
       ctx.moveTo(ctx.canvas.width, 0);
       ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
@@ -190,41 +281,205 @@
     // plot the data point
     let factor = (plot_max - sensor.eng_value) / (plot_max - plot_min);
     ctx.fillStyle = "rgb(255, 0, 0)";
-    console.log("Hey: " + sensor.name + " factor " + (factor * ctx.canvas.height));
-    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2)
+    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
   }
+
+
+  async function buildMagSensorTable(tbodyRef) {
+    let infoRow = tbodyRef.insertRow();
+    dirs = ["x", "y", "z"]
+    for (d_idx in dirs) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = "mag_" + dirs[d_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (d_idx in dirs) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = "mag_" + dirs[d_idx] + "_canvas";
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateMagSensorInfoPlot(index, subindex_list, plot_min, plot_max) {
+    let dirs = ["x", "y", "z"];
+    // if there are more than 4 colors, figure out something else
+    let colors = ["#ff9900cc", "#00ff19cc", "#0066ffcc", "#ff00e6cc"];
+    for (d_idx in dirs) {
+      // shift the plot
+      let plotCanvas = document.getElementById("mag_"+dirs[d_idx]+ "_canvas");
+      let ctx = plotCanvas.getContext("2d");
+      let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+      ctx.putImageData(imageData, 0, 0);
+      ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+      if (iter_count % iter_count_mod == 0) {
+        ctx.beginPath();
+        ctx.moveTo(ctx.canvas.width, 0);
+        ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
+        ctx.stroke();
+      }
+      // for each sensor, update
+      for (s_idx in subindex_list) {
+	let mt_info = await readValue(index, subindex_list[s_idx] +"_"+dirs[d_idx]);
+	let factor = (plot_max - mt_info.value) / (plot_max - plot_min);
+	ctx.fillStyle = colors[s_idx];
+	ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
+      }
+    }
+  }
+
+
+  async function buildRWTable(tbodyRef, index_list) {
+    let infoRow = tbodyRef.insertRow();
+    
+    for (i_idx in index_list) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = index_list[i_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (i_idx in index_list) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = index_list[i_idx] + "_canvas";
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateRWInfoPlot(index, subindex, plot_min, plot_max) {
+    let plotCanvas = document.getElementById(index + "_canvas");
+    let ctx = plotCanvas.getContext("2d");
+    let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+    ctx.putImageData(imageData, 0, 0);
+    ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+    if (iter_count % iter_count_mod == 0) {
+      ctx.beginPath();
+      ctx.moveTo(ctx.canvas.width, 0);
+      ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
+      ctx.stroke();
+    }
+ 
+    let rw_info = await readValue(index, subindex);
+    // update the information
+    infoCell = document.getElementById(index + "_info");
+    infoCell.replaceChildren(
+      document.createTextNode("Name: ["+ index + "] " + rw_info.name),
+      document.createElement("br"),
+      document.createTextNode("Description: "+rw_info.description),
+      document.createElement("br"),
+      document.createTextNode("Value ["+rw_info.low_limit+", "+rw_info.high_limit+"]: "+rw_info.value),
+      document.createElement("br"),
+      document.createTextNode("Eng. Value: " + rw_info.eng_value + " " + rw_info.unit)
+    );
+ 
+    // update the plot
+    // plot the data point
+    let factor = (plot_max - rw_info.eng_value) / (plot_max - plot_min);
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
+  }
+
 
 
   async function buildTables() {
 
     let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
-    buildModeRow(mode_tbodyRef, "adcs_manager", "mode");
-    buildModeRow(mode_tbodyRef, "adcs_manager", "control_mode");
-    buildModeRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+    buildMngrRow(mode_tbodyRef, "adcs_manager", "mode");
+    buildMngrRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    buildMngrRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
  
+    let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
+    buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
+    buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
+    buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
+  
+    let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
+    buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
+    buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
+    buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
+     
     let gyro_tbodyRef = document.getElementById('gyroSensorTable').getElementsByTagName('tbody')[0];
     buildSensorTable(gyro_tbodyRef, "adcs", ["gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"]);
-    
+     
     let accel_tbodyRef = document.getElementById('accelSensorTable').getElementsByTagName('tbody')[0];
     buildSensorTable(accel_tbodyRef, "adcs", ["accelerometer_x", "accelerometer_y", "accelerometer_z"]);
+     
+    let mag_tbodyRef = document.getElementById('magSensorTable').getElementsByTagName('tbody')[0];
+    buildMagSensorTable(
+      mag_tbodyRef, 
+      "adcs", 
+      [
+        "pos_z_magnetometer_1", 
+        "pos_z_magnetometer_2", 
+        "min_z_magnetometer_1", 
+        "min_z_magnetometer_2", 
+      ]
+    );
+      
+    let rw_tbodyRef = document.getElementById('rwActuatorTable').getElementsByTagName('tbody')[0];
+    buildRWTable(rw_tbodyRef, ["rw_1", "rw_2", "rw_3", "rw_4"], ["motor_velocity", "motor_velocity", "motor_velocity"]);
     
+
     updateTables();
   }
 
 
   async function updateTables() {
     let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
-    updateModeRow(mode_tbodyRef, "adcs_manager", "mode");
-    updateModeRow(mode_tbodyRef, "adcs_manager", "control_mode");
-    updateModeRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
-  
-    //updateSensorTable("adcs", ["accelerometer_x", "accelerometer_y", "accelerometer_z"]);
+    updateMngrRow(mode_tbodyRef, "adcs_manager", "mode");
+    updateMngrRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    updateMngrRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+    
+    let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
+    
+    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
+    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
+    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
+
+   
+    let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
+    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
+    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
+    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
+    
     updateSensorInfoPlot("adcs", "gyroscope_pitch_rate", - 100, 100);
     updateSensorInfoPlot("adcs", "gyroscope_yaw_rate", - 100, 100);
     updateSensorInfoPlot("adcs", "gyroscope_roll_rate", - 100, 100);
     updateSensorInfoPlot("adcs", "accelerometer_x", - 1, 1);
     updateSensorInfoPlot("adcs", "accelerometer_y", - 1, 1);
     updateSensorInfoPlot("adcs", "accelerometer_z", - 1, 1);
+
+    updateMagSensorInfoPlot(
+      "adcs", 
+      [
+        "pos_z_magnetometer_1", 
+        "pos_z_magnetometer_2", 
+        "min_z_magnetometer_1", 
+        "min_z_magnetometer_2", 
+      ],
+      -100,
+      100
+    );
+ 
+    updateRWInfoPlot("rw_1", "motor_velocity", - 100, 100);
+    updateRWInfoPlot("rw_2", "motor_velocity", - 100, 100);
+    updateRWInfoPlot("rw_3", "motor_velocity", - 100, 100);
+    updateRWInfoPlot("rw_4", "motor_velocity", - 100, 100);
     
   }
 

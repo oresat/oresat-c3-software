@@ -27,6 +27,7 @@
   </style>
   <form>
     <h1>Manager Dashboard</h1>
+    <div style="overflow:scroll; height:400px; border: 4px solid #000000">
     <div id="adcsMgrTableDiv" class="table-container">
       <span>
       <h2>Modes</h2>
@@ -82,7 +83,7 @@
       </span>
 
     </div>
-    
+    </div>
    
     <h1>Sensor Dashboard</h1>
     <div style="overflow:scroll; height:400px; border: 4px solid #000000">
@@ -472,8 +473,8 @@
         "min_z_magnetometer_1", 
         "min_z_magnetometer_2", 
       ],
-      -100,
-      100
+      -1000,  // currently the lower limit of the value, milligauss
+      1000    // currently the upper limit of the value, milligauss
     );
  
     updateRWInfoPlot("rw_1", "motor_velocity", - 100, 100);

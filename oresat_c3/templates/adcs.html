@@ -122,7 +122,20 @@
     </div>
 
 
-    
+     
+    <div id="mtActuatorTableDiv">
+      <table id="mtActuatorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=3>MAGNETORQUERS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+
+
     <div id="rwActuatorTableDiv">
       <table id="rwActuatorTable">
         <thead>
@@ -261,7 +274,7 @@
       document.createElement("br"),
       document.createTextNode("Description: "+sensor.description),
       document.createElement("br"),
-      document.createTextNode("Value ["+sensor.high_limit+", "+sensor.low_limit+"]: "+sensor.value),
+      document.createTextNode("Value ["+sensor.low_limit+", "+sensor.high_limit+"]: "+sensor.value),
       document.createElement("br"),
       document.createTextNode("Scale Factor: " + sensor.scale_factor),
       document.createElement("br"),
@@ -273,12 +286,6 @@
     let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
     ctx.putImageData(imageData, 0, 0);
     ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
-    if (iter_count % iter_count_mod == 0) {
-      ctx.beginPath();
-      ctx.moveTo(ctx.canvas.width, 0);
-      ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
-      ctx.stroke();
-    }
     // plot the data point
     let factor = (plot_max - sensor.eng_value) / (plot_max - plot_min);
     ctx.fillStyle = "rgb(255, 0, 0)";
@@ -321,12 +328,6 @@
       let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
       ctx.putImageData(imageData, 0, 0);
       ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
-      if (iter_count % iter_count_mod == 0) {
-        ctx.beginPath();
-        ctx.moveTo(ctx.canvas.width, 0);
-        ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
-        ctx.stroke();
-      }
       // for each sensor, update
       for (s_idx in subindex_list) {
 	let mt_info = await readValue(index, subindex_list[s_idx] +"_"+dirs[d_idx]);
@@ -368,12 +369,6 @@
     let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
     ctx.putImageData(imageData, 0, 0);
     ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
-    if (iter_count % iter_count_mod == 0) {
-      ctx.beginPath();
-      ctx.moveTo(ctx.canvas.width, 0);
-      ctx.lineTo(ctx.canvas.width, ctx.canvas.height);
-      ctx.stroke();
-    }
  
     let rw_info = await readValue(index, subindex);
     // update the information
@@ -431,7 +426,12 @@
         "min_z_magnetometer_2", 
       ]
     );
-      
+     
+
+    let mt_tbodyRef = document.getElementById('mtActuatorTable').getElementsByTagName('tbody')[0];
+    buildSensorTable(mt_tbodyRef, "adcs", ["magnetorquer_current_x", "magnetorquer_current_y", "magnetorquer_current_z"]);
+    
+
     let rw_tbodyRef = document.getElementById('rwActuatorTable').getElementsByTagName('tbody')[0];
     buildRWTable(rw_tbodyRef, ["rw_1", "rw_2", "rw_3", "rw_4"], ["motor_velocity", "motor_velocity", "motor_velocity"]);
     
@@ -446,52 +446,53 @@
     updateMngrRow(mode_tbodyRef, "adcs_manager", "control_mode");
     updateMngrRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
     
-    let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
+    //let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
     
-    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
-    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
-    updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
 
    
-    let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
-    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
-    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
-    updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
+    //let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
     
-    updateSensorInfoPlot("adcs", "gyroscope_pitch_rate", - 100, 100);
-    updateSensorInfoPlot("adcs", "gyroscope_yaw_rate", - 100, 100);
-    updateSensorInfoPlot("adcs", "gyroscope_roll_rate", - 100, 100);
-    updateSensorInfoPlot("adcs", "accelerometer_x", - 1, 1);
-    updateSensorInfoPlot("adcs", "accelerometer_y", - 1, 1);
-    updateSensorInfoPlot("adcs", "accelerometer_z", - 1, 1);
+    updateSensorInfoPlot("adcs", "gyroscope_pitch_rate", - 3000, 3000);
+    updateSensorInfoPlot("adcs", "gyroscope_yaw_rate", - 3000, 3000);
+    updateSensorInfoPlot("adcs", "gyroscope_roll_rate", - 3000, 3000);
+    //updateSensorInfoPlot("adcs", "accelerometer_x", - 1, 1);
+    //updateSensorInfoPlot("adcs", "accelerometer_y", - 1, 1);
+    //updateSensorInfoPlot("adcs", "accelerometer_z", - 1, 1);
 
-    updateMagSensorInfoPlot(
-      "adcs", 
-      [
-        "pos_z_magnetometer_1", 
-        "pos_z_magnetometer_2", 
-        "min_z_magnetometer_1", 
-        "min_z_magnetometer_2", 
-      ],
-      -1000,  // currently the lower limit of the value, milligauss
-      1000    // currently the upper limit of the value, milligauss
-    );
+    //updateMagSensorInfoPlot(
+    //  "adcs", 
+    //  [
+    //    "pos_z_magnetometer_1", 
+    //    "pos_z_magnetometer_2", 
+    //    "min_z_magnetometer_1", 
+    //    "min_z_magnetometer_2", 
+    //  ],
+    //  -1000,  // currently the lower limit of the value, milligauss
+    //  1000    // currently the upper limit of the value, milligauss
+    //);
  
-    updateRWInfoPlot("rw_1", "motor_velocity", - 100, 100);
-    updateRWInfoPlot("rw_2", "motor_velocity", - 100, 100);
-    updateRWInfoPlot("rw_3", "motor_velocity", - 100, 100);
-    updateRWInfoPlot("rw_4", "motor_velocity", - 100, 100);
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_x", - 100, 100);
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_y", - 100, 100);
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_z", - 100, 100);
+    
+    //updateRWInfoPlot("rw_1", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_2", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_3", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_4", "motor_velocity", - 100, 100);
     
   }
 
-
-  buildTables();
-  let iter_count = 0;
-  let iter_count_mod = 20;
-  const interval = setInterval(function() {
+  window.addEventListener("load", (event) => {
+    buildTables();
+    const interval = setInterval(function() {
       updateTables();
-      iter_count++;
-  }, 100);
-
+    }, 500);
+  });
 </script>
 {% endblock %}

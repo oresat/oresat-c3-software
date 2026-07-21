@@ -209,6 +209,9 @@ class ADCSManager(Service):
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
         K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
 
+        # at some point, the current saturation should be enforced via a dipole software saturation
+        # [Equation] amps = dipole / (permeability * windings * area) = dipole * mag_constants
+
         self.mag_constants = 1e-6 * np.array(
             [
                 1 / (K_rod * rod_windings * rod_area),
@@ -360,14 +363,11 @@ class ADCSManager(Service):
             * j_min
         )
 
-    def _command_magnetorquer(self, desired_dipoles: np.ndarray) -> None:
-        """Send current values to magnetorquers based on desired magnetic dipoles."""
-        # at some point, the current saturation should be enforced via a dipole software saturation
-        # [Equation] amps = dipole / (permeability * windings * area) = dipole * mag_constants
-        m_cmd = desired_dipoles * self.mag_constants
-        self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
-        self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
-        self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+    def _command_magnetorquer_current(self, desired_current: np.ndarray) -> None:
+        """Send current values to magnetorquers."""
+        self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", desired_current[0])
+        self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", desired_current[1])
+        self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", desired_current[2])
 
     def on_loop(self) -> None:
         if self.control_mode.value == ControlMode.IDLE:
@@ -537,7 +537,8 @@ class ADCSManager(Service):
             # this equation is for calculating the magnetic dipole
             desired_dipoles = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
             # send the dipole commands to magnetoruqers
-            self._command_magnetorquer(dipoles=desired_dipoles)
+            m_cmd = desired_dipoles * self.mag_constants
+            self._command_magnetorquer_current(desired_current=m_cmd)
 
             if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(
                 np.abs(omega) < 1e-4
@@ -557,7 +558,8 @@ class ADCSManager(Service):
                 # check on why detumble gain is not used
                 desired_dipoles = np.cross(b, tau_des) / (b @ b)
                 # send the dipole commands to magnetoruqers
-                self._command_magnetorquer(dipoles=desired_dipoles)
+                m_cmd = desired_dipoles * self.mag_constants
+                self._command_magnetorquer_current(desired_current=m_cmd)
 
         elif self.control_mode.value == ControlMode.MTB_POINTING:
             b = self.get_magnetometer_data()
@@ -585,7 +587,8 @@ class ADCSManager(Service):
             k = 1e-8
             # this is also very likely an equation for magnetic dipole but should be checked
             desired_dipoles = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
-            self._command_magnetoruqer(dipoles=desired_dipoles)
+            m_cmd = desired_dipoles * self.mag_constants
+            self._command_magnetoruqer_current(desired_current=m_cmd)
 
             # check logic going to this state
             logger.debug("ADCS satisfied: going to IDLE")

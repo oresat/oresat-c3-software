@@ -246,7 +246,7 @@ class EdlService(Service):
             node_id = request.args[0]
             name = self._node_mgr_service.node_id_to_name[node_id]
             logger.info(f"EDL getting CANopen node {name} (0x{node_id:02X}) status")
-            ret = self.node.node_status[name]
+            ret = self.node.node_status[name].state
         elif request.code == EdlCommandCode.CO_SDO_WRITE:
             node_id, index, subindex, _, data = request.args
             name = self._node_mgr_service.node_id_to_name[node_id]

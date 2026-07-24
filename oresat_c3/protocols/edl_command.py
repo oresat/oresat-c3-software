@@ -277,6 +277,12 @@ class EdlCommandCode(IntEnum):
 
     Returns
     -------
+    uint8
+        The id of The CANopen node read.
+    uint16
+        The OD index read.
+    uint8
+        The OD subindex read.
     uint32
         SDO error code (0 is no error).
     uint32

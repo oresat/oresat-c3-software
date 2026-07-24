@@ -360,6 +360,7 @@ class EdlService(Service):
             except canopen.sdo.exceptions.SdoAbortedError as e:
                 logger.error(e)
                 ecode = e.code
+                data = bytes("ERROR", "utf-8")
             ret = (node_id, index, subindex, ecode, len(data), data)
         elif request.code == EdlCommandCode.CO_NODE_FLASH:
             node_id, filename, throttle_delay, block_transfer, request_crc, confirm_image = (

@@ -123,9 +123,14 @@ class TestEdl(unittest.TestCase):
         self.assertTrue(self.mock_router.downlink_edl.empty())
         self.assertEqual(self.node.value_set_by_edl, NodeStop.FACTORY_RESET)
 
-    def test_co_node_enable_reset(self):
-        """4: Vestigal and no longer used."""
-        pass
+    def test_co_node_enable(self):
+        """
+        4: Unused commnad. NOTE: If you've replaced this command and this test now fails, please add
+        a test case here.
+        """
+        make_cmd(EdlCommandCode(4), (), self.mock_router.uplink_edl)
+        sleep(1)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
 
     def test_co_node_status(self):
         """5: 1 input. returns the heartbeat status of the relevant node."""
@@ -352,7 +357,7 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(self.beacon.told_to_beacon, True)
 
     def test_ping(self):
-        """15: No input. Tests to make sure that calling send_tpdo is occurs, not that it works."""
+        """17: No input. Tests to make sure that calling send_tpdo is occurs, not that it works."""
         val = 536
 
         make_cmd(EdlCommandCode.PING, (val,), self.mock_router.uplink_edl)
@@ -362,7 +367,96 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(response.code, EdlCommandCode.PING)
         self.assertEqual(response.values[0], val)
 
+    def test_rx_test(self):
+        """18: No input. No output. Test is that the c3 doesn't complain when it gets it."""
+        make_cmd(EdlCommandCode.RX_TEST, (), self.mock_router.uplink_edl)
+        sleep(1)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
 
+    def test_co_sdo_read_local(self):
+        """19: 3 inputs. 3 outputs. Tests reading a c3 index."""
+        od_val = self.node.od["reset_timeout"]
+        od_val.value = 10000
+
+        make_cmd(EdlCommandCode.CO_SDO_READ, (0x1,0x4001,0x0), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.CO_SDO_READ)
+        self.assertEqual(response.values[0], (0x1))
+        self.assertEqual(response.values[1], (0x4001))
+        self.assertEqual(response.values[2], (0x0))
+        self.assertEqual(response.values[3], (0x0))
+        self.assertEqual(response.values[4], (0x4))
+        self.assertEqual(int.from_bytes(response.values[5], "little"), (10000))
+
+    def test_co_sdo_read_remote(self):
+        """19: 3 inputs. 3 outputs. Tests reading a remote index."""
+        self.node.should_fail_test = False
+
+        make_cmd(
+            EdlCommandCode.CO_SDO_READ,
+            (0x2C,0x4000,0x0),
+            self.mock_router.uplink_edl
+        )
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.CO_SDO_READ)
+        self.assertEqual(response.values[0], (0x2C))
+        self.assertEqual(response.values[1], (0x4000))
+        self.assertEqual(response.values[2], (0x0))
+        self.assertEqual(response.values[3], (0x0))
+        self.assertEqual(response.values[4], (0x1))
+        self.assertEqual(int.from_bytes(response.values[5], "little"), (3))
+
+    def test_co_sdo_read_fail(self):
+        """19: 3 inputs. 3 outputs. Tests failing to read a remote index."""
+        self.node.should_fail_test = True
+
+        make_cmd(
+            EdlCommandCode.CO_SDO_READ,
+            (0x2C,0x4000,0x0),
+            self.mock_router.uplink_edl
+        )
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.CO_SDO_READ)
+        self.assertEqual(response.values[0], (0x2C))
+        self.assertEqual(response.values[1], (0x4000))
+        self.assertEqual(response.values[2], (0x0))
+        self.assertEqual(response.values[3], (0x05040000))
+        self.assertEqual(response.values[4], (0x5))
+        self.assertEqual(response.values[5].decode("utf-8"), "ERROR")
+
+    def test_co_node_flash(self):
+        """20: 2-6 inputs. 1 output."""
+        make_cmd(
+            EdlCommandCode.CO_NODE_FLASH,
+            (0x2C,"name1",536,True,False,True),
+            self.mock_router.uplink_edl
+        )
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.CO_NODE_FLASH)
+        self.assertEqual(response.values[0], True)
+        self.assertEqual(self.mock_flasher.nid, 0x2C)
+        self.assertEqual(self.mock_flasher.fname, "name1")
+        self.assertEqual(self.mock_flasher.throttle, 536)
+        self.assertEqual(self.mock_flasher.blk, True)
+        self.assertEqual(self.mock_flasher.crc, False)
+        self.assertEqual(self.mock_flasher.conf, True)
+        self.assertEqual(self.mock_flasher.told_to_flash, True)
+
+    def test_no_new_cmds(self):
+        """
+        NOTE: If you add a new command and fail this test, please add tests for the new command
+        and increment this value.
+        """
+        NUMBER_OF_COMMANDS=21
+        self.assertEqual(len(EdlCommandCode),NUMBER_OF_COMMANDS)
 
 
 class MockMasterNode(MasterNode):
@@ -390,6 +484,13 @@ class MockMasterNode(MasterNode):
         if self.should_fail_test:
             raise SdoAbortedError(0x05040000)
 
+    def sdo_read(
+        self, key: str, index: int | str, subindex: int | str | None
+    ) -> str | float | bytes | bool:
+        if self.should_fail_test:
+            raise SdoAbortedError(0x05040000)
+        return 3
+
     def send_sync(self):
         self.value_set_by_edl = True
 
@@ -414,7 +515,12 @@ class MockNodeFlasherService(NodeFlasherService):
         request_crc: Optional[bool] = None,
         confirm_image: Optional[bool] = None,
     ):
-        # should this try to keep track of what node was flashed?
+        self.nid = node_id
+        self.fname = filename
+        self.throttle = throttle_delay
+        self.blk = block_transfer
+        self.crc = request_crc
+        self.conf = confirm_image
         self.told_to_flash = True
 
 

@@ -23,7 +23,7 @@ from oresat_c3.services.channel_router import ChannelRouterService
 from oresat_c3.services.edl import EdlService
 from oresat_c3.services.node_flasher import NodeFlasherService
 from oresat_c3.services.node_manager import NodeManagerService
-from oresat_c3.subsystems.opd import OpdNodeState
+from oresat_c3.subsystems.opd import OpdNodeState, OpdState
 
 HMAC = bytes(32)
 
@@ -207,10 +207,58 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(response.values[0], True)
         self.assertEqual(self.node.value_set_by_edl, True)
 
+    def test_opd_sysenable(self):
+        """8: 1 input. Enables or disables the OPD."""
+        self.mock_node_mgr.opd.enabled = False
 
+        # enable
+        make_cmd(EdlCommandCode.OPD_SYSENABLE, (True,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_SYSENABLE)
+        self.assertEqual(response.values[0], (0x1))
+        self.assertEqual(self.mock_node_mgr.opd.enabled, True)
 
+        # disable
+        make_cmd(EdlCommandCode.OPD_SYSENABLE, (False,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_SYSENABLE)
+        self.assertEqual(response.values[0], (0x0))
+        self.assertEqual(self.mock_node_mgr.opd.enabled, False)
 
+    def test_opd_scan(self):
+        """9. No inputs. Should return 2 in this test setup."""
+        make_cmd(EdlCommandCode.OPD_SCAN, None, self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_SCAN)
+        self.assertEqual(response.values[0], 2)
 
+    def test_opd_probe(self):
+        """10. 1 input. returns if the node was found."""
+        self.mock_node_mgr.opd["star_tracker_1"].status = OpdNodeState.DISABLED
+
+        # found
+        make_cmd(EdlCommandCode.OPD_PROBE, (0x1C,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_PROBE)
+        self.assertEqual(response.values[0], True)
+
+        self.mock_node_mgr.opd["star_tracker_1"].status = OpdNodeState.NOT_FOUND
+
+        # not found
+        make_cmd(EdlCommandCode.OPD_PROBE, (0x1C,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_PROBE)
+        self.assertEqual(response.values[0], False)
 
     def test_opd_node_enable(self):
         """11: Takes 2 values, nodeid and value. Sends two commands to test both states."""
@@ -234,7 +282,41 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(response.values[0], (0x0))
         self.assertEqual(self.mock_node_mgr.opd["star_tracker_1"].status, OpdNodeState.DISABLED)
 
+    def test_opd_reset(self):
+        """12. 1 input. returns if the node state value."""
+        self.mock_node_mgr.opd["star_tracker_1"].status = OpdNodeState.DISABLED
+        self.mock_node_mgr.opd["star_tracker_1"].was_reset = False
 
+        # found
+        make_cmd(EdlCommandCode.OPD_RESET, (0x1C,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_RESET)
+        self.assertEqual(response.values[0], 0x1)
+        self.assertEqual(self.mock_node_mgr.opd["star_tracker_1"].was_reset, True)
+
+    def test_opd_status(self):
+        """13. 1 input. returns if the node state value."""
+        self.mock_node_mgr.opd["star_tracker_1"].status = OpdNodeState.ENABLED
+
+        # enabled
+        make_cmd(EdlCommandCode.OPD_STATUS, (0x1C,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_STATUS)
+        self.assertEqual(response.values[0], 0x1)
+
+        self.mock_node_mgr.opd["star_tracker_1"].status = OpdNodeState.DISABLED
+
+        # disabled
+        make_cmd(EdlCommandCode.OPD_STATUS, (0x1C,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.OPD_STATUS)
+        self.assertEqual(response.values[0], 0x0)
 
 
 class MockMasterNode(MasterNode):
@@ -264,6 +346,7 @@ class MockMasterNode(MasterNode):
 
     def send_sync(self):
         self.value_set_by_edl = True
+
 
 class MockNodeFlasherService(NodeFlasherService):
     """Cut down node flasher service to test if commands have the desired effect"""
@@ -337,10 +420,11 @@ class MockNode():
 
             def probe(self) -> bool:
                 """intent is that status is manually set prior to CMD."""
-                return self.status
+                return self.status != OpdNodeState.NOT_FOUND
 
             def reset(self) -> OpdNodeState:
                 self.status = OpdNodeState.ENABLED
+                self.was_reset = True
                 return self.status
 
 
@@ -349,18 +433,21 @@ class MockOpd():
             self.enabled = False
             self._nodes: dict[str, MockNode] = {}
             self._nodes["star_tracker_1"] = MockNode()
+            self.status = OpdState.ENABLED
 
         def __getitem__(self, name: str) -> MockNode:
             return self._nodes[name]
 
         def enable(self):
             self.enabled = True
+            self.status = OpdState.ENABLED
 
         def disable(self):
-            self.enabled = True
+            self.enabled = False
+            self.status = OpdState.DISABLED
 
         def scan(self) -> int:
-            return 1
+            return 2
 
 
 class MockNodeManagerService(NodeManagerService):

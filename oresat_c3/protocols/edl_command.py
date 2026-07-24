@@ -363,7 +363,7 @@ EDL_COMMANDS = {
     EdlCommandCode.C3_SOFT_RESET: EdlCommand(),
     EdlCommandCode.C3_HARD_RESET: EdlCommand(),
     EdlCommandCode.C3_FACTORY_RESET: EdlCommand(),
-    EdlCommandCode.CO_NODE_ENABLE: EdlCommand("B?", "B"),
+    EdlCommandCode.CO_NODE_ENABLE: EdlCommand(),
     EdlCommandCode.CO_NODE_STATUS: EdlCommand("B", "B"),
     EdlCommandCode.CO_SDO_WRITE: EdlCommand(
         None, "I", _edl_req_sdo_write_pack_cb, _edl_req_sdo_write_unpack_cb

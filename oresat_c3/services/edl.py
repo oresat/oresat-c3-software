@@ -181,6 +181,9 @@ class EdlService(Service):
             try:
                 res_payload = self._run_cmd(req_packet.payload)
                 if not res_payload.values:
+                    logger.info(
+                        f"EDL dropping command response with no values. ID: {res_payload.code.name}"
+                    )
                     return  # no response
                 self._respond(EdlVcid.C3_COMMAND, res_payload)
             except Exception as e:  # pylint: disable=W0718
@@ -312,11 +315,12 @@ class EdlService(Service):
         elif request.code == EdlCommandCode.RTC_SET_TIME:
             ts = request.args[0]
             logger.info(f"EDL setting the RTC time to {ts}")
-            set_rtc_time(ts)
-            set_system_time_to_rtc_time()
+            ret = set_rtc_time(ts)
+            ret = ret and set_system_time_to_rtc_time()
         elif request.code == EdlCommandCode.TIME_SYNC:
             logger.info("EDL sending time sync TPDO")
             self.node.send_tpdo(0)
+            ret = True
         elif request.code == EdlCommandCode.BEACON_PING:
             logger.info("EDL beacon")
             self._beacon_service.send()

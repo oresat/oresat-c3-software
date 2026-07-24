@@ -318,6 +318,52 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(response.code, EdlCommandCode.OPD_STATUS)
         self.assertEqual(response.values[0], 0x0)
 
+    def test_set_rtc(self):
+        """
+        14. 1 input. FIXME: I'm not aware of a way to test that rtc is actually being called, so
+        this just checks to make sure that the command parses correctly.
+        """
+        make_cmd(EdlCommandCode.RTC_SET_TIME, (2253690377,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.RTC_SET_TIME)
+        self.assertEqual(response.values[0], False)
+
+    def test_time_sync(self):
+        """15: No input. Tests to make sure that calling send_tpdo is occurs, not that it works."""
+        self.node.value_set_by_edl = False
+
+        make_cmd(EdlCommandCode.TIME_SYNC, (), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.TIME_SYNC)
+        self.assertEqual(response.values[0], True)
+        self.assertEqual(self.node.value_set_by_edl, True)
+
+    def test_beacon_ping(self):
+        """16: No input. No output. Tells the beacon service to send a beacon."""
+        self.beacon.told_to_beacon = False
+
+        make_cmd(EdlCommandCode.BEACON_PING, (), self.mock_router.uplink_edl)
+        sleep(1)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        self.assertEqual(self.beacon.told_to_beacon, True)
+
+    def test_ping(self):
+        """15: No input. Tests to make sure that calling send_tpdo is occurs, not that it works."""
+        val = 536
+
+        make_cmd(EdlCommandCode.PING, (val,), self.mock_router.uplink_edl)
+        resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
+        self.assertTrue(self.mock_router.downlink_edl.empty())
+        response = to_response(resp_raw)
+        self.assertEqual(response.code, EdlCommandCode.PING)
+        self.assertEqual(response.values[0], val)
+
+
+
 
 class MockMasterNode(MasterNode):
     """MasterNode wrapper with overwritten functions that let us ensure that they are called."""
@@ -345,6 +391,9 @@ class MockMasterNode(MasterNode):
             raise SdoAbortedError(0x05040000)
 
     def send_sync(self):
+        self.value_set_by_edl = True
+
+    def send_tpdo(self, tpdo: int, raise_error: bool = True) -> None:
         self.value_set_by_edl = True
 
 

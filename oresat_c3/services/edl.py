@@ -239,9 +239,7 @@ class EdlService(Service):
             logger.info("EDL factory reset")
             self.node.stop(NodeStop.FACTORY_RESET)
         elif request.code == EdlCommandCode.CO_NODE_ENABLE:
-            node_id = request.args[0]
-            name = self._node_mgr_service.node_id_to_name[node_id]
-            logger.info(f"EDL enabling CANopen node {name} (0x{node_id:02X})")
+            logger.warning("EDL got CO_NODE_ENABLE, which is vestigial and should not be used.")
         elif request.code == EdlCommandCode.CO_NODE_STATUS:
             node_id = request.args[0]
             name = self._node_mgr_service.node_id_to_name[node_id]
@@ -270,6 +268,7 @@ class EdlService(Service):
         elif request.code == EdlCommandCode.CO_SYNC:
             logger.info("EDL sending CANopen SYNC message")
             self.node.send_sync()
+            ret = True
         elif request.code == EdlCommandCode.OPD_SYSENABLE:
             enable = request.args[0]
             if enable:

@@ -470,11 +470,6 @@ class MockMasterNode(MasterNode):
         self.should_fail_test = False
 
     def stop(self, reset: NodeStop | None = None):
-        """
-        FIXME: This should be `def stop(self, reset: NodeStop | None = None):` but the git testing
-        environment uses an older version of python that does not support it. This should be changed
-        once the tests reflect the current python version.
-        """
         self.value_set_by_edl = reset
 
     def sdo_write(

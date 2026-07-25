@@ -24,18 +24,19 @@ EDL Packet Structure
 
 The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
 
-+--------------+---------------------+-----------------+------------+-------------------+------------+
-| USLP Primary | Sequence Number     | USLP Data Field | Payload    | HMAC              | USLP FECF  |
-| Header       |                     | Header          |            |                   |            |
-|              | (4 Octets)          |                 | (X Octets) | (32 Octets)       | (2 Octets) |
-| (7 Octets)   |                     | (1 Octet)       +------------+-------------------+            |
-|              |                     |                 | USLP Transfer Frame Data Zone  |            |
-|              +---------------------+-----------------+--------------------------------+            |
-|              | USLP Transfer Frame | USLP Transfer Frame Data Field                   |            |
-|              | Insert Zone         |                                                  |            |
-+--------------+---------------------+--------------------------------------------------+------------+
-| USLP Transfer Frame                                                                                |
-+----------------------------------------------------------------------------------------------------+
++--------------+---------------------+-----------------+---------------------+--------------+---------------+------------+
+| USLP Primary | SDLS header         | USLP Data Field | Payload             | SDLS Trailer | Operational   | USLP FECF  |
+| Header       |                     | Header          |                     |              | Control Field |            |
+|              | (6 Octets)          |                 | (X Octets)          | (32 Octets)  |               | (2 Octets) |
+| (7 Octets)   |                     | (1 Octet)       +---------------------+              | (0/4 Octets)  |            |
+|              |                     |                 | USLP Transfer Frame |              |               |            |
+|              |                     |                 | Data Zone           |              |               |            |
+|              +---------------------+-----------------+---------------------+--------------+               |            |
+|              | USLP SDLS Header    | USLP Transfer Frame Data Field                       |               |            |
+|              | (uses insert zone)  |                                                      |               |            |
++--------------+---------------------+------------------------------------------------------+---------------+------------+
+| USLP Transfer Frame                                                                                                    |
++------------------------------------------------------------------------------------------------------------------------+
 
 USLP Primary Header
 *******************
@@ -47,7 +48,8 @@ USLP Primary Header
 - **Virtual Channel ID`**: 6 bits.
    - Virtual channel ``0b000000`` is used for C3 commands.
    - Virtual channel ``0b000001`` is used for file transfer.
-- **MAP ID: 6 bits**. Not used by OreSat (will always be ``0b000000``).
+   - Virtual channel ``0b000010`` is used for empty clcw frames with no SDLS.
+- **MAP ID: 4 bits**. Not used by OreSat (will always be ``0b0000``).
 - **End of Frame Primary Header Flag**: 1 bit. Always ``0b0``.
 - **Frame Length**: 16 bits. Length of entire packet **minus** one, in octets.
 - **Bypass / Sequence Control Flag**: 1 bit. Is set to ``0b0`` to mark the packet is sequence
@@ -58,8 +60,12 @@ USLP Primary Header
 - **OCF (Operation Control Field) Flag**: 1 bit. Set to ``0b0``, to mark the OCF is not included in packet.
 - **VC Frame Count Length**: 3 bits. Is set to ``0b000`` for no VCF Count bits.
 
-Sequence Number
-***************
+SDLS Header
+***********
+
+- **Security Parameter Index**: 16 bits. A value of 1 indicates that the frame uses the oresat
+  sdls implemenation.
+- **Sequence Number**: 32 bits. The sequence number is described below.
 
 The sequence number is used to prevent repeat attacks. Is a 32-bit unsigned integer.
 
@@ -67,8 +73,7 @@ On every received packet, the C3 will increment its count. Any EDL packet receiv
 higher number that the C3 internal count, otherwise the C3 will ignore it. Number rolls over at
 ``FF FF FF FF``.
 
-The sequence number will full take up the optional TFIZ (Transfer Frame Insert Zone) part of the
-USLP Transfer Frame.
+Though out of spec, the SDLS Header is currently implemented using the USLP insert zone.
 
 USLP Data Field Header
 **********************
@@ -86,11 +91,18 @@ Payload
 Differs between types. Length can differ, but it will always be at least 1 octet. If there is
 no payload, there is no reason for the EDL packet.
 
-HMAC
-****
+SDLS Trailer
+************
 
 32 octets HMAC used for authentication. If the HMAC fails, the packet will be rejected and no response
 will be sent back. For HMAC basics, see https://en.wikipedia.org/wiki/HMAC.
+
+Though out of spec, the SDLS Trailer is currently inserted into the end of data zone.
+
+Operational Control Field
+*************************
+
+4 octets. The Operational Control Field is used by COP-1 to transfer COP-1 data
 
 FECF (Frame Error Control Field)
 ********************************

@@ -5,6 +5,8 @@ Creats a lot of mock classes that report values so that we know that, as well as
 returning correctly, the commands have the desired result.
 """
 
+from __future__ import annotations
+
 import unittest
 from queue import SimpleQueue
 from time import sleep, time
@@ -467,7 +469,7 @@ class MockMasterNode(MasterNode):
         super().__init__(network, od, od_db)
         self.should_fail_test = False
 
-    def stop(self, reset: NodeStop):
+    def stop(self, reset: NodeStop | None = None):
         """
         FIXME: This should be `def stop(self, reset: NodeStop | None = None):` but the git testing
         environment uses an older version of python that does not support it. This should be changed

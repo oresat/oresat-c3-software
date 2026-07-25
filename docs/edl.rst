@@ -23,6 +23,8 @@ EDL Packet Structure
 --------------------
 
 The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
+It uses SDLS (Space Data Link Security) for authentication and COP-1 (Communication Operation Proceedure-1) for
+frame retransmission.
 
 +--------------+---------------------+-----------------+---------------------+--------------+---------------+------------+
 | USLP Primary | SDLS header         | USLP Data Field | Payload             | SDLS Trailer | Operational   | USLP FECF  |
@@ -31,10 +33,10 @@ The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Com
 | (7 Octets)   |                     | (1 Octet)       +---------------------+              | (0/4 Octets)  |            |
 |              |                     |                 | USLP Transfer Frame |              |               |            |
 |              |                     |                 | Data Zone           |              |               |            |
-|              +---------------------+-----------------+---------------------+--------------+               |            |
-|              | USLP SDLS Header    | USLP Transfer Frame Data Field                       |               |            |
-|              | (uses insert zone)  |                                                      |               |            |
-+--------------+---------------------+------------------------------------------------------+---------------+------------+
+|              +---------------------+-----------------+---------------------+              |               |            |
+|              | USLP SDLS Header    | USLP Transfer Frame Data Field        |              |               |            |
+|              | (uses insert zone)  |                                       |              |               |            |
++--------------+---------------------+---------------------------------------+--------------+---------------+------------+
 | USLP Transfer Frame                                                                                                    |
 +------------------------------------------------------------------------------------------------------------------------+
 

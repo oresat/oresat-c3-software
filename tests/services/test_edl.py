@@ -27,18 +27,22 @@ from oresat_c3.subsystems.opd import OpdNodeState, OpdState
 
 HMAC = bytes(32)
 
+
 class NodeHeartbeatInfo(NamedTuple):
     state: int
     timestamp: float
     time_since_boot: float
 
-def make_cmd(cmd: EdlCommandCode, values: tuple | None, q: SimpleQueue) -> TransferFrame:
+
+def make_cmd(cmd: EdlCommandCode, values: tuple, q: SimpleQueue) -> TransferFrame:
     payload = EdlCommandRequest(cmd, values).pack()
     frame = make_frame(payload, 0, 1, hmac_key=HMAC)
     q.put(frame)
 
+
 def to_response(resp_raw: bytes) -> EdlCommandResponse:
     return EdlPacket.from_frame(unpack_frame(resp_raw), HMAC).payload
+
 
 class TestEdl(unittest.TestCase):
     """Test the C3 state service."""
@@ -134,7 +138,7 @@ class TestEdl(unittest.TestCase):
 
     def test_co_node_status(self):
         """5: 1 input. returns the heartbeat status of the relevant node."""
-        self.node.node_status["star_tracker_1"] = NodeHeartbeatInfo(0x05, 0,0)
+        self.node.node_status["star_tracker_1"] = NodeHeartbeatInfo(0x05, 0, 0)
 
         make_cmd(EdlCommandCode.CO_NODE_STATUS, (0x2C,), self.mock_router.uplink_edl)
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
@@ -150,8 +154,8 @@ class TestEdl(unittest.TestCase):
 
         make_cmd(
             EdlCommandCode.CO_SDO_WRITE,
-            (0x1,0x4001,0x0,0x4,(20000).to_bytes(4, "little")),
-            self.mock_router.uplink_edl
+            (0x1, 0x4001, 0x0, 0x4, (20000).to_bytes(4, "little")),
+            self.mock_router.uplink_edl,
         )
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
@@ -170,8 +174,8 @@ class TestEdl(unittest.TestCase):
 
         make_cmd(
             EdlCommandCode.CO_SDO_WRITE,
-            (0x2C,0x4000,0x0,0x1,(2).to_bytes(1, "little")),
-            self.mock_router.uplink_edl
+            (0x2C, 0x4000, 0x0, 0x1, (2).to_bytes(1, "little")),
+            self.mock_router.uplink_edl,
         )
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
@@ -190,8 +194,8 @@ class TestEdl(unittest.TestCase):
 
         make_cmd(
             EdlCommandCode.CO_SDO_WRITE,
-            (0x2C,0x4000,0x0,0x1,(2).to_bytes(4, "little")),
-            self.mock_router.uplink_edl
+            (0x2C, 0x4000, 0x0, 0x1, (2).to_bytes(4, "little")),
+            self.mock_router.uplink_edl,
         )
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
@@ -201,10 +205,10 @@ class TestEdl(unittest.TestCase):
         self.assertEqual(self.node.value_set_by_edl, True)
 
     def test_co_sync(self):
-        """7: sends a CO sync message. """
+        """7: sends a CO sync message."""
         self.node.value_set_by_edl = False
 
-        make_cmd(EdlCommandCode.CO_SYNC,(),self.mock_router.uplink_edl)
+        make_cmd(EdlCommandCode.CO_SYNC, (), self.mock_router.uplink_edl)
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
         response = to_response(resp_raw)
@@ -378,7 +382,7 @@ class TestEdl(unittest.TestCase):
         od_val = self.node.od["reset_timeout"]
         od_val.value = 10000
 
-        make_cmd(EdlCommandCode.CO_SDO_READ, (0x1,0x4001,0x0), self.mock_router.uplink_edl)
+        make_cmd(EdlCommandCode.CO_SDO_READ, (0x1, 0x4001, 0x0), self.mock_router.uplink_edl)
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
         response = to_response(resp_raw)
@@ -394,11 +398,7 @@ class TestEdl(unittest.TestCase):
         """19: 3 inputs. 3 outputs. Tests reading a remote index."""
         self.node.should_fail_test = False
 
-        make_cmd(
-            EdlCommandCode.CO_SDO_READ,
-            (0x2C,0x4000,0x0),
-            self.mock_router.uplink_edl
-        )
+        make_cmd(EdlCommandCode.CO_SDO_READ, (0x2C, 0x4000, 0x0), self.mock_router.uplink_edl)
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
         response = to_response(resp_raw)
@@ -414,11 +414,7 @@ class TestEdl(unittest.TestCase):
         """19: 3 inputs. 3 outputs. Tests failing to read a remote index."""
         self.node.should_fail_test = True
 
-        make_cmd(
-            EdlCommandCode.CO_SDO_READ,
-            (0x2C,0x4000,0x0),
-            self.mock_router.uplink_edl
-        )
+        make_cmd(EdlCommandCode.CO_SDO_READ, (0x2C, 0x4000, 0x0), self.mock_router.uplink_edl)
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
         response = to_response(resp_raw)
@@ -434,8 +430,8 @@ class TestEdl(unittest.TestCase):
         """20: 2-6 inputs. 1 output."""
         make_cmd(
             EdlCommandCode.CO_NODE_FLASH,
-            (0x2C,"name1",536,True,False,True),
-            self.mock_router.uplink_edl
+            (0x2C, "name1", 536, True, False, True),
+            self.mock_router.uplink_edl,
         )
         resp_raw = self.mock_router.downlink_edl.get(timeout=1.0)
         self.assertTrue(self.mock_router.downlink_edl.empty())
@@ -455,12 +451,13 @@ class TestEdl(unittest.TestCase):
         NOTE: If you add a new command and fail this test, please add tests for the new command
         and increment this value.
         """
-        NUMBER_OF_COMMANDS=21
-        self.assertEqual(len(EdlCommandCode),NUMBER_OF_COMMANDS)
+        NUMBER_OF_COMMANDS = 21
+        self.assertEqual(len(EdlCommandCode), NUMBER_OF_COMMANDS)
 
 
 class MockMasterNode(MasterNode):
     """MasterNode wrapper with overwritten functions that let us ensure that they are called."""
+
     def __init__(
         self,
         network,
@@ -500,6 +497,7 @@ class MockMasterNode(MasterNode):
 
 class MockNodeFlasherService(NodeFlasherService):
     """Cut down node flasher service to test if commands have the desired effect"""
+
     def __init__(self):
         self.told_to_flash = False
 
@@ -526,6 +524,7 @@ class MockNodeFlasherService(NodeFlasherService):
 
 class MockChannelRouterService(ChannelRouterService):
     """Cut down channel router with queues to make sure responses are correct."""
+
     def __init__(self):
         self.uplink_edl = SimpleQueue()
         self.uplink_cfdp = SimpleQueue()
@@ -561,48 +560,48 @@ class MockBeaconService(BeaconService):
         self.told_to_beacon = True
 
 
-class MockNode():
-            def __init__(self) -> None:
-                self.status = OpdNodeState.NOT_FOUND
+class MockNode:
+    def __init__(self) -> None:
+        self.status = OpdNodeState.NOT_FOUND
 
-            def enable(self) -> OpdNodeState:
-                self.status = OpdNodeState.ENABLED
-                return self.status
+    def enable(self) -> OpdNodeState:
+        self.status = OpdNodeState.ENABLED
+        return self.status
 
-            def disable(self) -> OpdNodeState:
-                self.status = OpdNodeState.DISABLED
-                return self.status
+    def disable(self) -> OpdNodeState:
+        self.status = OpdNodeState.DISABLED
+        return self.status
 
-            def probe(self) -> bool:
-                """intent is that status is manually set prior to CMD."""
-                return self.status != OpdNodeState.NOT_FOUND
+    def probe(self) -> bool:
+        """intent is that status is manually set prior to CMD."""
+        return self.status != OpdNodeState.NOT_FOUND
 
-            def reset(self) -> OpdNodeState:
-                self.status = OpdNodeState.ENABLED
-                self.was_reset = True
-                return self.status
+    def reset(self) -> OpdNodeState:
+        self.status = OpdNodeState.ENABLED
+        self.was_reset = True
+        return self.status
 
 
-class MockOpd():
-        def __init__(self):
-            self.enabled = False
-            self._nodes: dict[str, MockNode] = {}
-            self._nodes["star_tracker_1"] = MockNode()
-            self.status = OpdState.ENABLED
+class MockOpd:
+    def __init__(self):
+        self.enabled = False
+        self._nodes: dict[str, MockNode] = {}
+        self._nodes["star_tracker_1"] = MockNode()
+        self.status = OpdState.ENABLED
 
-        def __getitem__(self, name: str) -> MockNode:
-            return self._nodes[name]
+    def __getitem__(self, name: str) -> MockNode:
+        return self._nodes[name]
 
-        def enable(self):
-            self.enabled = True
-            self.status = OpdState.ENABLED
+    def enable(self):
+        self.enabled = True
+        self.status = OpdState.ENABLED
 
-        def disable(self):
-            self.enabled = False
-            self.status = OpdState.DISABLED
+    def disable(self):
+        self.enabled = False
+        self.status = OpdState.DISABLED
 
-        def scan(self) -> int:
-            return 2
+    def scan(self) -> int:
+        return 2
 
 
 class MockNodeManagerService(NodeManagerService):
@@ -610,6 +609,7 @@ class MockNodeManagerService(NodeManagerService):
     Cut down node manager that keeps track of last command. Will only contain information for star
     tracker 1 (arbitrary), and so if further tests are desired this should be changed.
     """
+
     def __init__(self):
         self.set_node = 0x0
         self.set_state = 0x0
@@ -619,4 +619,3 @@ class MockNodeManagerService(NodeManagerService):
 
     def __del__(self):
         pass
-

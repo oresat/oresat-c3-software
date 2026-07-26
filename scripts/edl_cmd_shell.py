@@ -10,10 +10,28 @@ from time import time
 from typing import Any, Union
 
 import canopen
+from ccsds_cop.cop_1 import ControlWord, Gvcid
+from ccsds_cop.cop_1.fop import (
+    AsyncNotification,
+    AsyncNotificationType,
+    DirectiveNotification,
+    DirectiveRequest,
+    DirectiveType,
+    Fop1,
+    FopState,
+    NotificationType,
+    RequestToTransferFdu,
+    Response,
+    ResponseType,
+    ServiceType,
+    TransmitRequestForFrame,
+)
 from oresat_configs import Mission, OreSatConfig
+from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
+from spacepackets.uslp.frame import FrameType
 
-from oresat_c3.protocols.uslp import unpack_frame
+from oresat_c3.protocols.uslp import SPACECRAFT_ID, make_frame, unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -48,32 +66,171 @@ class EdlCommandShell(Cmd):
         self._downlink_socket.bind(self._downlink_address)
         self._downlink_socket.settimeout(self._timeout)
 
+        self._gvcid = Gvcid(tfvn=0xC, scid=SPACECRAFT_ID, vcid=EdlVcid.C3_COMMAND)
+        self._fop1 = Fop1(self._gvcid, timer_initial_value=3)
+        self._fop1_req_id = 0
+        self._last_clcw: dict[int, ControlWord] = {}
+        self._fop1.on_receive_directive(
+            DirectiveRequest(self._gvcid, 0, DirectiveType.INITIATE_AD_NO_CLCW)
+        )
+        self._fop1.on_receive_response_from_lower_layer(
+            Response(self._gvcid, ResponseType.AD_ACCEPTED)
+        )
+
+    def _flush_fop_lower(self) -> None:
+        """Send any frames queued by FOP-1 to the uplink socket."""
+        for queue in (self._fop1.interface.to_lower, self._fop1.lower_interface.signal):
+            while True:
+                try:
+                    req = queue.pop()
+                except IndexError:
+                    break
+                if not isinstance(req, TransmitRequestForFrame):
+                    continue
+                bypass = req.bypass_flag == BypassSequenceControlFlag.EXPEDITED_QOS
+                frame = make_frame(
+                    payload=req.tfdf,
+                    vcid=EdlVcid.C3_COMMAND,
+                    src_dest=SRC_DEST_ORESAT,
+                    hmac_key=self._hmac_key,
+                    sequence_number=self._seq_num,
+                    vcf_count=None if bypass else req.v_s,
+                    bypass=bypass,
+                    command=req.command_flag == ProtocolCommandFlag.PROTOCOL_INFORMATION,
+                )
+                self._uplink_socket.sendto(
+                    frame.pack(frame_type=FrameType.VARIABLE),
+                    self._uplink_address,
+                )
+
+    def _process_clcw(self, clcw: ControlWord) -> None:
+        """Feed a CLCW to FOP-1 and warn if the state machine falls back to INITIAL."""
+        self._last_clcw[clcw.vcid] = clcw
+        if clcw.vcid == self._gvcid.vcid:
+            self._fop1.on_clcw_arrived(clcw)
+            self._flush_fop_lower()
+            while True:
+                try:
+                    notif = self._fop1.interface.to_higher.pop()
+                except IndexError:
+                    break
+                if (
+                    isinstance(notif, AsyncNotification)
+                    and notif.notification_type == AsyncNotificationType.ALERT
+                ):
+                    print(
+                        f"FOP-1 alert: {notif.notification_qualifier.name} "
+                        f"(state={self._fop1.state.name}, use 'cop_init' to reinitialize)"
+                    )
+
+    def _drain_clcws(self) -> None:
+        """Drain any buffered CLCW frames from the socket without blocking."""
+        self._downlink_socket.settimeout(0)
+        try:
+            while True:
+                raw = self._downlink_socket.recv(1024)
+                try:
+                    frame = unpack_frame(raw)
+                except UslpInvalidRawPacketOrFrameLenError:
+                    continue
+                if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
+                    self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
+        except (socket.timeout, BlockingIOError):
+            pass
+        finally:
+            self._downlink_socket.settimeout(self._timeout)
+
     def _send_packet(self, code: EdlCommandCode, args: Union[tuple, None] = None) -> tuple:
-        print(f"Request {code.name}: {args} | seq_num: {self._seq_num}")
+        # processing cop sequentially is unusual, so we need to drain any CLCWs
+        # from the previous command before the next frame to prevent timeouts
+        self._drain_clcws()
+
+        sequenced = self._fop1.state == FopState.ACTIVE
+        print(
+            f"Request {code.name}: {args} | seq_num: {self._seq_num}"
+            f" | {'sequenced' if sequenced else 'expedited'}"
+        )
 
         res_packet = None
         try:
-            # make packet
-            req = EdlCommandRequest(code, args)
-            req_packet = EdlPacket(req, self._seq_num, SRC_DEST_ORESAT, bypass=True)
-            req_packet_raw = req_packet.pack(self._hmac_key)
+            tfdz = EdlCommandRequest(code, args).pack()
 
-            # send request
-            self._uplink_socket.sendto(req_packet_raw, self._uplink_address)
+            if sequenced:
+                self._fop1_req_id += 1
+                self._fop1.on_receive_request_to_transfer_fdu(
+                    RequestToTransferFdu(self._gvcid, self._fop1_req_id, tfdz, ServiceType.AD)
+                )
+                self._flush_fop_lower()
+            else:
+                frame = make_frame(
+                    payload=tfdz,
+                    vcid=EdlVcid.C3_COMMAND,
+                    src_dest=SRC_DEST_ORESAT,
+                    hmac_key=self._hmac_key,
+                    sequence_number=self._seq_num,
+                    bypass=True,
+                )
+                self._uplink_socket.sendto(
+                    frame.pack(frame_type=FrameType.VARIABLE),
+                    self._uplink_address,
+                )
 
             edl_command = EDL_COMMANDS[code]
             if edl_command.res_fmt is not None or edl_command.res_unpack_func is not None:
-                for _ in range(10):
-                    res_packet_raw = self._downlink_socket.recv(1024)
+                try:
+                    while True:
+                        raw = self._downlink_socket.recv(1024)
+                        try:
+                            frame = unpack_frame(raw)
+                        except UslpInvalidRawPacketOrFrameLenError:
+                            continue
+                        if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
+                            self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
+                            continue
+                        if frame.header.vcid == EdlVcid.C3_COMMAND:
+                            res_packet = EdlPacket.from_frame(frame, self._hmac_key)
+                            break
+                except socket.timeout:
+                    raise TimeoutError("No C3_COMMAND response")
+                if sequenced and self._fop1.nn_r != self._fop1.v_s:
+                    self._downlink_socket.settimeout(self._fop1.timer_initial_value)
                     try:
-                        frame = unpack_frame(res_packet_raw)
+                        while (
+                            self._fop1.nn_r != self._fop1.v_s
+                            and self._fop1.state == FopState.ACTIVE
+                        ):
+                            try:
+                                raw = self._downlink_socket.recv(1024)
+                            except socket.timeout:
+                                break
+                            try:
+                                frame = unpack_frame(raw)
+                            except UslpInvalidRawPacketOrFrameLenError:
+                                continue
+                            if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
+                                self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
+                    finally:
+                        self._downlink_socket.settimeout(self._timeout)
+            elif sequenced:
+                # no EDL response expected, wait for CLCW to acknowledge the AD frame
+                for _ in range(10):
+                    try:
+                        raw = self._downlink_socket.recv(1024)
+                    except socket.timeout:
+                        break
+                    try:
+                        frame = unpack_frame(raw)
                     except UslpInvalidRawPacketOrFrameLenError:
                         continue
-                    if frame.header.vcid == EdlVcid.C3_COMMAND:
-                        break
-                else:
-                    raise TimeoutError("No C3_COMMAND response received after 10 attempts")
-                res_packet = EdlPacket.from_frame(frame, self._hmac_key)
+                    if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
+                        self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
+                        if self._fop1.nn_r == self._fop1.v_s:
+                            break
+
+            if sequenced:
+                self._fop1.on_receive_response_from_lower_layer(
+                    Response(self._gvcid, ResponseType.AD_ACCEPTED)
+                )
             self._seq_num += 1
         except Exception as e:  # pylint: disable=W0718
             print(e)
@@ -85,6 +242,185 @@ class EdlCommandShell(Cmd):
             print(f"Response {code.name}: {ret}")
 
         return ret
+
+    def help_cop_status(self):
+        """Print help message for cop_status command."""
+        print("cop_status")
+        print("  print FOP-1 state and last known CLCWs")
+
+    def do_cop_status(self, _):
+        """Print FOP-1 state and last known CLCWs."""
+        self._drain_clcws()
+        fop = self._fop1
+        print(f"FOP-1 state : {fop.state.name}")
+        print(f"  V(S)      = {fop.v_s}")
+        print(f"  NN(R)     = {fop.nn_r}")
+        print(f"  ad_out    = {fop.ad_out}")
+        print(f"  sent queue= {len(fop._sent_queue)}")  # pylint: disable=W0212
+        if self._last_clcw:
+            print("Last CLCWs:")
+            for vcid, clcw in sorted(self._last_clcw.items()):
+                print(
+                    f"  VCID {vcid}: V(R)={clcw.report_value}"
+                    f"  lockout={clcw.lockout}"
+                    f"  wait={clcw.wait}"
+                    f"  retransmit={clcw.retransmit}"
+                    f"  farm_b={clcw.farm_b_counter}"
+                )
+        else:
+            print("No CLCWs received yet")
+
+    def help_cop_resume(self):
+        """Print help message for cop_resume command."""
+        print("cop_resume")
+        print("  resume a suspended FOP-1 AD service")
+
+    def do_cop_resume(self, _):
+        """Resume a suspended FOP-1 AD service."""
+        if self._fop1.suspend_state == 0:
+            print("FOP-1 is not suspended")
+            return
+        self._fop1_req_id += 1
+        self._fop1.on_receive_directive(
+            DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.RESUME_AD)
+        )
+        try:
+            while True:
+                self._fop1.interface.to_higher.pop()
+        except IndexError:
+            pass
+        print(f"FOP-1 resumed: state={self._fop1.state.name}, V(S)={self._fop1.v_s}")
+
+    def help_cop_terminate(self):
+        """Print help message for cop_terminate command."""
+        print("cop_terminate")
+        print("  terminate FOP-1 AD service. Subsequent commands are sent expedited")
+
+    def do_cop_terminate(self, _):
+        """Terminate FOP-1 AD service."""
+        self._fop1_req_id += 1
+        self._fop1.on_receive_directive(
+            DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.TERMINATE_AD)
+        )
+        try:
+            while True:
+                self._fop1.interface.to_higher.pop()
+        except IndexError:
+            pass
+        print(f"FOP-1 terminated: state={self._fop1.state.name}")
+
+    def help_cop_init(self):
+        """Print help message for cop_init command."""
+        print("cop_init [v_r]")
+        print("  reinitialize FOP-1 AD mode, waiting for CLCW confirmation")
+        print("  no args: INITIATE_AD_WITH_CLCW — if V(S)!=V(R), SET_V_S first, then sync")
+        print("  <v_r>:   INITIATE_AD_WITH_SET_V_R — send BC frame to set FARM-1 V(R) to <v_r>")
+
+    def do_cop_init(self, arg: str):
+        """Reinitialize FOP-1 AD mode, blocking until CLCW confirms ACTIVE."""
+        if self._fop1.suspend_state != 0:
+            print("FOP-1 is suspended; use 'cop_resume' before reinitializing")
+            return
+        self._fop1_req_id += 1
+        self._fop1.on_receive_directive(
+            DirectiveRequest(self._gvcid, self._fop1_req_id, DirectiveType.TERMINATE_AD)
+        )
+        try:
+            while True:
+                self._fop1.interface.to_higher.pop()
+        except IndexError:
+            pass
+
+        if arg.strip():
+            v_r = int(arg.strip(), 0)
+            # force bc_out=True so FOP-1 can send the BC frame
+            self._fop1.on_receive_response_from_lower_layer(
+                Response(self._gvcid, ResponseType.BC_ACCEPTED)
+            )
+            directive = DirectiveRequest(
+                self._gvcid, self._fop1_req_id, DirectiveType.INITIATE_AD_WITH_SET_V_R, v_r
+            )
+        else:
+            self._drain_clcws()
+            last = self._last_clcw.get(self._gvcid.vcid)
+            target_v_s = last.report_value if last is not None else self._fop1.v_s
+            if target_v_s != self._fop1.v_s or self._fop1.nn_r != self._fop1.v_s:
+                self._fop1_req_id += 1
+                self._fop1.on_receive_directive(
+                    DirectiveRequest(
+                        self._gvcid,
+                        self._fop1_req_id,
+                        DirectiveType.SET_V_S,
+                        target_v_s,
+                    )
+                )
+                try:
+                    while True:
+                        self._fop1.interface.to_higher.pop()
+                except IndexError:
+                    pass
+            directive = DirectiveRequest(
+                self._gvcid, self._fop1_req_id, DirectiveType.INITIATE_AD_WITH_CLCW
+            )
+        self._fop1_req_id += 1
+        self._fop1.on_receive_directive(directive)
+        self._flush_fop_lower()
+
+        while True:
+            try:
+                notif = self._fop1.interface.to_higher.pop()
+            except IndexError:
+                break
+            if isinstance(notif, DirectiveNotification):
+                if notif.notification_type == NotificationType.REJECT:
+                    print(f"FOP-1 init rejected (state={self._fop1.state.name})")
+                    return
+
+        for _ in range(10):
+            try:
+                raw = self._downlink_socket.recv(1024)
+            except socket.timeout:
+                print("Timeout: no CLCW confirmation received")
+                return
+            try:
+                frame = unpack_frame(raw)
+            except UslpInvalidRawPacketOrFrameLenError:
+                continue
+            if frame.header.vcid != EdlVcid.IDLE or not frame.op_ctrl_field:
+                continue
+            clcw = ControlWord.unpack(frame.op_ctrl_field)
+            self._last_clcw[clcw.vcid] = clcw
+            if clcw.vcid != self._gvcid.vcid:
+                continue
+            self._fop1.on_clcw_arrived(clcw)
+            self._flush_fop_lower()
+            while True:
+                try:
+                    notif = self._fop1.interface.to_higher.pop()
+                except IndexError:
+                    break
+                if isinstance(notif, DirectiveNotification):
+                    if notif.notification_type == NotificationType.POSITIVE_CONFIRM:
+                        print(
+                            f"FOP-1 initialized: state={self._fop1.state.name},"
+                            f" V(S)={self._fop1.v_s}"
+                        )
+                    else:
+                        print(
+                            f"FOP-1 init failed (state={self._fop1.state.name}, "
+                            "use 'cop_init' to retry)"
+                        )
+                    return
+                if (
+                    isinstance(notif, AsyncNotification)
+                    and notif.notification_type == AsyncNotificationType.ALERT
+                ):
+                    print(
+                        f"FOP-1 alert: {notif.notification_qualifier.name} "
+                        f"(state={self._fop1.state.name}, use 'cop_init' to retry)"
+                    )
+                    return
+        print("No CLCW confirmation received")
 
     def help_tx_control(self):
         """Print help message for tx control command."""
@@ -213,15 +549,16 @@ class EdlCommandShell(Cmd):
         if not respone:
             return
 
-        if respone[0] != 0:
-            print(f"SDO error code: 0x{respone[0]:08X}")
+        # response tuple: (node_id, index, subindex, ecode, len_data, data)
+        if respone[3] != 0:
+            print(f"SDO error code: 0x{respone[3]:08X}")
             return
 
         if isinstance(od[index], canopen.objectdictionary.Variable):
             obj = od[index]
         else:
             obj = od[index][subindex]
-        value = obj.decode_raw(respone[2])
+        value = obj.decode_raw(respone[5])
         print("Value from SDO read: ", value)
 
     def help_sdo_write(self):

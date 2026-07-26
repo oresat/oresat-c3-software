@@ -65,7 +65,8 @@ def unpack_frame(raw: bytes) -> TransferFrame:
 
     vcid = ((raw[2] & 0b111) << 3) | ((raw[3] >> 5) & 0b111)
 
-    sdls_header_len = get_sdls_header_len(vcid)
+    is_command = bool(raw[6] & 0x40)
+    sdls_header_len = 0 if is_command else get_sdls_header_len(vcid)
 
     frame_props = VarFrameProperties(
         has_insert_zone=sdls_header_len != 0,
@@ -92,6 +93,7 @@ def make_frame(
     control_word: Optional[bytes] = None,
     sequence_number: int = 0,
     bypass: bool = False,
+    command: bool = False,
 ) -> TransferFrame:
     """Create and pack a USLP
 
@@ -113,6 +115,8 @@ def make_frame(
         The anti-replay sequence number for SDLS.
     bypass
         Specify if this frame is bypass (Type-BD) frame.
+    command
+        Specify if this frame is for protocol command.
 
     Returns
     -------
@@ -127,18 +131,16 @@ def make_frame(
         tfdz=payload,
     )
 
-    # USLP transfer frame total length - 1
-    frame_len = len(payload) + PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN - 1
+    vcf_count_len = 1 if vcf_count is not None else 0
 
     has_clcw = control_word is not None
-    if has_clcw:
-        frame_len += len(control_word)
 
     # USLP transfer frame total length - 1
-    frame_len = len(payload) + PRIMARY_HEADER_LEN + DFH_LEN + FECF_LEN - 1
+    frame_len = len(payload) + PRIMARY_HEADER_LEN + vcf_count_len + DFH_LEN + FECF_LEN - 1
     if has_clcw:
         frame_len += len(control_word)
-    frame_len += get_sdls_len(vcid)
+    if not command:
+        frame_len += get_sdls_len(vcid)
 
     frame_header = PrimaryHeader(
         scid=SPACECRAFT_ID,
@@ -146,10 +148,12 @@ def make_frame(
         vcid=vcid,
         src_dest=src_dest,
         frame_len=frame_len,
-        vcf_count_len=bool(vcf_count),
+        vcf_count_len=vcf_count_len,
         vcf_count=vcf_count,
         op_ctrl_flag=has_clcw,
-        prot_ctrl_cmd_flag=ProtocolCommandFlag.USER_DATA,
+        prot_ctrl_cmd_flag=(
+            ProtocolCommandFlag.PROTOCOL_INFORMATION if command else ProtocolCommandFlag.USER_DATA
+        ),
         bypass_seq_ctrl_flag=(
             BypassSequenceControlFlag.EXPEDITED_QOS
             if bypass
@@ -159,6 +163,7 @@ def make_frame(
 
     frame = TransferFrame(header=frame_header, tfdf=tfdf, op_ctrl_field=control_word)
 
-    apply_sdls(frame, sequence_number, hmac_key)
+    if not command:
+        apply_sdls(frame, sequence_number, hmac_key)
 
     return frame

@@ -209,7 +209,8 @@ class ADCSManager(Service):
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
         K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
 
-        # TODO: at some point, the current saturation should be enforced via a dipole software saturation
+        # TODO: at some point, the current saturation should be
+        # enforced via a dipole software saturation
         # [Equation] amps = dipole / (permeability * windings * area) = dipole * mag_constants
 
         self.mag_constants = 1e-6 * np.array(

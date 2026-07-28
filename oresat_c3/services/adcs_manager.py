@@ -209,7 +209,7 @@ class ADCSManager(Service):
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
         K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
 
-        # at some point, the current saturation should be enforced via a dipole software saturation
+        # TODO: at some point, the current saturation should be enforced via a dipole software saturation
         # [Equation] amps = dipole / (permeability * windings * area) = dipole * mag_constants
 
         self.mag_constants = 1e-6 * np.array(
@@ -554,8 +554,9 @@ class ADCSManager(Service):
             if omega[2] < self.thermal_spin_rpm * 2 * np.pi / 60:
                 # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0, 0, 1]  # spin about the z axis
+
                 # this equation is for the magnetic dipole
-                # check on why detumble gain is not used
+                # TODO: check on why detumble gain is not used
                 desired_dipoles = np.cross(b, tau_des) / (b @ b)
                 # send the dipole commands to magnetoruqers
                 m_cmd = desired_dipoles * self.mag_constants
@@ -585,12 +586,13 @@ class ADCSManager(Service):
             tau_des = self.mag_lqr_controller(q_error, omega)
             bm = self._b_mat(b)
             k = 1e-8
-            # this is also very likely an equation for magnetic dipole but should be checked
             desired_dipoles = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
             m_cmd = desired_dipoles * self.mag_constants
             self._command_magnetoruqer_current(desired_current=m_cmd)
 
-            # check logic going to this state
+            # FIXME: check logic going to this state.
+            # The magnetic dipoles should be updated continuously.
+            # Should it go into idle state only after state conditions are met?
             logger.debug("ADCS satisfied: going to IDLE")
             self.control_mode.value = ControlMode.IDLE
         else:

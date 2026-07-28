@@ -209,6 +209,10 @@ class ADCSManager(Service):
         ring_area = 0.088**2 - (2 * ((0.0845 - 0.0604) / 2) ** 2)
         K_ring = 1  # air-core magnetorquer has magnetic permeability of 1
 
+        # TODO: at some point, the current saturation should be
+        # enforced via a dipole software saturation
+        # [Equation] amps = dipole / (permeability * windings * area) = dipole * mag_constants
+
         self.mag_constants = 1e-6 * np.array(
             [
                 1 / (K_rod * rod_windings * rod_area),
@@ -359,6 +363,12 @@ class ADCSManager(Service):
             * (1 + np.sin(self.node.od["adcs_manager"]["orbital_inclination"].value * np.pi / 180))
             * j_min
         )
+
+    def _command_magnetorquer_current(self, desired_current: np.ndarray) -> None:
+        """Send current values to magnetorquers."""
+        self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", desired_current[0])
+        self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", desired_current[1])
+        self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", desired_current[2])
 
     def on_loop(self) -> None:
         if self.control_mode.value == ControlMode.IDLE:
@@ -525,12 +535,11 @@ class ADCSManager(Service):
             # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
             b = self.get_magnetometer_data()
             # detumble controller as defined by Markley & Crassidis
-            desired_torque = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
-            # convert magnetorquer commands from torque to uA
-            m_cmd = desired_torque * self.mag_constants / b
-            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
-            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
-            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+            # this equation is for calculating the magnetic dipole
+            desired_dipoles = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
+            # send the dipole commands to magnetoruqers
+            m_cmd = desired_dipoles * self.mag_constants
+            self._command_magnetorquer_current(desired_current=m_cmd)
 
             if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(
                 np.abs(omega) < 1e-4
@@ -546,12 +555,14 @@ class ADCSManager(Service):
             if omega[2] < self.thermal_spin_rpm * 2 * np.pi / 60:
                 # while satellite is spinning slower than set rate about the z axis, spin up
                 tau_des = [0, 0, 1]  # spin about the z axis
-                desired_torque = np.cross(b, tau_des) / (b @ b)
-                # convert magnetorquer commands from torque to uA
-                m_cmd = desired_torque * self.mag_constants / b
-                self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
-                self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
-                self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+
+                # this equation is for the magnetic dipole
+                # TODO: check on why detumble gain is not used
+                desired_dipoles = np.cross(b, tau_des) / (b @ b)
+                # send the dipole commands to magnetoruqers
+                m_cmd = desired_dipoles * self.mag_constants
+                self._command_magnetorquer_current(desired_current=m_cmd)
+
         elif self.control_mode.value == ControlMode.MTB_POINTING:
             b = self.get_magnetometer_data()
             star_tracker_output = self.get_sensor_data("star_tracker_1")
@@ -576,12 +587,13 @@ class ADCSManager(Service):
             tau_des = self.mag_lqr_controller(q_error, omega)
             bm = self._b_mat(b)
             k = 1e-8
-            m_cmd = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
-            # convert magnetorquer commands from torque to uA
-            m_cmd = m_cmd * self.mag_constants / b
-            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", m_cmd[0])
-            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", m_cmd[1])
-            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", m_cmd[2])
+            desired_dipoles = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
+            m_cmd = desired_dipoles * self.mag_constants
+            self._command_magnetoruqer_current(desired_current=m_cmd)
+
+            # FIXME: check logic going to this state.
+            # The magnetic dipoles should be updated continuously.
+            # Should it go into idle state only after state conditions are met?
             logger.debug("ADCS satisfied: going to IDLE")
             self.control_mode.value = ControlMode.IDLE
         else:

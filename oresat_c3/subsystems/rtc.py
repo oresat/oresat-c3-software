@@ -30,7 +30,7 @@ def get_rtc_time() -> float:
     return ts
 
 
-def set_rtc_time(ts: float):
+def set_rtc_time(ts: float) -> bool:
     """
     Set the RTC time.
 
@@ -45,10 +45,10 @@ def set_rtc_time(ts: float):
     rtc_path = "/dev/rtc"
     if not os.path.exists(rtc_path):
         logger.error("RTC does not exist")
-        return
+        return False
     if os.geteuid() != 0:
         logger.error("failed to set RTC time due to permission error")
-        return
+        return False
 
     if ts < 946713600:  # Januay 1, 2000 midnight
         values = (0, 0, 0, 1, 0, 100, 0, 0, 0)
@@ -59,6 +59,7 @@ def set_rtc_time(ts: float):
     raw = struct.pack("9i", *values)
     with open(rtc_path) as f:
         ioctl(f, 0x4024700A, raw)  # magic number is the ioctl request code to set rtc time
+    return True
 
 
 def set_rtc_time_to_system_time():
@@ -72,16 +73,19 @@ def set_rtc_time_to_system_time():
         set_rtc_time(time())
 
 
-def set_system_time_to_rtc_time():
+def set_system_time_to_rtc_time() -> bool:
     """
     Set the system time to the RTC time.
     """
 
     if os.geteuid() != 0:
         logger.error("failed to set system time from RTC time due to permission error")
+        return False
     else:
         ts = get_rtc_time()
         if ts < 0:
             logger.error("RTC does not exist")
+            return False
         else:
             clock_settime(CLOCK_REALTIME, ts)
+            return True

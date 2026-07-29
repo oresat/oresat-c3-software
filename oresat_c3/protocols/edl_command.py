@@ -9,7 +9,7 @@ request, and values for responses.
 
 import struct
 from collections import namedtuple
-from enum import IntEnum, auto
+from enum import IntEnum
 
 EdlCommand = namedtuple(
     "EdlCommand",
@@ -56,39 +56,27 @@ class EdlCommandCode(IntEnum):
         Tx status
     """
 
-    C3_SOFT_RESET = auto()
+    C3_SOFT_RESET = 1
     """
     Soft reset the C3 (reboot C3 daemon).
     """
 
-    C3_HARD_RESET = auto()
+    C3_HARD_RESET = 2
     """
     Hard reset the C3 (reboot system).
     """
 
-    C3_FACTORY_RESET = auto()
+    C3_FACTORY_RESET = 3
     """
     Factory reset the C3 (clear FRAM, reset RTC, and reboot system).
     """
 
-    CO_NODE_ENABLE = auto()
+    CO_NODE_ENABLE = 4
     """
-    Enable a CANopen node.
-
-    Parameters
-    ----------
-    node_id: uint8
-        Node id of the CANopen node to enable / disable
-    enable: bool
-        True to enable or False to disable
-
-    Returns
-    -------
-    uint8
-        node status
+    Vestigial command to turn on CANopen in a node. CANopen is always on, so this has no use.
     """
 
-    CO_NODE_STATUS = auto()
+    CO_NODE_STATUS = 5
     """
     Get the status of a CANopen node.
 
@@ -103,7 +91,7 @@ class EdlCommandCode(IntEnum):
         node status
     """
 
-    CO_SDO_WRITE = auto()
+    CO_SDO_WRITE = 6
     """
     Write a value to a node's OD over the CAN bus using a CANopen SDO message.
 
@@ -126,7 +114,7 @@ class EdlCommandCode(IntEnum):
         SDO error code (0 is no error).
     """
 
-    CO_SYNC = auto()
+    CO_SYNC = 7
     """
     Send a CANopen SYNC message on the CAN bus.
 
@@ -136,7 +124,7 @@ class EdlCommandCode(IntEnum):
         The CANopen SYNC message was sent successfully.
     """
 
-    OPD_SYSENABLE = auto()
+    OPD_SYSENABLE = 8
     """
     Enable the OPD subsystem.
 
@@ -151,7 +139,7 @@ class EdlCommandCode(IntEnum):
         OPD subsystem status.
     """
 
-    OPD_SCAN = auto()
+    OPD_SCAN = 9
     """
     Scan for all nodes on the OPD.
 
@@ -161,7 +149,7 @@ class EdlCommandCode(IntEnum):
         The number of nodes found.
     """
 
-    OPD_PROBE = auto()
+    OPD_PROBE = 10
     """
     Probe for a node on the OPD.
 
@@ -176,7 +164,7 @@ class EdlCommandCode(IntEnum):
         True if the node was found or False if not.
     """
 
-    OPD_ENABLE = auto()
+    OPD_ENABLE = 11
     """
     Enable / disable a node on the OPD.
 
@@ -193,7 +181,7 @@ class EdlCommandCode(IntEnum):
         OPD node status. See the OPD page.
     """
 
-    OPD_RESET = auto()
+    OPD_RESET = 12
     """
     Reset a node on the OPD.
 
@@ -208,7 +196,7 @@ class EdlCommandCode(IntEnum):
         OPD node status. See the OPD page.
     """
 
-    OPD_STATUS = auto()
+    OPD_STATUS = 13
     """
     Get the status of a node on the OPD.
 
@@ -223,7 +211,7 @@ class EdlCommandCode(IntEnum):
         OPD node status. See the OPD page.
     """
 
-    RTC_SET_TIME = auto()
+    RTC_SET_TIME = 14
     """
     Set the RTC time
 
@@ -238,7 +226,7 @@ class EdlCommandCode(IntEnum):
         The RTC time was set successfully.
     """
 
-    TIME_SYNC = auto()
+    TIME_SYNC = 15
     """
     C3 will send OreSat's Time Sync TPDO over the CAN bus (all nodes that are powered on and care
     about time will sync to it).
@@ -249,12 +237,12 @@ class EdlCommandCode(IntEnum):
         Time sync was sent.
     """
 
-    BEACON_PING = auto()
+    BEACON_PING = 16
     """
     C3 will response with a beacon regardless of tx state.
     """
 
-    PING = auto()
+    PING = 17
     """
     A basic ping to the C3.
 
@@ -269,12 +257,12 @@ class EdlCommandCode(IntEnum):
         The parameter value.
     """
 
-    RX_TEST = auto()
+    RX_TEST = 18
     """
     Empty command for C3 Rx testing.
     """
 
-    CO_SDO_READ = auto()
+    CO_SDO_READ = 19
     """
     Read a value from a node's OD over the CAN bus using a CANopen SDO message.
 
@@ -289,6 +277,12 @@ class EdlCommandCode(IntEnum):
 
     Returns
     -------
+    uint8
+        The id of The CANopen node read.
+    uint16
+        The OD index read.
+    uint8
+        The OD subindex read.
     uint32
         SDO error code (0 is no error).
     uint32
@@ -297,7 +291,7 @@ class EdlCommandCode(IntEnum):
         Data buffer.
     """
 
-    CO_NODE_FLASH = auto()
+    CO_NODE_FLASH = 20
     """
     Flash a Zephyr/mcuboot image to a node using CANopen block or segmented download.
 
@@ -375,7 +369,7 @@ EDL_COMMANDS = {
     EdlCommandCode.C3_SOFT_RESET: EdlCommand(),
     EdlCommandCode.C3_HARD_RESET: EdlCommand(),
     EdlCommandCode.C3_FACTORY_RESET: EdlCommand(),
-    EdlCommandCode.CO_NODE_ENABLE: EdlCommand("B?", "B"),
+    EdlCommandCode.CO_NODE_ENABLE: EdlCommand(),
     EdlCommandCode.CO_NODE_STATUS: EdlCommand("B", "B"),
     EdlCommandCode.CO_SDO_WRITE: EdlCommand(
         None, "I", _edl_req_sdo_write_pack_cb, _edl_req_sdo_write_unpack_cb

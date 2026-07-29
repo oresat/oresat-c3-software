@@ -231,12 +231,8 @@ class TestCacheStore(unittest.TestCase):
             FilestoreResult.NOT_PERFORMED,
         )
 
-    def test_list_directory(self):
+    def test_list_directory(self): #FIXME: need to write new test for this.
         """Test list_directory()"""
-        self.assertEqual(
-            self.cache.list_directory(Path(), self.invalid), FilestoreResult.NOT_PERFORMED
-        )
-
         dirlist_111 = Path(self.cache._dir, "c3_dir_111.txt")
         self.assertEqual(self.cache.list_directory(Path(), dirlist_111), FilestoreResult.SUCCESS)
         self.assertTrue(self.cache.file_exists(dirlist_111))

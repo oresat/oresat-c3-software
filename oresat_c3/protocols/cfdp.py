@@ -3,6 +3,9 @@
 Most or all of these changes should eventually be submitted upstream.
 """
 
+# FIXME: Lets this file pass py3.9 tests. Remove when tests use 3.12
+from __future__ import annotations
+
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -441,7 +444,7 @@ class CfdpUser(CfdpUserBase):
         ) -> None:
         params = reserved_cfdp_msg.get_dir_listing_request_params()
         if reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_REQUEST:  # noqa: E501
-            self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
+            resp = self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
             put_req = PutRequest(
                 destination_id=transaction_id.source_id,
                 source_file=params.dir_file_name_as_path,
@@ -450,7 +453,7 @@ class CfdpUser(CfdpUserBase):
                 closure_requested=True,
                 msgs_to_user=[
                     DirectoryListingResponse(
-                        listing_success=True,
+                        listing_success=False,
                         dir_params=params,
                     ).to_generic_msg_to_user_tlv(),
                     OriginatingTransactionId(transaction_id).to_generic_msg_to_user_tlv(),

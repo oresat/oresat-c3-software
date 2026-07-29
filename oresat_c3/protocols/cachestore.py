@@ -56,7 +56,7 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
         with self._lock:
             return (
                 any(path.name == f.name for f in self._data)
-                or (".dirlist" in path.name and (Path(self._dir) / path).exists())
+                or (Path(self._dir) / path).exists()
             )
 
     def stat(self, file: Path) -> os.stat_result:
@@ -166,9 +166,6 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
     def list_directory(
         self, _dir_name: Path, file_name: Path, recursive: bool = False
     ) -> FilestoreResult:
-        if not _dir_name.exists() or not _dir_name.is_dir():
-            return FilestoreResult.NOT_PERFORMED
-
         cmd = ["ls", "-al"]
         fullpath = Path(self._dir) / file_name
         with open(fullpath, "w") as of:

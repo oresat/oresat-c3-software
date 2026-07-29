@@ -201,10 +201,15 @@ class FixedDestHandler(DestHandler):
         return super()._handle_eof_without_previous_metadata(eof_pdu)
 
     def _handle_waiting_for_finished_ack(self, packet_holder: PduHolder) -> None:
-        # For some reason the upstream package will not re-send the EOF_ACK if it gets dropped.
+        """
+        The dest handler will not resend the EOF ack if it gets lost. The ordreing of the FSM means
+        that this can also try to resend when getting the normal EOF, so this does not resend if the
+        queue already has something. There is probably a cleaner way to handle this.
+        """
         if (
             packet_holder.pdu is not None
             and packet_holder.pdu_directive_type == DirectiveType.EOF_PDU
+            and self.states._num_packets_ready == 0
         ):
             self._handle_eof_pdu(packet_holder.pdu)
         super()._handle_waiting_for_finished_ack(packet_holder)
@@ -339,7 +344,7 @@ class CfdpUser(CfdpUserBase):
                 destination_id=originating_id.source_id,
                 source_file=None,
                 dest_file=None,
-                trans_mode=None,
+                trans_mode=True,
                 closure_requested=None,
                 msgs_to_user=[
                     proxy_put_response,
@@ -477,7 +482,6 @@ class CfdpUser(CfdpUserBase):
         logger.info(f"{self.base_str}: EOF-Recv.indication for {transaction_id}")
 
 
-# Don't know what this is for yet. TODO: figure that out.
 class CustomCheckTimerProvider(CheckTimerProvider):
     def provide_check_timer(
         self,

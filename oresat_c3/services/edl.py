@@ -120,6 +120,8 @@ class EdlService(Service):
                     crc_on_transmission=False,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,  # Yamcs only supports the legacy modular crc.
+                    immediate_nak_mode=False,
+                    nak_timer_interval_seconds=5.0,
                 ),
             ]
         )
@@ -243,10 +245,13 @@ class EdlService(Service):
 
     def _handle_pdu(self, pdu: AbstractFileDirectiveBase):
         packet_dest = get_packet_destination(pdu)
+        logger.warning(f"putting cfdp pdu in {packet_dest} queue")
         if packet_dest == PacketDestination.DEST_HANDLER:
             self._cfdp_dest_queue.put(pdu)
         elif packet_dest == PacketDestination.SOURCE_HANDLER:
             self._cfdp_src_queue.put(pdu)
+        else:
+            logger.error("receieved CFDP pdu intended for unknown destination!")
 
     def on_loop(self):
         self._process_command()

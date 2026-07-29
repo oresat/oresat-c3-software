@@ -213,12 +213,12 @@ class TestCfdp(unittest.TestCase):
         # src --> FileData
         # src --> EoF
         # dst  X  Ack (EoF)
-        # dst <-- Finished
+        # dst --> Finished
         # ??? According to 4.7.1 b) the origional PDU should be re-issued. So:
         # src --> EoF
-        # dst <-- Finished # same timeout as the EOF, not acked so re-issued as well.
-        # dst <-- Ack (EoF)
-        # dst <-- Finished
+        # dst --> Finished # same timeout as the EOF, not acked so re-issued as well.
+        # dst --> Ack (EoF)
+        # dst --> Finished
         # src --> Ack (Finished)
 
         put = put_request(self.sat_id, self.gnd_file.name)
@@ -474,6 +474,49 @@ class TestCfdp(unittest.TestCase):
         self.cache.delete_file(Path(dir_listing_gnd))
         self.cache_gnd.delete_file(Path(dir_listing_gnd))
 
+    def test_timed_out(self):
+        """src never hears acks"""
+        # src --> Metadata
+        # src --> FileData
+        # src --> EoF
+        # timeout
+        # src --> EoF
+        # timeout
+        # src --> EoF
+        # timeout
+        # Transaction Ended
+
+        put = put_request(self.sat_id, self.gnd_file.name)
+        self._put_req_queue_gnd.put(put)
+        time.sleep(0.2)
+
+        # src --> Metadata
+        self._src_gnd_to_sc_dest(0.15, MetadataPdu)
+        # src --> Filedata
+        self._src_gnd_to_sc_dest(0.15, FileDataPdu)
+        # src --> EoF
+        self._src_gnd_to_sc_dest(0.15, EofPdu)
+
+        time.sleep(1000)
+
+        # Make sure we've returned to idle / empty.
+        time.sleep(1)
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(
+            self.cache.read_data(self.gnd_file),
+            self.cache_gnd.read_data(self.gnd_file, None)
+        )
+        self.cache.delete_file(self.gnd_file)
 
     def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())

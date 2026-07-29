@@ -81,7 +81,6 @@ class EdlService(Service):
         self.SAT_ID = ByteFieldU8(1)
         self._init_cfdp(node.fwrite_cache)
 
-
         # objs
         edl_rec = node.od["edl"]
         tx_rec = node.od["tx_control"]

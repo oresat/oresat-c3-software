@@ -344,7 +344,7 @@ class CfdpUser(CfdpUserBase):
                 destination_id=originating_id.source_id,
                 source_file=None,
                 dest_file=None,
-                trans_mode=True,
+                trans_mode=None,
                 closure_requested=None,
                 msgs_to_user=[
                     proxy_put_response,
@@ -440,7 +440,7 @@ class CfdpUser(CfdpUserBase):
     def report_indication(
         self,
         transaction_id: TransactionId,
-        status_report: Any,  # noqa ANN401
+        status_report,
     ) -> None:
         # TODO: p.28 of the CFDP standard specifies what information the status report parameter
         #       could contain. I think it would be better to not hardcode the type of the status

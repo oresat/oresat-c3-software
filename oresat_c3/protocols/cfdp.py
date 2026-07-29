@@ -40,6 +40,7 @@ from cfdppy.user import (
 from olaf import logger
 from spacepackets.cfdp import (
     ConditionCode,
+    FaultHandlerCode,
     PduHolder,
     TransmissionMode,
 )
@@ -257,6 +258,32 @@ class FixedDestHandler(DestHandler):
             msgs_to_user=msgs_to_user_list,
         )
         self.user.metadata_recv_indication(params)
+
+    def _declare_fault(self, cond: ConditionCode) -> FaultHandlerCode:
+        """
+        As far as I can tell abandon transaction is never called, so the dest handler endlessly
+        tries to cancel transactions without ever actually ending them.
+        """
+        fh = self.cfg.default_fault_handlers.get_fault_handler(cond)
+        transaction_id = self._params.transaction_id
+        progress = self._params.fp.progress
+        assert transaction_id is not None
+        if fh is None:
+            raise ValueError(f"invalid condition code {cond!r} for fault declaration")
+        if fh == FaultHandlerCode.NOTICE_OF_CANCELLATION:
+            if ( # If we've already cancelled, abandon instead
+                self._params.completion_disposition == CompletionDisposition.CANCELED
+            ):
+                fh = FaultHandlerCode.ABANDON_TRANSACTION
+                self._abandon_transaction()
+            else:
+                self._notice_of_cancellation(cond)
+        elif fh == FaultHandlerCode.NOTICE_OF_SUSPENSION:
+            self._notice_of_suspension()
+        elif fh == FaultHandlerCode.ABANDON_TRANSACTION:
+            self._abandon_transaction()
+        self.cfg.default_fault_handlers.report_fault(transaction_id, cond, progress)
+        return fh
 
 
 class CfdpFaultHandler(DefaultFaultHandlerBase):

@@ -49,6 +49,8 @@ def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
 
 
 class TestCfdp(unittest.TestCase):
+    TIMEOUT_DUR = 0.6
+
     def setUp(self):
         self.sat_file = Path("c3_tmp_123")
         self.cachedir = TemporaryDirectory()
@@ -82,6 +84,8 @@ class TestCfdp(unittest.TestCase):
                     max_packet_len=950,
                     closure_requested=True,
                     crc_on_transmission=False,
+                    positive_ack_timer_interval_seconds=self.TIMEOUT_DUR,
+                    nak_timer_interval_seconds=self.TIMEOUT_DUR,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,
                 ),
@@ -121,6 +125,8 @@ class TestCfdp(unittest.TestCase):
                     max_packet_len=950,
                     closure_requested=True,
                     crc_on_transmission=False,
+                    positive_ack_timer_interval_seconds=self.TIMEOUT_DUR,
+                    nak_timer_interval_seconds=self.TIMEOUT_DUR,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,
                 ),
@@ -196,6 +202,7 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertTrue(self._cfdp_tm_queue.empty())
         self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
         self.assertEqual(
             self.cfdp_source_handler_gnd.source_handler.step,
@@ -255,6 +262,7 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertTrue(self._cfdp_tm_queue.empty())
         self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
         self.assertEqual(
             self.cfdp_source_handler_gnd.source_handler.step,
@@ -358,6 +366,7 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertTrue(self._cfdp_tm_queue.empty())
         self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
         self.assertEqual(
             self.cfdp_source_handler_gnd.source_handler.step,
@@ -462,6 +471,7 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertTrue(self._cfdp_tm_queue.empty())
         self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
         self.assertEqual(
             self.cfdp_source_handler_gnd.source_handler.step,
@@ -475,7 +485,10 @@ class TestCfdp(unittest.TestCase):
         self.cache_gnd.delete_file(Path(dir_listing_gnd))
 
     def test_timed_out(self):
-        """src never hears acks"""
+        """
+        After the first 3 PDUs, stop transfering pdus. This lets us test both the source and the
+        dest timing out.
+        """
         # src --> Metadata
         # src --> FileData
         # src --> EoF
@@ -485,7 +498,6 @@ class TestCfdp(unittest.TestCase):
         # src --> EoF
         # timeout
         # Transaction Ended
-
         put = put_request(self.sat_id, self.gnd_file.name)
         self._put_req_queue_gnd.put(put)
         time.sleep(0.2)
@@ -497,7 +509,56 @@ class TestCfdp(unittest.TestCase):
         # src --> EoF
         self._src_gnd_to_sc_dest(0.15, EofPdu)
 
-        time.sleep(1000)
+        self._cfdp_tm_queue.get() # drop the ack(eof)
+        self._cfdp_tm_queue.get() # drop the fin
+        self.assertEqual(
+            self.cfdp_source_handler_gnd.source_handler.step,
+            source.TransactionStep.WAITING_FOR_EOF_ACK
+        )
+        self.assertEqual(
+            self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.WAITING_FOR_FINISHED_ACK
+        )
+        time.sleep(self.TIMEOUT_DUR + 0.02)
+
+        pdu = self._cfdp_tm_queue_gnd.get()
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        pdu = self._cfdp_tm_queue.get()
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        time.sleep(self.TIMEOUT_DUR + 0.02)
+
+        pdu = self._cfdp_tm_queue_gnd.get()
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        pdu = self._cfdp_tm_queue.get()
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(
+            self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.WAITING_FOR_FINISHED_ACK
+        )
+        time.sleep(self.TIMEOUT_DUR + 0.02)
+
+        # think it should crash here.
+        pdu = self._cfdp_tm_queue_gnd.get()
+        self.assertIsInstance(pdu.pdu, EofPdu)
+        pdu = self._cfdp_tm_queue.get()
+        self.assertIsInstance(pdu.pdu, FinishedPdu)
+        self.assertTrue(self._cfdp_tm_queue.empty())
+        self.assertTrue(self._cfdp_tm_queue_gnd.empty())
+        time.sleep(self.TIMEOUT_DUR + 0.02)
+        self.assertEqual(
+            self.cfdp_source_handler.source_handler.step,
+            source.TransactionStep.IDLE
+        )
+        self.assertEqual(
+            self.cfdp_dest_handler.dest_handler.step, dest.TransactionStep.IDLE
+        )
+        time.sleep(self.TIMEOUT_DUR * 2 + 0.02)
 
         # Make sure we've returned to idle / empty.
         time.sleep(1)
@@ -507,16 +568,12 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler.source_handler.step,
             source.TransactionStep.IDLE
         )
+        self.assertTrue(self._cfdp_tm_queue.empty())
         self.assertEqual(self.cfdp_dest_handler_gnd.dest_handler.step, dest.TransactionStep.IDLE)
         self.assertEqual(
             self.cfdp_source_handler_gnd.source_handler.step,
             source.TransactionStep.IDLE
         )
-        self.assertEqual(
-            self.cache.read_data(self.gnd_file),
-            self.cache_gnd.read_data(self.gnd_file, None)
-        )
-        self.cache.delete_file(self.gnd_file)
 
     def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
         pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())

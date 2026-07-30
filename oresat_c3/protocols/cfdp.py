@@ -20,6 +20,7 @@ from cfdppy.exceptions import (
     PduIgnoredForSource,
     SourceFileDoesNotExist,
 )
+from cfdppy.filestore import FilestoreResult
 from cfdppy.handler.dest import CompletionDisposition, DestHandler
 from cfdppy.handler.dest import TransactionStep as DestTransactionStep
 from cfdppy.handler.source import SourceHandler
@@ -57,7 +58,6 @@ from spacepackets.cfdp.pdu import (
 )
 from spacepackets.cfdp.pdu.file_data import FileDataParams
 from spacepackets.cfdp.tlv import (
-    DirectoryListingResponse,
     DirectoryOperationMessageType,
     MessageToUserTlv,
     OriginatingTransactionId,
@@ -444,7 +444,20 @@ class CfdpUser(CfdpUserBase):
         ) -> None:
         params = reserved_cfdp_msg.get_dir_listing_request_params()
         if reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_REQUEST:  # noqa: E501
-            resp = self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
+            resp = self.vfs.list_directory(
+                params.dir_path_as_path,
+                params.dir_file_name_as_path,
+                False
+            )
+            # FIXME: This fixes an issue with DirectoryListingResponse spacepackets <= 0.31.0.
+            # Remove this once we are on 0.32.0
+            value = (
+                bytes([0x00 if resp == FilestoreResult.SUCCESS else 0x80])
+                + params.dir_path.pack()
+                + params.dir_file_name.pack()
+            )
+            mtu_response = ReservedCfdpMessage(DirectoryOperationMessageType.LISTING_RESPONSE,value)
+
             put_req = PutRequest(
                 destination_id=transaction_id.source_id,
                 source_file=params.dir_file_name_as_path,
@@ -452,10 +465,7 @@ class CfdpUser(CfdpUserBase):
                 trans_mode=None,
                 closure_requested=True,
                 msgs_to_user=[
-                    DirectoryListingResponse(
-                        listing_success=False,
-                        dir_params=params,
-                    ).to_generic_msg_to_user_tlv(),
+                    mtu_response.to_generic_msg_to_user_tlv(),
                     OriginatingTransactionId(transaction_id).to_generic_msg_to_user_tlv(),
                 ],
             )

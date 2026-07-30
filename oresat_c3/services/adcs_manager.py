@@ -370,9 +370,70 @@ class ADCSManager(Service):
         self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", desired_current[1])
         self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", desired_current[2])
 
+    def _command_reaction_wheel_velocity(
+        self, desired_velocity: np.ndarray, partial_control: bool = False
+    ) -> int:
+        """Send velocity values to reaction wheels.
+
+        Parameters
+        ----------
+        desired_velocity
+            Desired velocity to control the reaction wheels [rev/s].
+        partial_control
+            Allow control if not all reaction wheels are in the correct state.
+
+        Returns
+        -------
+        Sucess code, 0 if successful, 1 if not sucessful.
+        """
+
+        logger.debug("About to command the reaction wheel velocities.")
+
+        # TODO: Make sure the reaction wheels have been calibrated
+        # Make sure the reaction wheels are in the correct mode (velocity)
+
+        # TODO: If they are not in the correct mode, give a warning
+        # TODO: Allow this function to try other control modes (torque, position, etc.)
+        # TODO: Discuss if adcs service should put the RWs in the correct mode
+
+        # Get RW modes
+        # TODO: change rw state reference to callback data mapping
+        rw_nodes = ["rw_1", "rw_2", "rw_3", "rw_4"]
+        velocity_mode_count = 0
+        for rw_node in rw_nodes:
+            # TODO: protect this in a try-catch statement
+            rw_ctrl_stat = self.node.od[rw_node]["ctrl_stat_current_state"].value
+            logger.debug(f"Reaction wheel {rw_node} control state is {rw_ctrl_stat}")
+            # TODO: make the state evaluation more clear
+            if rw_ctrl_stat != 5:
+                logger.warning(f"Reaction wheel {rw_node} is not in velocity mode.")
+                velocity_mode_count += 1
+
+        # Stop if the reaction wheels are not in the correct state
+        logger.debug(f"Partial control is set to {partial_control}.")
+        if velocity_mode_count > 0:
+            logger.warning("One or more reaction wheels are not in velocity mode.")
+            if not partial_control:
+                logger.error("Velocity commands were not sent to reaction wheels.")
+                return 1
+
+        # TODO: Make sure the velocity is converted to rev/s
+        for ii, rw_node in enumerate(rw_nodes):
+            rw_ctrl_stat = self.node.od[rw_node]["ctrl_stat_current_state"].value
+            if rw_ctrl_stat == 5:
+                logger.debug(f"About to command {rw_node} with velocity {desired_velocity[ii]}")
+                # TODO: protect this in a try-catch statement.
+                # TODO: Try three times before giving up.
+                self.node.sdo_write(rw_node, "signals", "setpoint", desired_velocity[ii])
+
+        return 0
+
     def on_loop(self) -> None:
         if self.control_mode.value == ControlMode.IDLE:
-            self.sleep_ms(300000)
+            self._command_reaction_wheel_velocity(
+                desired_velocity=np.array([0, 0, 0, 0]), partial_control=True
+            )
+            self.sleep_ms(30e3)
             return
         if (
             self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT)

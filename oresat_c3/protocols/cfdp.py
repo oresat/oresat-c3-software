@@ -68,7 +68,7 @@ from spacepackets.cfdp.tlv import (
     TlvType,
 )
 from spacepackets.countdown import Countdown
-from spacepackets.seqcount import SeqCountProvider
+from spacepackets.seqcount import FileSeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from .cachestore import CacheStore
@@ -195,13 +195,17 @@ class FixedDestHandler(DestHandler):
         It would be very difficult to override EofPdu directly because it gets used everywhere and
         we don't have control over where. This is the next best thing, _handle_eof_pdu is where
         the pdu gets used, so we can fix up the value before it spreads.
+
+        I've made this shelf stable for when it eventually gets fixed.
         """
-        eof_pdu.condition_code >>= 4
+        if eof_pdu.condition_code > 15:
+            eof_pdu.condition_code >>= 4
         return super()._handle_eof_pdu(eof_pdu)
 
     def _handle_eof_without_previous_metadata(self, eof_pdu: EofPdu):
         """Same issue as _handle_eof_pdu"""
-        eof_pdu.condition_code >>= 4
+        if eof_pdu.condition_code > 15:
+            eof_pdu.condition_code >>= 4
         return super()._handle_eof_without_previous_metadata(eof_pdu)
 
     def _handle_waiting_for_finished_ack(self, packet_holder: PduHolder) -> None:
@@ -326,6 +330,8 @@ class CfdpFaultHandler(DefaultFaultHandlerBase):
 
 
 class CfdpUser(CfdpUserBase):
+    DIRECTORY_LISTING_FILE = Path("c3_dirlist_0")
+
     def __init__(self, file_cache: CacheStore, base_str: str, put_req_queue: SimpleQueue):
         self.base_str = base_str
         self.put_req_queue = put_req_queue
@@ -443,10 +449,11 @@ class CfdpUser(CfdpUserBase):
             self, transaction_id: TransactionId, reserved_cfdp_msg: ReservedCfdpMessage
         ) -> None:
         params = reserved_cfdp_msg.get_dir_listing_request_params()
-        if reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_REQUEST:  # noqa: E501
+        if (reserved_cfdp_msg.get_directory_operation_type()
+            == DirectoryOperationMessageType.LISTING_REQUEST):
             resp = self.vfs.list_directory(
                 params.dir_path_as_path,
-                params.dir_file_name_as_path,
+                self.DIRECTORY_LISTING_FILE,
                 False
             )
             # FIXME: This fixes an issue with DirectoryListingResponse spacepackets <= 0.31.0.
@@ -460,7 +467,7 @@ class CfdpUser(CfdpUserBase):
 
             put_req = PutRequest(
                 destination_id=transaction_id.source_id,
-                source_file=params.dir_file_name_as_path,
+                source_file=self.DIRECTORY_LISTING_FILE,
                 dest_file=params.dir_file_name_as_path,
                 trans_mode=None,
                 closure_requested=True,
@@ -470,7 +477,8 @@ class CfdpUser(CfdpUserBase):
                 ],
             )
             self.put_req_queue.put(put_req)
-        elif reserved_cfdp_msg.get_directory_operation_type() == DirectoryOperationMessageType.LISTING_RESPONSE:  # noqa: E501
+        elif (reserved_cfdp_msg.get_directory_operation_type()
+            == DirectoryOperationMessageType.LISTING_RESPONSE):
             dir_list_response_params = reserved_cfdp_msg.get_dir_listing_response_params()
             logger.info(f"Received Directory Listing Response: {dir_list_response_params}")
 
@@ -545,9 +553,10 @@ class SourceEntityHandler(Thread):
         gnd_id: ByteFieldU8,
         sat_id: ByteFieldU8,
         stop_signal: Event,
+        seq_num_provider: FileSeqCountProvider,
     ):
         super().__init__()
-        src_seq_count_provider = SeqCountProvider(16)
+        src_seq_count_provider = seq_num_provider
         src_user = CfdpUser(file_cache, self.BASE_STR_SRC + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
         self.source_handler = VfsSourceHandler(

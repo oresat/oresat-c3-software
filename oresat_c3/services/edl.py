@@ -1,5 +1,6 @@
 """'EDL Service"""
 
+from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import time
 from typing import Any, Optional, Union
@@ -17,6 +18,7 @@ from spacepackets.cfdp import (
     TransmissionMode,
 )
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
+from spacepackets.seqcount import FileSeqCountProvider
 from spacepackets.uslp import TransferFrame
 from spacepackets.util import ByteFieldU8
 
@@ -79,7 +81,11 @@ class EdlService(Service):
 
         self.GND_ID = ByteFieldU8(0)
         self.SAT_ID = ByteFieldU8(1)
-        self._init_cfdp(node.fwrite_cache)
+        self._cfdp_src_seq_num = FileSeqCountProvider(
+            16,
+            Path(node.work_base_dir + "/cfdp_src_seq.txt")
+        )
+        self._init_cfdp(node.fwrite_cache, self._cfdp_src_seq_num)
 
         # objs
         edl_rec = node.od["edl"]
@@ -105,7 +111,7 @@ class EdlService(Service):
         if self._thread.is_alive():
             self._thread.join()
 
-    def _init_cfdp(self, fwrite_cache: CacheStore) -> None:
+    def _init_cfdp(self, fwrite_cache: CacheStore, src_seq_num: FileSeqCountProvider) -> None:
         remote_entities = RemoteEntityConfigTable(
             [
                 RemoteEntityConfig(
@@ -124,6 +130,7 @@ class EdlService(Service):
                 ),
             ]
         )
+
         self._cfdp_source_handler = SourceEntityHandler(
             self.put_req_queue,
             self._cfdp_src_queue,
@@ -132,7 +139,8 @@ class EdlService(Service):
             remote_entities,
             self.GND_ID,
             self.SAT_ID,
-            self._event
+            self._event,
+            src_seq_num,
         )
         self._cfdp_dest_handler = DestEntityHandler(
             self.put_req_queue,

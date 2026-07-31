@@ -29,12 +29,6 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                     with open(self._dir + f.name, "rb") as rf:
                         rf.seek(offset or 0)
                         return rf.read(read_len)
-            # Yamcs needs a filename that does not comply with the oresat filename schema.
-            # We will as a fallback look for .dirlist* after failing to find a normal file.
-            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
-                with open(self._dir + file.name, "rb") as rf:
-                    rf.seek(offset or 0)
-                    return rf.read(read_len)
             raise FileNotFoundError(file)
 
     def file_size(self, file: Path) -> int:
@@ -54,10 +48,7 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
 
     def file_exists(self, path: Path) -> bool:
         with self._lock:
-            return (
-                any(path.name == f.name for f in self._data)
-                or (Path(self._dir) / path).exists()
-            )
+            return (any(path.name == f.name for f in self._data))
 
     def stat(self, file: Path) -> os.stat_result:
         """Implements os.stat() but for a filestore
@@ -71,8 +62,6 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
             for f in self._data:
                 if file.name == f.name:
                     return Path(self._dir, f.name).stat()
-            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
-                return Path(self._dir, file.name).stat()
             raise FileNotFoundError(file)
 
     def truncate_file(self, file: Path) -> None:
@@ -81,9 +70,6 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                 if file.name == f.name:
                     with open(self._dir + f.name, "w"):
                         return
-            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
-                with open(self._dir + file.name, "w"):
-                    return
             raise FileNotFoundError(file)
 
     def write_data(self, file: Path, data: bytes, offset: Optional[int] = None) -> None:
@@ -121,9 +107,6 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
                     os.remove(self._dir + f.name)
                     self._data.remove(f)
                     return FilestoreResult.DELETE_SUCCESS
-            if ".dirlist" in file.name and (Path(self._dir) / file).exists():
-                os.remove(self._dir + file.name)
-                return FilestoreResult.DELETE_SUCCESS
             return FilestoreResult.DELETE_FILE_DOES_NOT_EXIST
 
     def rename_file(self, old_file: Path, new_file: Path) -> FilestoreResult:
@@ -167,9 +150,12 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
         self, _dir_name: Path, file_name: Path, recursive: bool = False
     ) -> FilestoreResult:
         cmd = ["ls", "-al"]
+
+        if not self.file_exists(file_name):
+            self.create_file(file_name)
+
         fullpath = Path(self._dir) / file_name
         with open(fullpath, "w") as of:
-            of.write(f"Contents of directory {_dir_name} generated with '{cmd}':\n")
             try:
                 result = subprocess.run(cmd, check=True, capture_output=True, cwd=self._dir)
             except (subprocess.CalledProcessError, OSError):

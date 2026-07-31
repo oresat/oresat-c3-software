@@ -1,6 +1,5 @@
 """'EDL Service"""
 
-from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import time
 from typing import Any, Optional, Union
@@ -18,7 +17,6 @@ from spacepackets.cfdp import (
     TransmissionMode,
 )
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
-from spacepackets.seqcount import FileSeqCountProvider
 from spacepackets.uslp import TransferFrame
 from spacepackets.util import ByteFieldU8
 
@@ -81,11 +79,7 @@ class EdlService(Service):
 
         self.GND_ID = ByteFieldU8(0)
         self.SAT_ID = ByteFieldU8(1)
-        self._cfdp_src_seq_num = FileSeqCountProvider(
-            16,
-            Path(node.work_base_dir + "/cfdp_src_seq.txt")
-        )
-        self._init_cfdp(node.fwrite_cache, self._cfdp_src_seq_num)
+        self._init_cfdp(node.fwrite_cache)
 
         # objs
         edl_rec = node.od["edl"]
@@ -96,7 +90,17 @@ class EdlService(Service):
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
+        self._edl_cfdp_seq_count_obj = edl_rec["cfdp_seq_num"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+
+    def on_start(self) -> None:
+        self._cfdp_source_handler.set_seq_num(self._edl_cfdp_seq_count_obj.value)
+        self.node.add_sdo_callbacks(
+            "edl",
+            "cfdp_seq_num",
+            self._cfdp_source_handler.get_seq_num,
+            self._cfdp_source_handler.set_seq_num,
+        )
 
     def __del__(self) -> None:
         # redefinition of the service destructor to handle the cfdp threads
@@ -111,7 +115,7 @@ class EdlService(Service):
         if self._thread.is_alive():
             self._thread.join()
 
-    def _init_cfdp(self, fwrite_cache: CacheStore, src_seq_num: FileSeqCountProvider) -> None:
+    def _init_cfdp(self, fwrite_cache: CacheStore) -> None:
         remote_entities = RemoteEntityConfigTable(
             [
                 RemoteEntityConfig(
@@ -140,7 +144,6 @@ class EdlService(Service):
             self.GND_ID,
             self.SAT_ID,
             self._event,
-            src_seq_num,
         )
         self._cfdp_dest_handler = DestEntityHandler(
             self.put_req_queue,

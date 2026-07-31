@@ -68,7 +68,7 @@ from spacepackets.cfdp.tlv import (
     TlvType,
 )
 from spacepackets.countdown import Countdown
-from spacepackets.seqcount import FileSeqCountProvider
+from spacepackets.seqcount import SeqCountProvider
 from spacepackets.util import ByteFieldU8
 
 from .cachestore import CacheStore
@@ -553,10 +553,9 @@ class SourceEntityHandler(Thread):
         gnd_id: ByteFieldU8,
         sat_id: ByteFieldU8,
         stop_signal: Event,
-        seq_num_provider: FileSeqCountProvider,
     ):
         super().__init__()
-        src_seq_count_provider = seq_num_provider
+        src_seq_count_provider = SeqCountProvider(16)
         src_user = CfdpUser(file_cache, self.BASE_STR_SRC + sat_id.__str__(), put_req_queue)
         check_timer_provider = CustomCheckTimerProvider()
         self.source_handler = VfsSourceHandler(
@@ -659,6 +658,12 @@ class SourceEntityHandler(Thread):
                 continue
             if self.source_handler.state == CfdpState.BUSY and not self._busy_handling():
                 time.sleep(0.1)
+
+    def set_seq_num(self, new: int) -> None:
+        self.source_handler.seq_num_provider.count = new
+
+    def get_seq_num(self) -> int:
+        return self.source_handler.seq_num_provider.count
 
 
 class DestEntityHandler(Thread):

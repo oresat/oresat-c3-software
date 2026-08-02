@@ -23,7 +23,7 @@ EDL Packet Structure
 --------------------
 
 The EDL uses USLP (Unified Space Link Protocol) from CCSDS (The Consultative Committee for Space Data Systems).
-It uses SDLS (Space Data Link Security) for authentication and COP-1 (Communication Operation Proceedure-1) for
+It uses SDLS (Space Data Link Security) for authentication and COP-1 (Communication Operation Procedure-1) for
 frame retransmission.
 
 +--------------+---------------------+-----------------+---------------------+--------------+---------------+------------+
@@ -44,22 +44,24 @@ USLP Primary Header
 *******************
 
 - **Transfer Frame Version Number**: 4 bits. Always ``"C"`` in ASCII.
-- **Space Craft ID**: 16 bits: Always ``"OS"`` in ASCII (short for OreSat) .
+- **Space Craft ID**: 16 bits: Always ``"OS"`` in ASCII (short for OreSat).
 - **Source or Destination Identifier**: 1 bit. Source (aka ``0b1``) is for UniClOGS and destination
   (aka ``0b0``) is for OreSat.
-- **Virtual Channel ID`**: 6 bits.
+- **Virtual Channel ID**: 6 bits.
    - Virtual channel ``0b000000`` is used for C3 commands.
    - Virtual channel ``0b000001`` is used for file transfer.
-   - Virtual channel ``0b000010`` is used for empty clcw frames with no SDLS.
+   - Virtual channel ``0b000010`` is an IDLE channel carrying frames with CLCWs, but no payload or SDLS.
 - **MAP ID: 4 bits**. Not used by OreSat (will always be ``0b0000``).
 - **End of Frame Primary Header Flag**: 1 bit. Always ``0b0``.
 - **Frame Length**: 16 bits. Length of entire packet **minus** one, in octets.
-- **Bypass / Sequence Control Flag**: 1 bit. Is set to ``0b0`` to mark the packet is sequence
-  controlled QoS will Frame Accepts Check of the FARM will not be bypassed.
-- **Protocol Control Command Flag**: 1 bit. Will be set to ``0b0`` to mark the TFDF is user data
-  and not protocol controlled information, aka the packet contains a EDL payload.
+- **Bypass / Sequence Control Flag:** 1 bit.
+   - ``0b0`` for Sequence Controlled Service (guaranteed in-order delivery).
+   - ``0b1`` for Expedited Service (bypass the FARM-1 Frame Acceptance Check, delivery not guaranteed).
+- **Protocol Control Command Flag**: 1 bit.
+   - ``0b0`` marks the TFDF as a Protocol Control Command (for COP-1).
+   - ``0b1`` marks the TFDF as user data (an EDL payload).
 - **Reserve spare bits**: 2 bits.
-- **OCF (Operation Control Field) Flag**: 1 bit. Set to ``0b0``, to mark the OCF is not included in packet.
+- **OCF (Operational Control Field) Flag**: 1 bit. If set, the OCF is included in packet.
 - **VC Frame Count Length**: 3 bits. Is set to ``0b000`` for no VCF Count bits.
 
 SDLS Header
@@ -93,6 +95,9 @@ Payload
 Differs between types. Length can differ, but it will always be at least 1 octet. If there is
 no payload, there is no reason for the EDL packet.
 
+VCID 2 is a special exception: it is an "idle" service which does not carry any useful data in the
+payload (a single empty octet). Instead, the frames contain CLCWs to prevent the COP-1 service from timing out.
+
 SDLS Trailer
 ************
 
@@ -104,7 +109,10 @@ Though out of spec, the SDLS Trailer is currently inserted into the end of data 
 Operational Control Field
 *************************
 
-4 octets. The Operational Control Field is used by COP-1 to transfer COP-1 data
+4 octets. The Operational Control Field is used by COP-1 to transfer Communications Link Control
+Words (CLCWs). These carry COP-1 status data for the receiving end, and must be received within
+FOP-1's timeout (default every 3 seconds). Note that the CLCW Protocol Data Unit is defined in the
+standard for the TC Space Data Link Protocol, not COP-1.
 
 FECF (Frame Error Control Field)
 ********************************
@@ -135,3 +143,5 @@ References
 - `Overview of Space Packet Protocols Green Book - CCSDS 130.0-G-4 <https://public.ccsds.org/Pubs/130x0g4.pdf>`_
 - `USLP Blue Book - CCSDS 732.1-B-2 <https://public.ccsds.org/Pubs/732x1b2.pdf>`_
 - `CFPD Blue Book - CCSDS 727.0-B-5 <https://public.ccsds.org/Pubs/727x0b5.pdf>`_
+- `COP-1 Blue Book - CCSDS 232.1-B-2 <https://ccsds.org/Pubs/232x1b2e2c1.pdf>`_
+- `TC Space Data Link Protocol Blue Book - CCSDS 232.0-B-4 <https://ccsds.org/Pubs/232x0b4e1c1.pdf>`_

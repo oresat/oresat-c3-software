@@ -40,9 +40,6 @@ dev = [
     "build",
     "pylama[all,toml]",
     "ruff",
-    "sphinx",
-    "sphinx-rtd-theme",
-    "sphinxcontrib-mermaid",
 ]
 
 [project.scripts]

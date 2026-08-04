@@ -35,6 +35,9 @@ class ChannelRouterService(Service):
         self._downlink_routes: dict[EdlVcid, SimpleQueue[bytes]] = {}
         self._last_clcw_time = 0.0
 
+    def on_start(self) -> None:
+        self._send_clcws()
+
     def on_loop(self) -> None:
         for dl in self._downlink_routes.values():
             while True:
@@ -47,16 +50,7 @@ class ChannelRouterService(Service):
         if self.node.od["status"].value == C3State.EDL:
             now = monotonic()
             if now - self._last_clcw_time >= self._CLCW_INTERVAL:
-                for clcw in self._get_all_clcw():
-                    frame = make_frame(
-                        payload=bytes(1),
-                        vcid=EdlVcid.IDLE,
-                        src_dest=SourceOrDestField.SOURCE,
-                        control_word=clcw.pack(),
-                    )
-                    self._radios_service.send_edl_response(
-                        frame.pack(frame_type=FrameType.VARIABLE)
-                    )
+                self._send_clcws()
                 self._last_clcw_time = now
 
         try:
@@ -66,8 +60,10 @@ class ChannelRouterService(Service):
 
         try:
             frame = unpack_frame(message)
+            if frame.op_ctrl_field is not None:
+                self._cop_service.dispatch_clcw(ControlWord.unpack(frame.op_ctrl_field))
             vcid = frame.header.vcid
-            if vcid in self._uplink_routes:
+            if vcid != EdlVcid.IDLE and vcid in self._uplink_routes:
                 self._uplink_routes[vcid].put_nowait(frame)
             else:
                 logger.error(f"No route for VCID {frame.header.vcid}")
@@ -76,6 +72,16 @@ class ChannelRouterService(Service):
             logger.debug(message)
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
+
+    def _send_clcws(self) -> None:
+        for clcw in self._get_all_clcw():
+            frame = make_frame(
+                payload=bytes(1),
+                vcid=EdlVcid.IDLE,
+                src_dest=SourceOrDestField.SOURCE,
+                control_word=clcw.pack(),
+            )
+            self._radios_service.send_edl_response(frame.pack(frame_type=FrameType.VARIABLE))
 
     def request_uplink_route(
         self, vcid: EdlVcid, use_cop: bool = False
@@ -109,13 +115,15 @@ class ChannelRouterService(Service):
             self._uplink_routes[vcid] = q
         return q
 
-    def request_downlink_route(self, vcid: EdlVcid) -> SimpleQueue[bytes]:
+    def request_downlink_route(self, vcid: EdlVcid, use_cop: bool = False) -> SimpleQueue[bytes]:
         """Request a downlink Virtual Channel route.
 
         Parameters
         ----------
         vcid
             The VCID used to identify the route.
+        use_cop
+            True enables COP-1 (FOP-1) on this route.
 
         Returns
         -------
@@ -130,11 +138,14 @@ class ChannelRouterService(Service):
 
         if vcid in self._downlink_routes:
             raise KeyError(f"Downlink route for VCID={vcid} already exists")
+        if use_cop:
+            send_queue: SimpleQueue[bytes] = SimpleQueue()
+            q = self._cop_service.create_fop_service(vcid, send_queue)
+            self._downlink_routes[vcid] = send_queue
         else:
-            q: SimpleQueue[bytes] = SimpleQueue()
+            q = SimpleQueue()
             self._downlink_routes[vcid] = q
-            logger.info(f"Created downlink route for VCID {vcid}")
-            return q
+        return q
 
     def _get_all_clcw(self) -> list[ControlWord]:
         clcws = []

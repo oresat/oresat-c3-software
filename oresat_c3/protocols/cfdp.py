@@ -246,7 +246,7 @@ class FixedDestHandler(DestHandler):
         if not self._params.fp.metadata_only:
             assert metadata_pdu.source_file_name is not None
             self._init_vfs_handling(Path(metadata_pdu.source_file_name).name)
-        msgs_to_user_list: None | list[MessageToUserTlv] = None
+        msgs_to_user_list: list[MessageToUserTlv] | None = None
         options = metadata_pdu.options_as_tlv()
         if options is not None:
             msgs_to_user_list = []

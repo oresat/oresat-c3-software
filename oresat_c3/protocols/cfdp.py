@@ -278,7 +278,7 @@ class FixedDestHandler(DestHandler):
         if fh is None:
             raise ValueError(f"invalid condition code {cond!r} for fault declaration")
         if fh == FaultHandlerCode.NOTICE_OF_CANCELLATION:
-            if ( # If we've already cancelled, abandon instead
+            if (  # If we've already cancelled, abandon instead
                 self._params.completion_disposition == CompletionDisposition.CANCELED
             ):
                 fh = FaultHandlerCode.ABANDON_TRANSACTION
@@ -446,15 +446,15 @@ class CfdpUser(CfdpUserBase):
             logger.info(f"Received Proxy Put Response: {put_response_params}")
 
     def _handle_directory_operation(
-            self, transaction_id: TransactionId, reserved_cfdp_msg: ReservedCfdpMessage
-        ) -> None:
+        self, transaction_id: TransactionId, reserved_cfdp_msg: ReservedCfdpMessage
+    ) -> None:
         params = reserved_cfdp_msg.get_dir_listing_request_params()
-        if (reserved_cfdp_msg.get_directory_operation_type()
-            == DirectoryOperationMessageType.LISTING_REQUEST):
+        if (
+            reserved_cfdp_msg.get_directory_operation_type()
+            == DirectoryOperationMessageType.LISTING_REQUEST
+        ):
             resp = self.vfs.list_directory(
-                params.dir_path_as_path,
-                self.DIRECTORY_LISTING_FILE,
-                False
+                params.dir_path_as_path, self.DIRECTORY_LISTING_FILE, False
             )
             # FIXME: This fixes an issue with DirectoryListingResponse spacepackets <= 0.31.0.
             # Remove this once we are on 0.32.0
@@ -463,7 +463,9 @@ class CfdpUser(CfdpUserBase):
                 + params.dir_path.pack()
                 + params.dir_file_name.pack()
             )
-            mtu_response = ReservedCfdpMessage(DirectoryOperationMessageType.LISTING_RESPONSE,value)
+            mtu_response = ReservedCfdpMessage(
+                DirectoryOperationMessageType.LISTING_RESPONSE, value
+            )
 
             put_req = PutRequest(
                 destination_id=transaction_id.source_id,
@@ -477,8 +479,10 @@ class CfdpUser(CfdpUserBase):
                 ],
             )
             self.put_req_queue.put(put_req)
-        elif (reserved_cfdp_msg.get_directory_operation_type()
-            == DirectoryOperationMessageType.LISTING_RESPONSE):
+        elif (
+            reserved_cfdp_msg.get_directory_operation_type()
+            == DirectoryOperationMessageType.LISTING_RESPONSE
+        ):
             dir_list_response_params = reserved_cfdp_msg.get_dir_listing_response_params()
             logger.info(f"Received Directory Listing Response: {dir_list_response_params}")
 
@@ -560,9 +564,7 @@ class SourceEntityHandler(Thread):
         check_timer_provider = CustomCheckTimerProvider()
         self.source_handler = VfsSourceHandler(
             cfg=LocalEntityConfig(
-                sat_id,
-                IndicationConfig(),
-                CfdpFaultHandler(self.BASE_STR_SRC + sat_id.__str__())
+                sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_SRC + sat_id.__str__())
             ),
             seq_num_provider=src_seq_count_provider,
             remote_cfg_table=remote_entities,
@@ -583,8 +585,7 @@ class SourceEntityHandler(Thread):
             logger.info(f"Handling Put Request: {put_req}")
             if put_req.destination_id not in [self.sat_id, self.gnd_id]:
                 logger.warning(
-                    f"can only handle put requests target towards {self.gnd_id} or "
-                    f"{self.sat_id}"
+                    f"can only handle put requests target towards {self.gnd_id} or {self.sat_id}"
                 )
 
             else:
@@ -685,9 +686,7 @@ class DestEntityHandler(Thread):
         check_timer_provider = CustomCheckTimerProvider()
         self.dest_handler = FixedDestHandler(
             cfg=LocalEntityConfig(
-                sat_id,
-                IndicationConfig(),
-                CfdpFaultHandler(self.BASE_STR_DEST + sat_id.__str__())
+                sat_id, IndicationConfig(), CfdpFaultHandler(self.BASE_STR_DEST + sat_id.__str__())
             ),
             user=dest_user,
             remote_cfg_table=remote_entities,
@@ -729,4 +728,3 @@ class DestEntityHandler(Thread):
             # If there is no work to do, put the thread to sleep.
             if not packet_received and not packet_sent:
                 time.sleep(0.1)
-

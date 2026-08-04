@@ -232,7 +232,7 @@ class TestCacheStore(unittest.TestCase):
             FilestoreResult.NOT_PERFORMED,
         )
 
-    def test_list_directory(self): #FIXME: need to write new test for this.
+    def test_list_directory(self):  # FIXME: need to write new test for this.
         """Test list_directory()"""
         self.cache.create_file(Path("c3_dir_111.txt"))
         cmd = ["ls", "-al"]

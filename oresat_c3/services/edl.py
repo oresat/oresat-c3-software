@@ -152,7 +152,7 @@ class EdlService(Service):
             fwrite_cache,
             remote_entities,
             self.SAT_ID,
-            self._event
+            self._event,
         )
         self._cfdp_source_handler.start()
         self._cfdp_dest_handler.start()

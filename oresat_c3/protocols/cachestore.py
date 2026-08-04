@@ -48,7 +48,7 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
 
     def file_exists(self, path: Path) -> bool:
         with self._lock:
-            return (any(path.name == f.name for f in self._data))
+            return any(path.name == f.name for f in self._data)
 
     def stat(self, file: Path) -> os.stat_result:
         """Implements os.stat() but for a filestore

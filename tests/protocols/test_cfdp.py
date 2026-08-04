@@ -165,7 +165,6 @@ class TestCfdp(unittest.TestCase):
         self.cfdp_dest_handler.join()
         self.cfdp_source_handler_gnd.join()
         self.cfdp_dest_handler_gnd.join()
-        self.file.close()
 
     def test_simple_transfer(self):
         """A basic transfer that ensures the no-loss path is working"""
@@ -394,6 +393,7 @@ class TestCfdp(unittest.TestCase):
         # this is put into the working directory. This is awful and should be fixed, but that would
         # require breaking cachestore even more.
         dir_listing_gnd = ".dirlist.notsaved"
+        dir_listing_sc = "c3_dirlist_0"
         dir_req = DirectoryListingRequest(
             DirectoryParams(
                 dir_path=CfdpLv.from_str(""), dir_file_name=CfdpLv.from_str(dir_listing_gnd)
@@ -458,10 +458,10 @@ class TestCfdp(unittest.TestCase):
             self.cfdp_source_handler_gnd.source_handler.step, source.TransactionStep.IDLE
         )
         self.assertEqual(
-            self.cache.read_data(Path(dir_listing_gnd)),
+            self.cache.read_data(Path(dir_listing_sc)),
             self.cache_gnd.read_data(Path(dir_listing_gnd), None),
         )
-        self.cache.delete_file(Path(dir_listing_gnd))
+        self.cache.delete_file(Path(dir_listing_sc))
         self.cache_gnd.delete_file(Path(dir_listing_gnd))
 
     def test_timed_out(self):

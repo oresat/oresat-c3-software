@@ -108,9 +108,9 @@ class EdlService(Service):
             self._event.set()
 
         if self._cfdp_source_handler.is_alive():
-            self._thread.join()
+            self._cfdp_source_handler.join()
         if self._cfdp_dest_handler.is_alive():
-            self._thread.join()
+            self._cfdp_dest_handler.join()
 
         if self._thread.is_alive():
             self._thread.join()

@@ -290,6 +290,7 @@ class UHFRadio(Radio):
         self._uhf_tot_ok_gpio = request_gpio_input("/dev/gpiochip0", 25, "UHF_TOT_OK")
         self._uhf_tot_clear_gpio = request_gpio_output("/dev/gpiochip0", 26, "UHF_TOT_CLEAR")
         self._uhf_enable_gpio = request_gpio_output("/dev/gpiochip0", 16, "UHF_ENABLE")
+        self._uhf_enable_pa = request_gpio_output("/dev/gpiochip0", 27, "UHF_PA_ENABLE")
 
     def enable(self):
         """
@@ -300,6 +301,7 @@ class UHFRadio(Radio):
         The radio power domain must be enabled first.
         """
         self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.ACTIVE)
+        self._uhf_enable_pa.set_value(self._uhf_enable_pa.offsets[0], Value.ACTIVE)
         time.sleep(0.1)
 
         # clear timeout timer
@@ -308,6 +310,7 @@ class UHFRadio(Radio):
     def disable(self):
         """Disable the UHF power domain."""
         self._uhf_enable_gpio.set_value(self._uhf_enable_gpio.offsets[0], Value.INACTIVE)
+        self._uhf_enable_pa.set_value(self._uhf_enable_pa.offsets[0], Value.INACTIVE)
         time.sleep(0.1)
 
     def is_rf_ok(self) -> bool:

@@ -1,55 +1,30 @@
 """'EDL Service"""
 
-from datetime import timedelta
-from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import time
 from typing import Any, Optional, Union
 
 import canopen
-from cfdppy import CfdpState, PacketDestination, get_packet_destination
-from cfdppy.exceptions import NoRemoteEntityConfigFound, SourceFileDoesNotExist
+from cfdppy import PacketDestination, get_packet_destination
 from cfdppy.mib import (
-    CheckTimerProvider,
-    DefaultFaultHandlerBase,
-    IndicationConfig,
-    LocalEntityConfig,
     RemoteEntityConfig,
     RemoteEntityConfigTable,
-)
-from cfdppy.request import PutRequest
-from cfdppy.user import (
-    CfdpUserBase,
-    FileSegmentRecvdParams,
-    MetadataRecvParams,
-    TransactionFinishedParams,
-    TransactionParams,
 )
 from olaf import MasterNode, NodeStop, Service, logger
 from spacepackets.cfdp import (
     ChecksumType,
-    ConditionCode,
-    FaultHandlerCode,
     PduHolder,
     TransmissionMode,
 )
-from spacepackets.cfdp.defs import DeliveryCode, FileStatus, TransactionId
 from spacepackets.cfdp.pdu import AbstractFileDirectiveBase
-from spacepackets.cfdp.tlv import (
-    DirectoryListingResponse,
-    DirectoryOperationMessageType,
-    OriginatingTransactionId,
-    ProxyMessageType,
-    ProxyPutResponse,
-    ProxyPutResponseParams,
-)
-from spacepackets.countdown import Countdown
-from spacepackets.seqcount import SeqCountProvider
 from spacepackets.uslp import TransferFrame
 from spacepackets.util import ByteFieldU8
 
 from ..protocols.cachestore import CacheStore
-from ..protocols.cfdp import FixedDestHandler, VfsSourceHandler
+from ..protocols.cfdp import (
+    DestEntityHandler,
+    SourceEntityHandler,
+)
 from ..protocols.edl_command import (
     EdlCommandCode,
     EdlCommandError,
@@ -95,7 +70,16 @@ class EdlService(Service):
         )
         self._node_flasher_service = node_flasher_service
 
-        self._file_receiver = EdlFileReciever(node.fwrite_cache)
+        self.put_req_queue = SimpleQueue()  # send new put requests from here
+        self._cfdp_tm_queue = SimpleQueue()  # send telemetry pdus from here
+        self._cfdp_src_queue = SimpleQueue()  # send tc for the source here
+        self._cfdp_dest_queue = SimpleQueue()  # send tc for the dest here
+        self._cfdp_source_handler = None
+        self._cfdp_dest_handler = None
+
+        self.GND_ID = ByteFieldU8(0)
+        self.SAT_ID = ByteFieldU8(1)
+        self._init_cfdp(node.fwrite_cache)
 
         # objs
         edl_rec = node.od["edl"]
@@ -106,7 +90,72 @@ class EdlService(Service):
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
         self._edl_sequence_count_obj = edl_rec["sequence_count"]
         self._edl_rejected_count_obj = edl_rec["rejected_count"]
+        self._edl_cfdp_seq_count_obj = edl_rec["cfdp_seq_num"]
         self._last_edl_obj = edl_rec["last_timestamp"]
+
+    def on_start(self) -> None:
+        self._cfdp_source_handler.set_seq_num(self._edl_cfdp_seq_count_obj.value)
+        self.node.add_sdo_callbacks(
+            "edl",
+            "cfdp_seq_num",
+            self._cfdp_source_handler.get_seq_num,
+            self._cfdp_source_handler.set_seq_num,
+        )
+
+    def __del__(self) -> None:
+        # redefinition of the service destructor to handle the cfdp threads
+        if not self._event.is_set():
+            self._event.set()
+
+        if self._cfdp_source_handler.is_alive():
+            self._cfdp_source_handler.join()
+        if self._cfdp_dest_handler.is_alive():
+            self._cfdp_dest_handler.join()
+
+        if self._thread.is_alive():
+            self._thread.join()
+
+    def _init_cfdp(self, fwrite_cache: CacheStore) -> None:
+        remote_entities = RemoteEntityConfigTable(
+            [
+                RemoteEntityConfig(
+                    entity_id=self.GND_ID,
+                    max_file_segment_len=None,
+                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
+                    # How does the exact value get determined? Currently it's just a mirror of the
+                    # value in edl_file_upload.py
+                    max_packet_len=950,
+                    closure_requested=True,
+                    crc_on_transmission=False,
+                    default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
+                    crc_type=ChecksumType.MODULAR,  # Yamcs only supports the legacy modular crc.
+                    immediate_nak_mode=False,
+                    nak_timer_interval_seconds=5.0,
+                ),
+            ]
+        )
+
+        self._cfdp_source_handler = SourceEntityHandler(
+            self.put_req_queue,
+            self._cfdp_src_queue,
+            self._cfdp_tm_queue,
+            fwrite_cache,
+            remote_entities,
+            self.GND_ID,
+            self.SAT_ID,
+            self._event,
+        )
+        self._cfdp_dest_handler = DestEntityHandler(
+            self.put_req_queue,
+            self._cfdp_dest_queue,
+            self._cfdp_tm_queue,
+            fwrite_cache,
+            remote_entities,
+            self.SAT_ID,
+            self._event,
+        )
+        self._cfdp_source_handler.start()
+        self._cfdp_dest_handler.start()
 
     @property
     def _hmac_key(self) -> bytes:
@@ -200,16 +249,22 @@ class EdlService(Service):
         else:
             req_packet = None
 
-        if req_packet is None:
-            if self._file_receiver.state == CfdpState.BUSY:
-                res_payload = self._file_receiver.loop(None)
-            else:
-                return
-        else:
-            res_payload = self._file_receiver.loop(req_packet.payload)
+        if req_packet is not None:
+            self._handle_pdu(req_packet.payload)
 
-        for payload in res_payload:
-            self._respond(EdlVcid.FILE_TRANSFER, payload)
+        while not self._cfdp_tm_queue.empty():
+            next_tm = self._cfdp_tm_queue.get(False)
+            self._respond(EdlVcid.FILE_TRANSFER, next_tm.pdu)
+
+    def _handle_pdu(self, pdu: AbstractFileDirectiveBase):
+        packet_dest = get_packet_destination(pdu)
+        logger.warning(f"putting cfdp pdu in {packet_dest} queue")
+        if packet_dest == PacketDestination.DEST_HANDLER:
+            self._cfdp_dest_queue.put(pdu)
+        elif packet_dest == PacketDestination.SOURCE_HANDLER:
+            self._cfdp_src_queue.put(pdu)
+        else:
+            logger.error("receieved CFDP pdu intended for unknown destination!")
 
     def on_loop(self):
         self._process_command()
@@ -393,344 +448,3 @@ class EdlService(Service):
         logger.info(f"EDL command response: {response.code.name}, values: {response.values}")
 
         return response
-
-
-class LogFaults(DefaultFaultHandlerBase):
-    """A HaultHandler that only logs the faults and nothing more.
-
-    At some point this should be replaced with something more robust.
-    """
-
-    def notice_of_suspension_cb(self, transaction_id, cond, progress):
-        logger.info(f"Transaction {transaction_id} suspended: {cond}. Progress {progress}")
-
-    def notice_of_cancellation_cb(self, transaction_id, cond, progress):
-        logger.info(f"Transaction {transaction_id} cancelled: {cond}. Progress {progress}")
-
-    def abandoned_cb(self, transaction_id, cond, progress):
-        logger.info(f"Transaction {transaction_id} abandoned: {cond}. Progress {progress}")
-
-    def ignore_cb(self, transaction_id, cond, progress):
-        logger.info(f"Transaction {transaction_id} ignored: {cond}. Progress {progress}")
-
-
-class DefaultCheckTimer(CheckTimerProvider):
-    """A straight copy of the example CheckTimerProvider
-
-    I think this exists to possibly account for the latency between local and remote entities?
-    Unfortunately it doesn't get used for all the timers in source/dest, like the ACK timer.
-    """
-
-    def provide_check_timer(self, local_entity_id, remote_entity_id, entity_type) -> Countdown:
-        return Countdown(timedelta(seconds=5.0))
-
-
-class EdlFileReciever(CfdpUserBase):
-    """CFDP receiver for file uploads."""
-
-    def __init__(self, fwrite_cache: CacheStore):
-        super().__init__(vfs=fwrite_cache)
-
-        self.proxy_responses = {  # FIXME: defaultdict with invalid response
-            ProxyMessageType.PUT_REQUEST: self.proxy_put_response,
-            ProxyMessageType.MSG_TO_USER: self.unimplemented,
-            ProxyMessageType.FS_REQUEST: self.unimplemented,
-            ProxyMessageType.FAULT_HANDLER_OVERRIDE: self.unimplemented,
-            ProxyMessageType.TRANSMISSION_MODE: self.transmission_mode_response,
-            ProxyMessageType.FLOW_LABEL: self.unimplemented,
-            ProxyMessageType.SEGMENTATION_CTRL: self.unimplemented,
-            ProxyMessageType.PUT_RESPONSE: self.unimplemented,
-            ProxyMessageType.FS_RESPONSE: self.unimplemented,
-            ProxyMessageType.PUT_CANCEL: self.unimplemented,
-            ProxyMessageType.CLOSURE_REQUEST: self.unimplemented,
-            DirectoryOperationMessageType.LISTING_REQUEST: self.directory_listing_response,
-            DirectoryOperationMessageType.LISTING_RESPONSE: self.unimplemented,
-            DirectoryOperationMessageType.CUSTOM_LISTING_PARAMETERS: self.unimplemented,
-        }
-
-        SOURCE_ID = ByteFieldU8(0)
-        DEST_ID = ByteFieldU8(1)
-        fault_handler = LogFaults()
-        # The default setting is NOTICE_OF_CANCELLATION but during that process the positive ack
-        # counter gets reset, meaning we keep retrying the handler forever. This manifests for
-        # example if the final source -> dest ack for FinishedPDU gets dropped. Source considers
-        # the transaction finished, and will refuse to respond, dest will be stuck re-sending the
-        # FinishedPDU every ack_timer interval forever. Setting it to ABANDON_TRANSACTION means it
-        # just resets after the ack counter reaches its count.
-        fault_handler.set_handler(
-            ConditionCode.POSITIVE_ACK_LIMIT_REACHED, FaultHandlerCode.ABANDON_TRANSACTION
-        )
-
-        localcfg = LocalEntityConfig(
-            local_entity_id=DEST_ID,
-            indication_cfg=IndicationConfig(),
-            default_fault_handlers=fault_handler,
-        )
-
-        remote_entities = RemoteEntityConfigTable(
-            [
-                RemoteEntityConfig(
-                    entity_id=SOURCE_ID,
-                    max_file_segment_len=None,
-                    # FIXME this value should come from EdlPacket but EdlPacket does not define it.
-                    # How does the exact value get determined? Currently it's just a mirror of the
-                    # value in edl_file_upload.py
-                    max_packet_len=950,
-                    closure_requested=False,
-                    crc_on_transmission=False,
-                    default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
-                    crc_type=ChecksumType.MODULAR,
-                ),
-            ]
-        )
-
-        self.dest = FixedDestHandler(
-            cfg=localcfg,
-            user=self,
-            remote_cfg_table=remote_entities,
-            check_timer_provider=DefaultCheckTimer(),
-        )
-
-        self.source = VfsSourceHandler(
-            cfg=localcfg,
-            user=self,
-            remote_cfg_table=remote_entities,
-            check_timer_provider=DefaultCheckTimer(),
-            seq_num_provider=SeqCountProvider(16),
-        )
-
-        self.scheduled_requests: SimpleQueue[PutRequest] = SimpleQueue()
-        self.active_requests: dict[TransactionId, TransactionId] = {}
-
-    @property
-    def state(self) -> CfdpState:
-        """Either BUSY or IDLE
-
-        The FileReceiver is BUSY if either source or dest are busy, or if there's a request yet
-        to be initiated.
-        """
-
-        if (
-            self.dest.state == CfdpState.BUSY
-            or self.source.state == CfdpState.BUSY
-            or not self.scheduled_requests.empty()
-        ):
-            return CfdpState.BUSY
-        return CfdpState.IDLE
-
-    def loop(self, pdu: AbstractFileDirectiveBase):
-        """The state machine driver for a CFDP dest, expected to be run by the service loop"""
-
-        # DestHandler is driven by either a new pdu to process or timers expiring and
-        # SourceHandler is additionally driven by Put requests.
-        # Timers only expire when .state_machine() is called, and .state_machine() must
-        # be called after all the packets have been drained, or after inserting a new
-        # pdu.
-        tick_dest = True
-        tick_src = True
-        if pdu:
-            logger.info(f"<--- {pdu}")
-
-            if get_packet_destination(pdu) == PacketDestination.DEST_HANDLER:
-                try:
-                    self.dest.state_machine(pdu)
-                    tick_dest = False
-                except Exception as e:
-                    logger.exception(f"CFDP raised: {e}")
-                    self.dest.reset()
-            else:
-                try:
-                    self.source.state_machine(pdu)
-                    tick_src = False
-                except Exception as e:
-                    logger.exception(f"CFDP raised: {e}")
-                    self.source.reset()
-
-        if self.dest.state == CfdpState.IDLE and self.source.state == CfdpState.IDLE:
-            try:
-                request = self.scheduled_requests.get_nowait()
-            except Empty:
-                pass
-            else:
-                try:
-                    self.source.put_request(request)
-                except (SourceFileDoesNotExist, NoRemoteEntityConfigFound):
-                    # Note that NoRemoteEntityConfigFound indicates that the MIB is missing info on
-                    # the requested proxy transfer destination. CFDP doesn't seem to have a
-                    # standard set of errors that cover this condition, and the least worst option
-                    # resulted in an identical message to missing_file. Not super great, so if
-                    # there's a better idea of how to handle this, please change.
-                    self.scheduled_requests.put(self.missing_file_response(request))
-
-        try:
-            if tick_dest:
-                self.dest.state_machine()
-            if tick_src:
-                self.source.state_machine()
-        except Exception as e:
-            logger.exception(f"Failed to update state machine: {e}")
-            self.dest.reset()
-            self.source.reset()
-        # It would seem natural to use dest.packets_ready but the count seems to get desynced from
-        # the contents of the packet queue. get_next_packet operates on the queue directly and
-        # reutrns None when it's out of packets. FIXME: Upstream bug?
-        pdus = []
-        while (packet := self.dest.get_next_packet()) is not None:
-            pdus.append(packet.pdu)
-        while (packet := self.source.get_next_packet()) is not None:
-            pdus.append(packet.pdu)
-
-        for out in pdus:
-            logger.info(f"---> {out}")
-        return pdus
-
-    def unimplemented(self, _source, _tid, _reserved_message) -> PutRequest:
-        """Default method for responding to unimplemented requests"""
-        logger.error(f"Recieved unimplemented request: {_reserved_message}")
-        return None
-
-    def missing_file_response(self, invalid: PutRequest) -> PutRequest:
-        """Generates a resonse put for when a proxy request tries to access a missing file"""
-
-        originating_id = (
-            invalid.msgs_to_user[0].to_reserved_msg_tlv().get_originating_transaction_id()
-        )
-        return PutRequest(
-            destination_id=originating_id.source_id,
-            source_file=None,
-            dest_file=None,
-            trans_mode=None,
-            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
-            # trans_mode defaults to ACKNOWLEGED
-            closure_requested=True,
-            msgs_to_user=[
-                ProxyPutResponse(
-                    ProxyPutResponseParams(
-                        condition_code=ConditionCode.FILESTORE_REJECTION,
-                        delivery_code=DeliveryCode.DATA_COMPLETE,
-                        file_status=FileStatus.DISCARDED_FILESTORE_REJECTION,
-                    )
-                ).to_generic_msg_to_user_tlv(),
-                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
-            ],
-        )
-
-    def proxy_put_response(self, _source, _tid, reserved_message) -> PutRequest:
-        """Response for a proxy put request"""
-        params = reserved_message.get_proxy_put_request_params()
-        return PutRequest(
-            destination_id=params.dest_entity_id,
-            source_file=Path(params.source_file_as_path),
-            dest_file=Path(params.dest_file_as_path),
-            trans_mode=None,
-            closure_requested=True,
-            msgs_to_user=[OriginatingTransactionId(_tid).to_generic_msg_to_user_tlv()],
-        )
-
-    def directory_listing_response(self, source, tid, reserved_message) -> PutRequest:
-        """Response for a directory listing request"""
-        # See CFDP 6.3.4
-        params = reserved_message.get_dir_listing_request_params()
-        self.vfs.list_directory(params.dir_path_as_path, params.dir_file_name_as_path, False)
-        return PutRequest(
-            destination_id=source,
-            source_file=params.dir_file_name_as_path,
-            dest_file=params.dir_file_name_as_path,
-            trans_mode=None,
-            closure_requested=True,
-            msgs_to_user=[
-                DirectoryListingResponse(
-                    listing_success=True,
-                    dir_params=params,
-                ).to_generic_msg_to_user_tlv(),
-                OriginatingTransactionId(tid).to_generic_msg_to_user_tlv(),
-            ],
-        )
-
-    def transmission_mode_response(self, source, tid, reserved_message) -> TransmissionMode:
-        """Attempts to set the transmission mode of the current transaction"""
-        return reserved_message.get_proxy_transmission_mode()
-
-    def proxy_request_complete(self, originating_id, params) -> PutRequest:
-        """Indicates that a proxy put request was successful"""
-        return PutRequest(
-            destination_id=originating_id.source_id,
-            source_file=None,
-            dest_file=None,
-            trans_mode=None,
-            # FIXME: upstream bug - DestHandler does not respect closure_requested=None when
-            # trans_mode defaults to ACKNOWLEGED
-            closure_requested=True,
-            msgs_to_user=[
-                ProxyPutResponse(
-                    ProxyPutResponseParams.from_finished_params(params.finished_params)
-                ).to_generic_msg_to_user_tlv(),
-                OriginatingTransactionId(originating_id).to_generic_msg_to_user_tlv(),
-            ],
-        )
-
-    def transaction_indication(self, transaction_indication_params: TransactionParams):
-        logger.info(f"Indication: Transaction. {transaction_indication_params}")
-        t_id = transaction_indication_params.transaction_id
-        orig = transaction_indication_params.originating_transaction_id
-        if orig is not None:
-            self.active_requests[t_id] = orig
-
-    def eof_sent_indication(self, transaction_id: TransactionId):
-        logger.info(f"Indication: EOF Sent for {transaction_id}.")
-
-    def transaction_finished_indication(self, params: TransactionFinishedParams):
-        logger.info(f"Indication: Transaction Finished. {params}")
-        if params.transaction_id in self.active_requests:
-            originating_id = self.active_requests.get(params.transaction_id)
-            assert originating_id is not None
-            put = self.proxy_request_complete(originating_id, params)
-            self.scheduled_requests.put(put)
-            del self.active_requests[params.transaction_id]
-
-    def metadata_recv_indication(self, params: MetadataRecvParams):
-        logger.info(f"Indication: Metadata Recv. {params}")
-        put = None
-        for msg in params.msgs_to_user or []:
-            if r := msg.to_reserved_msg_tlv():  # is None if not a reserved TLV message
-                # cfdp_proxy_message_type can be 0
-                op = r.get_cfdp_proxy_message_type()
-                if op is None:
-                    op = r.get_directory_operation_type()
-                response = self.proxy_responses[op](params.source_id, params.transaction_id, r)
-                if put is not None and response is PutRequest:
-                    self.scheduled_requests.put(put)
-                # CFDP can contain multiple requess in one indication, each refering to how the
-                # proxy put request is handled. This should be rewritten to account for that.
-                elif isinstance(response, TransmissionMode):
-                    put.trans_mode = response
-                elif isinstance(response, PutRequest):
-                    put = response
-            # Ignore non-reserved messages for now
-        if put is not None:
-            self.scheduled_requests.put(put)
-
-    def file_segment_recv_indication(self, params: FileSegmentRecvdParams):
-        logger.info(f"Indication: File Segment Recv. {params}")
-
-    def report_indication(self, transaction_id: TransactionId, status_report: Any):
-        logger.info(f"Indication: Report for {transaction_id}. {status_report}")
-
-    def suspended_indication(self, transaction_id: TransactionId, cond_code: ConditionCode):
-        logger.info(f"Indication: Suspended for {transaction_id}. {cond_code}")
-
-    def resumed_indication(self, transaction_id: TransactionId, progress: int):
-        logger.info(f"Indication: Resumed for {transaction_id}. {progress}")
-
-    def fault_indication(
-        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
-    ):
-        logger.info(f"Indication: Fault for {transaction_id}. {cond_code}. {progress}")
-
-    def abandoned_indication(
-        self, transaction_id: TransactionId, cond_code: ConditionCode, progress: int
-    ):
-        logger.info(f"Indication: Abandoned for {transaction_id}. {cond_code}. {progress}")
-
-    def eof_recv_indication(self, transaction_id: TransactionId):
-        logger.info(f"Indication: EOF Recv for {transaction_id}")

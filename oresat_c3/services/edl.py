@@ -125,7 +125,7 @@ class EdlService(Service):
                     # How does the exact value get determined? Currently it's just a mirror of the
                     # value in edl_file_upload.py
                     max_packet_len=950,
-                    closure_requested=False,
+                    closure_requested=True,
                     crc_on_transmission=False,
                     default_transmission_mode=TransmissionMode.ACKNOWLEDGED,
                     crc_type=ChecksumType.MODULAR,  # Yamcs only supports the legacy modular crc.

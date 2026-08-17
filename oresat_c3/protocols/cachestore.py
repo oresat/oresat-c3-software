@@ -2,6 +2,7 @@
 
 import os
 import struct
+import subprocess
 from bisect import insort_left
 from pathlib import Path
 from typing import BinaryIO, Optional
@@ -148,18 +149,19 @@ class CacheStore(VirtualFilestore, OreSatFileCache):
     def list_directory(
         self, _dir_name: Path, file_name: Path, recursive: bool = False
     ) -> FilestoreResult:
-        # dir_name is ignored, there are no directories to be considered
-        try:
-            listing = OreSatFile(file_name.name)
-        except ValueError:
-            return FilestoreResult.NOT_PERFORMED
+        cmd = ["ls", "-al"]
 
-        with self._lock, open(self._dir + file_name.name, "w") as f:
-            insort_left(self._data, listing)
-            # Explicitly not reading from self._data here to help report invalid states
-            for line in os.walk(self._dir) if recursive else os.listdir(self._dir):
-                f.write(f"{line}\n")
-            return FilestoreResult.SUCCESS
+        if not self.file_exists(file_name):
+            self.create_file(file_name)
+
+        fullpath = Path(self._dir) / file_name
+        with open(fullpath, "w") as of:
+            try:
+                result = subprocess.run(cmd, check=True, capture_output=True, cwd=self._dir)
+            except (subprocess.CalledProcessError, OSError):
+                return FilestoreResult.NOT_PERFORMED
+            of.write(result.stdout.decode())
+        return FilestoreResult.SUCCESS
 
     def calc_modular_checksum(self, file_path: Path) -> bytes:
         """Calculates the modular checksum of the file in file_path.

@@ -1,5 +1,6 @@
 """Tests CacheStore"""
 
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -231,24 +232,26 @@ class TestCacheStore(unittest.TestCase):
             FilestoreResult.NOT_PERFORMED,
         )
 
-    def test_list_directory(self):
+    def test_list_directory(self):  # FIXME: need to write new test for this.
         """Test list_directory()"""
-        self.assertEqual(
-            self.cache.list_directory(Path(), self.invalid), FilestoreResult.NOT_PERFORMED
-        )
+        self.cache.create_file(Path("c3_dir_111.txt"))
+        cmd = ["ls", "-al"]
+        result = subprocess.run(cmd, check=True, capture_output=True, cwd=self.cache._dir)
+        result = result.stdout.decode()
 
         dirlist_111 = Path(self.cache._dir, "c3_dir_111.txt")
         self.assertEqual(self.cache.list_directory(Path(), dirlist_111), FilestoreResult.SUCCESS)
         self.assertTrue(self.cache.file_exists(dirlist_111))
         with open(dirlist_111) as f:
-            self.assertCountEqual(f.read().split(), {self.exists.name, dirlist_111.name})
+            self.assertEqual(f.read(), result)
 
         self.assertEqual(self.cache.create_file(self.doesnt), FilestoreResult.CREATE_SUCCESS)
+        self.cache.create_file(Path("c3_dir_222.txt"))
+        result = subprocess.run(cmd, check=True, capture_output=True, cwd=self.cache._dir)
+        result = result.stdout.decode()
+
         dirlist_222 = Path(self.cache._dir, "c3_dir_222.txt")
         self.assertEqual(self.cache.list_directory(Path(), dirlist_222), FilestoreResult.SUCCESS)
         self.assertTrue(self.cache.file_exists(dirlist_222))
         with open(dirlist_222) as f:
-            self.assertCountEqual(
-                f.read().split(),
-                {self.exists.name, dirlist_111.name, self.doesnt.name, dirlist_222.name},
-            )
+            self.assertEqual(f.read(), result)

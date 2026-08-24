@@ -86,6 +86,7 @@ class StateService(Service):
             self._c3_state_obj.value = C3State.STANDBY.value
 
         self.node.add_sdo_callbacks("tx_control", "enable", None, self._on_write_tx_enable)
+        self.node.add_sdo_callbacks("antennas", "test_monopole_is_good", None, self._test_antennas)
 
         # make sure the initial state is valid (will be invalid on a cleared F-RAM)
         if self._c3_state_obj.value not in list(C3State):
@@ -322,3 +323,9 @@ class StateService(Service):
             offset += raw_len
 
         set_rtc_time(0)
+
+    def _test_antennas(self, data: bool):
+        if self.node.od["versions"]["hw_version"].value.startswith("6"):
+            pass
+        else:
+            self._antennas.probe_deployers()

@@ -277,3 +277,11 @@ class AntennasC3v7:
         # Unconditionally try to safe the antenna pins
         with suppress(Max7310Error):
             card.configuration = self._SAFE_INPUTS
+
+    def probe_deployers(self) -> None:
+        """
+        Check which deployers can be reached
+        """
+        logger.info(f"minus z end card found: {self._mz_end.is_valid}.")
+        logger.info(f"pos z end card found: {self._pz_end.is_valid}.")
+        logger.info(f"minus z mid card found: {self._mz_mid.is_valid}.")

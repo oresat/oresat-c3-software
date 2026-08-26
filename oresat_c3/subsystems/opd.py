@@ -373,6 +373,58 @@ class OpdStm32Node(OpdNode):
         return r
 
 
+class OpdStm32RWNode(OpdStm32Node):
+    """A OPD Node just for reaction wheels"""
+
+    _ENABLE_ITERATIONS = 50
+
+    def enable(self, *, bootloader_mode: bool = False) -> OpdNodeState:
+        """
+        Enable the OPD node.
+
+        Parameters
+        ----------
+        bootloader_mode: bool
+            Boot into bootloader mode.
+
+        Returns
+        -------
+        OpdNodeState
+            The node state after disabling the node.
+        """
+
+        try:
+            if bootloader_mode:
+                self._max7310.configuration = self._BOOTLOADER_ON_INPUTS
+                self._max7310.output_set(self._BOOT_PIN)
+            else:
+                self._max7310.output_clear(self._BOOT_PIN)
+                self._max7310.configuration = self._BOOTLOADER_OFF_INPUTS
+        except Max7310Error:
+            self._status = OpdNodeState.FAULT
+            return self._status
+
+        logger.debug(f"enabling OPD node {self.name} (0x{self.addr:02X})")
+
+        if self._status == OpdNodeState.NOT_FOUND:
+            return self._status  # cannot enable node that is NOT_FOUND
+
+        try:
+            # FIXME: quick fix is to turn this on and off
+            for ii in range(self._ENABLE_ITERATIONS):
+                self._max7310.output_set(self._ENABLE_PIN)
+                self._max7310.output_clear(self._ENABLE_PIN)
+
+            # end with the power being turned on
+            self._max7310.output_set(self._ENABLE_PIN)
+            self._status = OpdNodeState.ENABLED
+
+        except Max7310Error:
+            self._status = OpdNodeState.FAULT
+
+        return self._status
+
+
 class OpdMcxnNode(OpdNode):
     """A STM32-based OPD Node"""
 
@@ -624,6 +676,13 @@ class Opd:
             "mcxn": OpdMcxnNode,
             "octavo": OpdOctavoNode,
         }
+
+        if name.startswith("rw"):
+            logger.warning(f'Attempting to create OpdStmRWNode for {name}.')
+            self._nodes[name] = OpdStm32RWNode(
+                bus=bus_num, name=info.nice_name, addr=info.opd_address, mock=self._mock
+            )
+            return
 
         self._nodes[name] = opd_type[info.processor](
             bus=bus_num, name=info.nice_name, addr=info.opd_address, mock=self._mock

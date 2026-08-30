@@ -3,6 +3,7 @@ from __future__ import annotations
 from queue import Empty, SimpleQueue
 from time import monotonic
 
+import canopen
 from ccsds_cop.cop_1 import ControlWord, CopService
 from ccsds_cop.cop_1.farm import Farm1
 from olaf import Service, logger
@@ -34,12 +35,9 @@ class ChannelRouterService(Service):
         self._downlink_routes: dict[EdlVcid, SimpleQueue[bytes]] = {}
         self._last_clcw_time = 0.0
 
-        # moved from EDL
-        edl_rec = self.node.od["edl"]
-        self._flight_mode_obj = self.node.od["flight_mode"]
-        self._seq_num = edl_rec["sequence_count"].value
-        self._edl_sequence_count_obj = edl_rec["sequence_count"]
-        self._edl_rejected_count_obj = edl_rec["rejected_count"]
+        self._flight_mode_obj: canopen.objectdictionary.Variable = None
+        self._edl_sequence_count_obj: canopen.objectdictionary.Variable = None
+        self._edl_rejected_count_obj: canopen.objectdictionary.Variable = None
 
     @property
     def _hmac_key(self) -> bytes:
@@ -66,6 +64,12 @@ class ChannelRouterService(Service):
     @_rejected_count.setter
     def _rejected_count(self, value):
         self._edl_rejected_count_obj.value = value
+
+    def on_start(self) -> None:
+        edl_rec = self.node.od["edl"]
+        self._flight_mode_obj = self.node.od["flight_mode"]
+        self._edl_sequence_count_obj = edl_rec["sequence_count"]
+        self._edl_rejected_count_obj = edl_rec["rejected_count"]
 
     def on_loop(self) -> None:
         for vcid, dl in self._downlink_routes.items():

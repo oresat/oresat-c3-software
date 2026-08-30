@@ -83,7 +83,7 @@ class EdlPacket:
             raise EdlPacketError(e) from e
 
     @classmethod
-    def from_frame(cls, payload_raw: bytes, vcid: EdlVcid, src_dest):
+    def from_frame(cls, payload_raw: bytes, vcid: EdlVcid, src_dest: SourceOrDestField):
         """
         Unpack the EDL packet.
 

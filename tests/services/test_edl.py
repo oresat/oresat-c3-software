@@ -22,6 +22,7 @@ from canopen.objectdictionary.datatypes import (
 from canopen.sdo.exceptions import SdoAbortedError
 from olaf import CanNetwork, MasterNode, NodeStop
 from oresat_configs import Mission, OreSatConfig
+from sdls import verify_sdls
 from spacepackets.uslp import TransferFrame
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
@@ -46,6 +47,8 @@ class NodeHeartbeatInfo(NamedTuple):
 def make_cmd(cmd: EdlCommandCode, values: tuple, q: SimpleQueue) -> TransferFrame:
     payload = EdlCommandRequest(cmd, values).pack()
     frame = make_frame(payload, 0, 1, hmac_key=HMAC)
+    # workaround: normally SDLS verification happens in the router
+    verify_sdls(frame, HMAC)
     q.put(frame)
 
 

@@ -25,8 +25,8 @@ from oresat_configs import Mission, OreSatConfig
 from spacepackets.uslp import TransferFrame
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
-from oresat_c3.protocols.edl_packet import EdlPacket, EdlVcid
-from oresat_c3.protocols.uslp import make_frame, unpack_frame
+from oresat_c3.protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlVcid
+from oresat_c3.protocols.uslp import make_frame
 from oresat_c3.services.beacon import BeaconService
 from oresat_c3.services.channel_router import ChannelRouterService
 from oresat_c3.services.edl import EdlService
@@ -50,7 +50,7 @@ def make_cmd(cmd: EdlCommandCode, values: tuple, q: SimpleQueue) -> TransferFram
 
 
 def to_response(resp_raw: bytes) -> EdlCommandResponse:
-    return EdlPacket.from_frame(unpack_frame(resp_raw), HMAC).payload
+    return EdlPacket.from_frame(resp_raw, EdlVcid.C3_COMMAND, SRC_DEST_UNICLOGS).payload
 
 
 class TestEdl(unittest.TestCase):

@@ -49,10 +49,11 @@ from spacepackets.cfdp.tlv import (
 from spacepackets.countdown import Countdown
 from spacepackets.seqcount import SeqCountProvider
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
+from spacepackets.uslp.frame import FrameType
 from spacepackets.util import ByteFieldU8
 
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket, EdlVcid
-from oresat_c3.protocols.uslp import unpack_frame
+from oresat_c3.protocols.uslp import make_frame, unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
 
@@ -140,8 +141,15 @@ class Uplink(Thread):
                 print("---X DROPPED", payload)
                 continue  # simulate dropped packets
             print("--->", payload)
-            packet = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT, bypass=True)
-            message = packet.pack(self._hmac_key)
+            frame_payload = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT).pack()
+            message = make_frame(
+                payload=frame_payload,
+                vcid=EdlVcid.C3_COMMAND,
+                src_dest=SRC_DEST_ORESAT,
+                sequence_number=self._sequence_number,
+                hmac_key=self._hmac_key,
+                bypass=True,
+            ).pack(frame_type=FrameType.VARIABLE)
             uplink.send(message)
             print("Current sequence number:", self._sequence_number)
             self._sequence_number += 1

@@ -36,7 +36,7 @@ from oresat_c3.protocols.uslp import SPACECRAFT_ID, make_frame, unpack_frame
 sys.path.insert(0, os.path.abspath(".."))
 
 from oresat_c3.protocols.edl_command import EDL_COMMANDS, EdlCommandCode, EdlCommandRequest
-from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket, EdlVcid
+from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, SRC_DEST_UNICLOGS, EdlPacket, EdlVcid
 
 
 class EdlCommandShell(Cmd):
@@ -188,7 +188,9 @@ class EdlCommandShell(Cmd):
                             self._process_clcw(ControlWord.unpack(frame.op_ctrl_field))
                             continue
                         if frame.header.vcid == EdlVcid.C3_COMMAND:
-                            res_packet = EdlPacket.from_frame(frame, self._hmac_key)
+                            res_packet = EdlPacket.from_frame(
+                                frame.tfdf.tfdz, EdlVcid.C3_COMMAND, SRC_DEST_UNICLOGS
+                            )
                             break
                 except socket.timeout:
                     raise TimeoutError("No C3_COMMAND response")

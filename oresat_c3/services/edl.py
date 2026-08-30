@@ -4,7 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from time import time
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import canopen
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
@@ -30,6 +30,7 @@ from spacepackets.cfdp import (
     ChecksumType,
     ConditionCode,
     FaultHandlerCode,
+    PduFactory,
     PduHolder,
     TransmissionMode,
 )
@@ -56,8 +57,7 @@ from ..protocols.edl_command import (
     EdlCommandRequest,
     EdlCommandResponse,
 )
-from ..protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlPacketError, EdlVcid
-from ..protocols.sdls import SdlsInvalidHmacError
+from ..protocols.edl_packet import EdlPacket, EdlPacketError, EdlVcid
 from ..subsystems.rtc import set_rtc_time, set_system_time_to_rtc_time
 from .beacon import BeaconService
 from .channel_router import ChannelRouterService
@@ -100,68 +100,13 @@ class EdlService(Service):
         # objs
         edl_rec = node.od["edl"]
         tx_rec = node.od["tx_control"]
-        self._flight_mode_obj = node.od["flight_mode"]
-        self._seq_num = edl_rec["sequence_count"].value
         self._tx_enable_obj = tx_rec["enable"]
         self._last_tx_enable_obj = tx_rec["last_enable_timestamp"]
-        self._edl_sequence_count_obj = edl_rec["sequence_count"]
-        self._edl_rejected_count_obj = edl_rec["rejected_count"]
         self._last_edl_obj = edl_rec["last_timestamp"]
-
-    @property
-    def _hmac_key(self) -> bytes:
-        edl_rec = self.node.od["edl"]
-        active_key = edl_rec["active_crypto_key"].value
-        return edl_rec[f"crypto_key_{active_key}"].value
-
-    @property
-    def _flight_mode(self) -> bool:
-        return bool(self._flight_mode_obj.value)
-
-    @property
-    def _sequence_count(self) -> int:
-        return self._edl_sequence_count_obj.value
-
-    @_sequence_count.setter
-    def _sequence_count(self, value):
-        self._edl_sequence_count_obj.value = value
-
-    @property
-    def _rejected_count(self) -> int:
-        return self._edl_rejected_count_obj.value
-
-    @_rejected_count.setter
-    def _rejected_count(self, value):
-        self._edl_rejected_count_obj.value = value
-
-    def _frame_to_packet(self, frame: TransferFrame) -> Optional[EdlPacket]:
-        try:
-            packet = EdlPacket.from_frame(frame, self._hmac_key, not self._flight_mode)
-        except (EdlPacketError, SdlsInvalidHmacError) as e:
-            self._rejected_count += 1
-            self._rejected_count &= 0xFF_FF_FF_FF
-            logger.error(f"invalid EDL request packet: {e}")
-            return None  # no responses to invalid packets
-
-        if self._flight_mode and packet.seq_num < self._sequence_count:
-            logger.error(
-                f"invalid EDL request packet sequence number of {packet.seq_num}, should be > "
-                f"{self._sequence_count}"
-            )
-            return None  # no responses to invalid packets
-
-        self._last_edl_obj.value = int(time())
-
-        if self._flight_mode:
-            self._sequence_count = packet.seq_num
-            self._sequence_count &= 0xFF_FF_FF_FF
-
-        return packet
 
     def _respond(self, vcid: EdlVcid, payload: Union[PduHolder, EdlCommandResponse]) -> None:
         try:
-            res_packet = EdlPacket(payload, self._sequence_count, SRC_DEST_UNICLOGS)
-            res_message = res_packet.pack(self._hmac_key)
+            res_message = payload.pack()
         except (EdlCommandError, EdlPacketError, ValueError) as e:
             logger.exception(f"EDL response generation raised: {e}")
             return
@@ -176,18 +121,23 @@ class EdlService(Service):
             frame = self._cmd_uplink.get_nowait()
         except Empty:
             return
-        req_packet = self._frame_to_packet(frame)
-        if req_packet is not None:
-            try:
-                res_payload = self._run_cmd(req_packet.payload)
-                if not res_payload.values:
-                    logger.info(
-                        f"EDL dropping command response with no values. ID: {res_payload.code.name}"
-                    )
-                    return  # no response
-                self._respond(EdlVcid.C3_COMMAND, res_payload)
-            except Exception as e:  # pylint: disable=W0718
-                logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
+        try:
+            payload = EdlCommandRequest.unpack(frame.tfdf.tfdz)
+            req_packet = EdlPacket(payload, 0, frame.header.src_dest)
+        except EdlCommandError as e:
+            logger.error(f"invalid EDL request packet: {e}")
+            return
+        self._last_edl_obj.value = int(time())
+        try:
+            res_payload = self._run_cmd(req_packet.payload)
+            if not res_payload.values:
+                logger.info(
+                    f"EDL dropping command response with no values. ID: {res_payload.code.name}"
+                )
+                return  # no response
+            self._respond(EdlVcid.C3_COMMAND, res_payload)
+        except Exception as e:  # pylint: disable=W0718
+            logger.error(f"EDL command {req_packet.payload.code.name} raised: {e}")
 
     def _process_cfdp(self) -> None:
         try:
@@ -196,7 +146,12 @@ class EdlService(Service):
             frame = None
 
         if frame is not None:
-            req_packet = self._frame_to_packet(frame)
+            try:
+                payload = PduFactory.from_raw(frame.tfdf.tfdz)
+                req_packet = EdlPacket(payload, 0, frame.header.src_dest)
+            except ValueError as e:
+                logger.error(f"invalid EDL packet: {e}")
+            self._last_edl_obj.value = int(time())
         else:
             req_packet = None
 

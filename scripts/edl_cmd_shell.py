@@ -31,6 +31,7 @@ from spacepackets.uslp import BypassSequenceControlFlag, ProtocolCommandFlag
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
 from spacepackets.uslp.frame import FrameType
 
+from oresat_c3.protocols.sdls import verify_sdls
 from oresat_c3.protocols.uslp import SPACECRAFT_ID, make_frame, unpack_frame
 
 sys.path.insert(0, os.path.abspath(".."))
@@ -182,6 +183,7 @@ class EdlCommandShell(Cmd):
                         raw = self._downlink_socket.recv(1024)
                         try:
                             frame = unpack_frame(raw)
+                            verify_sdls(frame, self._hmac_key)
                         except UslpInvalidRawPacketOrFrameLenError:
                             continue
                         if frame.header.vcid == EdlVcid.IDLE and frame.op_ctrl_field:
@@ -236,6 +238,7 @@ class EdlCommandShell(Cmd):
             self._seq_num += 1
         except Exception as e:  # pylint: disable=W0718
             print(e)
+            raise e from e
             return ()
 
         ret = None

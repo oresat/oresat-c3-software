@@ -65,7 +65,7 @@ class TestEdlPacket(unittest.TestCase):
 
         # Checking if UslpChecksumError exception is raised for the invalid FECF
         with self.assertRaises(UslpChecksumError):
-             unpack_frame(edl_message_req)
+            unpack_frame(edl_message_req)
 
     def test_unpack_invalid_hmac(self):
         """Test unpacking an EDL packet with an invalid HMAC."""

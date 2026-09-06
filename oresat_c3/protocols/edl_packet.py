@@ -7,12 +7,9 @@ from typing import Union
 
 from spacepackets.cfdp.pdu import PduFactory
 from spacepackets.cfdp.pdu.file_directive import AbstractPduBase
-from spacepackets.uslp.frame import FrameType, TransferFrame
 from spacepackets.uslp.header import SourceOrDestField
 
-from .edl_command import EdlCommandCode, EdlCommandError, EdlCommandRequest, EdlCommandResponse
-from .sdls import verify_sdls
-from .uslp import make_frame
+from .edl_command import EdlCommandError, EdlCommandRequest, EdlCommandResponse
 
 SRC_DEST_ORESAT = SourceOrDestField.DEST
 SRC_DEST_UNICLOGS = SourceOrDestField.SOURCE
@@ -42,7 +39,6 @@ class EdlPacket:
         payload: Union[EdlCommandRequest, EdlCommandResponse, AbstractPduBase],
         seq_num: int,
         src_dest: SourceOrDestField,
-        bypass: bool = False,
     ):
         """
         Parameters
@@ -53,8 +49,6 @@ class EdlPacket:
             The sequence number for packet.
         src_dest: SourceOrDestFiedld
             Origin of packet, use `SRC_DEST_ORESAT` or `SRC_DEST_UNICLOGS`.
-        bypass: bool
-            If True, send as a Type-BD (bypass) frame, skipping COP-1 sequence checking.
         """
 
         if isinstance(payload, (EdlCommandRequest, EdlCommandResponse)):
@@ -62,13 +56,12 @@ class EdlPacket:
         elif isinstance(payload, AbstractPduBase):
             vcid = EdlVcid.FILE_TRANSFER
         else:
-            raise EdlCommandCode(f"unknown payload object: {type(payload)}")
+            raise EdlPacketError(f"unknown payload object: {type(payload)}")
 
         self.vcid = vcid
         self.src_dest = src_dest
         self.seq_num = seq_num
         self.payload = payload
-        self.bypass = bypass
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, EdlPacket):
@@ -80,62 +73,41 @@ class EdlPacket:
             and self.payload == other.payload
         )
 
-    def pack(self, hmac_key: bytes) -> bytes:
-        """
-        Pack the EDL packet.
-
-        Parameters
-        ----------
-        hmac_key: bytes
-            The HMAC key to use.
-        """
+    def pack(self) -> bytes:
+        """Pack the EDL packet."""
 
         try:
             payload_raw = self.payload.pack()
+            return payload_raw
         except Exception as e:
             raise EdlPacketError(e) from e
 
-        frame = make_frame(
-            payload=payload_raw,
-            vcid=self.vcid.value,
-            src_dest=self.src_dest,
-            sequence_number=self.seq_num,
-            hmac_key=hmac_key,
-            bypass=self.bypass,
-        )
-        return frame.pack(frame_type=FrameType.VARIABLE)
-
     @classmethod
-    def from_frame(cls, frame: TransferFrame, hmac_key: bytes, ignore_hmac: bool = False):
+    def from_payload(cls, payload_raw: bytes, vcid: EdlVcid, src_dest: SourceOrDestField):
         """
         Unpack the EDL packet.
 
         Parameters
         ----------
-        frame : TransferFrame
-            The frame to unpack.
-        hmac_key: bytes
-            The hmac key.
-        ignore_hmac: bool
-            Ignore the HMAC value.
+        src_dest
+        vcid
+        payload_raw
         """
 
-        seq_num = verify_sdls(frame, hmac_key)
-        payload_raw = frame.tfdf.tfdz
-        if frame.header.vcid == EdlVcid.C3_COMMAND:
+        if vcid == EdlVcid.C3_COMMAND:
             try:
-                if frame.header.src_dest == SRC_DEST_ORESAT:
+                if src_dest == SRC_DEST_ORESAT:
                     payload = EdlCommandRequest.unpack(payload_raw)
                 else:
                     payload = EdlCommandResponse.unpack(payload_raw)
             except EdlCommandError as e:
                 raise EdlPacketError(e) from e
-        elif frame.header.vcid == EdlVcid.FILE_TRANSFER:
+        elif vcid == EdlVcid.FILE_TRANSFER:
             try:
                 payload = PduFactory.from_raw(payload_raw)
             except ValueError as e:
                 raise EdlPacketError(e) from e
         else:
-            raise EdlPacketError(f"unknown vcid {frame.header.vcid}")
+            raise EdlPacketError(f"unknown vcid {vcid}")
 
-        return EdlPacket(payload, seq_num, frame.header.src_dest)
+        return EdlPacket(payload, 0, src_dest)

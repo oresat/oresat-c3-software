@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Generator, Union
 
+from spacepackets.uslp.frame import FrameType
+from uslp import make_frame
+
 sys.path.insert(0, os.path.abspath(".."))
 
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
@@ -82,9 +85,15 @@ class Link:
 
         self.sequence_number = self.sequence_number + 1 & 0xFFFF_FFFF
         request = EdlCommandRequest(EdlCommandCode.PING, (value,))
-        message = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT, bypass=True).pack(
-            self.hmac
-        )
+        payload = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT).pack()
+        message = make_frame(
+            payload=payload,
+            vcid=EdlVcid.C3_COMMAND,
+            src_dest=SRC_DEST_ORESAT,
+            sequence_number=self.sequence_number,
+            hmac_key=self.hmac,
+            bypass=True,
+        ).pack(frame_type=FrameType.VARIABLE)
 
         self._uplink.send(message)
         self.sent_times[value] = monotonic()
@@ -127,7 +136,7 @@ class Link:
                 continue
             if frame.header.vcid != EdlVcid.C3_COMMAND:
                 continue
-            payload = EdlPacket.from_frame(frame, self.hmac).payload.values[0]
+            payload = EdlPacket.from_payload(frame, self.hmac).payload.values[0]
             t_recv = monotonic()
 
             # self.sent_times.keys() are monotonic (not to be confused with the timestamps from

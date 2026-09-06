@@ -29,13 +29,13 @@ class TestEdlPacket(unittest.TestCase):
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
         edl_message_req = edl_packet_req.pack()
-        edl_packet_req2 = EdlPacket.from_frame(edl_message_req, 0, SRC_DEST_ORESAT)
+        edl_packet_req2 = EdlPacket.from_payload(edl_message_req, 0, SRC_DEST_ORESAT)
         self.assertEqual(edl_packet_req, edl_packet_req2)
 
         payload = EdlCommandResponse(EdlCommandCode.TX_CTRL, (True,))
         edl_packet_res = EdlPacket(payload, self.seq_num, SRC_DEST_UNICLOGS)
         edl_message_res = edl_packet_res.pack()
-        edl_packet_res2 = EdlPacket.from_frame(edl_message_res, 0, SRC_DEST_UNICLOGS)
+        edl_packet_res2 = EdlPacket.from_payload(edl_message_res, 0, SRC_DEST_UNICLOGS)
         self.assertEqual(edl_packet_res, edl_packet_res2)
 
     def test_unpack_short_packet(self):
@@ -47,7 +47,7 @@ class TestEdlPacket(unittest.TestCase):
         # Test if EdlPacketError "Packet too short" exception is thrown
         with self.assertRaises(UslpInvalidRawPacketOrFrameLenError):
             frame = unpack_frame(short_packet)
-            EdlPacket.from_frame(frame, self.hmac_key)
+            EdlPacket.from_payload(frame, self.hmac_key)
 
     def test_unpack_invalid_fecf(self):
         """Test unpacking an EDL packet with an invalid FECF."""

@@ -53,7 +53,7 @@ def make_cmd(cmd: EdlCommandCode, values: tuple, q: SimpleQueue) -> TransferFram
 
 
 def to_response(resp_raw: bytes) -> EdlCommandResponse:
-    return EdlPacket.from_frame(resp_raw, EdlVcid.C3_COMMAND, SRC_DEST_UNICLOGS).payload
+    return EdlPacket.from_payload(resp_raw, EdlVcid.C3_COMMAND, SRC_DEST_UNICLOGS).payload
 
 
 class TestEdl(unittest.TestCase):

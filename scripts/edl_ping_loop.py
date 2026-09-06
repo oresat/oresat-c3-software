@@ -136,7 +136,7 @@ class Link:
                 continue
             if frame.header.vcid != EdlVcid.C3_COMMAND:
                 continue
-            payload = EdlPacket.from_frame(frame, self.hmac).payload.values[0]
+            payload = EdlPacket.from_payload(frame, self.hmac).payload.values[0]
             t_recv = monotonic()
 
             # self.sent_times.keys() are monotonic (not to be confused with the timestamps from

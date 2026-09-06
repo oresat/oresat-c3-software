@@ -183,7 +183,7 @@ class Downlink(Thread):
                 continue
             if frame.header.vcid != EdlVcid.FILE_TRANSFER:
                 continue
-            packet = EdlPacket.from_frame(frame, self._hmac_key, True).payload
+            packet = EdlPacket.from_payload(frame, self._hmac_key, True).payload
             if self._bad_connection and not random.randrange(5):
                 print("X--- DROPPED", packet)
                 continue  # simulate dropped packets

@@ -22,11 +22,11 @@ from canopen.objectdictionary.datatypes import (
 from canopen.sdo.exceptions import SdoAbortedError
 from olaf import CanNetwork, MasterNode, NodeStop
 from oresat_configs import Mission, OreSatConfig
-from sdls import verify_sdls
 from spacepackets.uslp import TransferFrame
 
 from oresat_c3.protocols.edl_command import EdlCommandCode, EdlCommandRequest, EdlCommandResponse
 from oresat_c3.protocols.edl_packet import SRC_DEST_UNICLOGS, EdlPacket, EdlVcid
+from oresat_c3.protocols.sdls import verify_sdls
 from oresat_c3.protocols.uslp import make_frame
 from oresat_c3.services.beacon import BeaconService
 from oresat_c3.services.channel_router import ChannelRouterService

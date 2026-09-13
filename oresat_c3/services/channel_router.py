@@ -3,6 +3,7 @@ from __future__ import annotations
 from queue import Empty, SimpleQueue
 from time import monotonic
 
+import canopen
 from ccsds_cop.cop_1 import ControlWord, CopService
 from ccsds_cop.cop_1.farm import Farm1
 from olaf import Service, logger
@@ -13,6 +14,7 @@ from spacepackets.uslp.header import SourceOrDestField
 
 from .. import C3State
 from ..protocols.edl_packet import EdlVcid
+from ..protocols.sdls import SdlsInvalidHmacError, verify_sdls
 from ..protocols.uslp import make_frame, unpack_frame
 from .cop_manager import CopManagerService
 from .radios import RadiosService
@@ -33,12 +35,58 @@ class ChannelRouterService(Service):
         self._downlink_routes: dict[EdlVcid, SimpleQueue[bytes]] = {}
         self._last_clcw_time = 0.0
 
+        self._flight_mode_obj: canopen.objectdictionary.Variable = None
+        self._edl_sequence_count_obj: canopen.objectdictionary.Variable = None
+        self._edl_rejected_count_obj: canopen.objectdictionary.Variable = None
+
+    @property
+    def _hmac_key(self) -> bytes:
+        edl_rec = self.node.od["edl"]
+        active_key = edl_rec["active_crypto_key"].value
+        return edl_rec[f"crypto_key_{active_key}"].value
+
+    @property
+    def _flight_mode(self) -> bool:
+        return bool(self._flight_mode_obj.value)
+
+    @property
+    def _sequence_count(self) -> int:
+        return self._edl_sequence_count_obj.value
+
+    @_sequence_count.setter
+    def _sequence_count(self, value):
+        self._edl_sequence_count_obj.value = value
+
+    @property
+    def _rejected_count(self) -> int:
+        return self._edl_rejected_count_obj.value
+
+    @_rejected_count.setter
+    def _rejected_count(self, value):
+        self._edl_rejected_count_obj.value = value
+
+    def on_start(self) -> None:
+        edl_rec = self.node.od["edl"]
+        self._flight_mode_obj = self.node.od["flight_mode"]
+        self._edl_sequence_count_obj = edl_rec["sequence_count"]
+        self._edl_rejected_count_obj = edl_rec["rejected_count"]
+
     def on_loop(self) -> None:
-        for dl in self._downlink_routes.values():
+        for vcid, dl in self._downlink_routes.items():
             while True:
                 try:
                     msg = dl.get_nowait()
-                    self._radios_service.send_edl_response(msg)
+                    frame = make_frame(
+                        payload=msg,
+                        vcid=vcid.value,
+                        src_dest=SourceOrDestField.SOURCE,
+                        sequence_number=self._sequence_count,
+                        hmac_key=self._hmac_key,
+                        bypass=False,
+                    )
+                    self._radios_service.send_edl_response(
+                        frame.pack(frame_type=FrameType.VARIABLE)
+                    )
                 except Empty:  # noqa: PERF203
                     break
 
@@ -64,16 +112,35 @@ class ChannelRouterService(Service):
 
         try:
             frame = unpack_frame(message)
-            vcid = frame.header.vcid
-            if vcid in self._uplink_routes:
-                self._uplink_routes[vcid].put_nowait(frame)
-            else:
-                logger.error(f"No route for VCID {frame.header.vcid}")
+            if self._handle_uplink_sdls(frame):
+                vcid = frame.header.vcid
+                if vcid in self._uplink_routes:
+                    self._uplink_routes[vcid].put_nowait(frame)
+                else:
+                    logger.error(f"No route for VCID {frame.header.vcid}")
         except UslpChecksumError as e:
             logger.error(f"Frame checksum error: {e}")
             logger.debug(message)
         except Exception as e:
             logger.exception(f"Failed to unpack frame: {e}")
+
+    def _handle_uplink_sdls(self, frame: TransferFrame) -> bool:
+        try:
+            seq = verify_sdls(frame, self._hmac_key)
+        except SdlsInvalidHmacError as e:
+            self._rejected_count += 1
+            self._rejected_count &= 0xFF_FF_FF_FF
+            logger.error(f"invalid packet: {e}")
+            return False
+        if self._flight_mode and seq < self._sequence_count:
+            logger.error(
+                f"invalid SDLS sequence number of {seq}, should be > {self._sequence_count}"
+            )
+            return False
+        elif self._flight_mode:
+            self._sequence_count = seq
+            self._sequence_count &= 0xFF_FF_FF_FF
+        return True
 
     def request_uplink_route(
         self, vcid: EdlVcid, use_cop: bool = False

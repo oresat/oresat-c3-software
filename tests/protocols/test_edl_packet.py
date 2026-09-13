@@ -27,13 +27,13 @@ class TestEdlPacket(unittest.TestCase):
         """Test packing and unpacking an EDL request packet and response packet."""
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
-        edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
+        edl_packet_req = EdlPacket(payload, SRC_DEST_ORESAT)
         edl_message_req = edl_packet_req.pack()
         edl_packet_req2 = EdlPacket.from_payload(edl_message_req, 0, SRC_DEST_ORESAT)
         self.assertEqual(edl_packet_req, edl_packet_req2)
 
         payload = EdlCommandResponse(EdlCommandCode.TX_CTRL, (True,))
-        edl_packet_res = EdlPacket(payload, self.seq_num, SRC_DEST_UNICLOGS)
+        edl_packet_res = EdlPacket(payload, SRC_DEST_UNICLOGS)
         edl_message_res = edl_packet_res.pack()
         edl_packet_res2 = EdlPacket.from_payload(edl_message_res, 0, SRC_DEST_UNICLOGS)
         self.assertEqual(edl_packet_res, edl_packet_res2)
@@ -53,7 +53,7 @@ class TestEdlPacket(unittest.TestCase):
         """Test unpacking an EDL packet with an invalid FECF."""
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
-        edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
+        edl_packet_req = EdlPacket(payload, SRC_DEST_ORESAT)
         edl_message_req = edl_packet_req.pack()
         frame = make_frame(edl_message_req, 0, 1, hmac_key=self.hmac_key)
         edl_message_req = frame.pack(frame_type=FrameType.VARIABLE)
@@ -71,7 +71,7 @@ class TestEdlPacket(unittest.TestCase):
         """Test unpacking an EDL packet with an invalid HMAC."""
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
-        edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
+        edl_packet_req = EdlPacket(payload, SRC_DEST_ORESAT)
         invalid_hmac = b"\0x12" * 32
         edl_message_req = edl_packet_req.pack()
         frame = make_frame(edl_message_req, 0, 1, hmac_key=invalid_hmac)
@@ -83,7 +83,7 @@ class TestEdlPacket(unittest.TestCase):
         "Test unpacking an EDL packet with an invalid VCID."
 
         payload = EdlCommandRequest(EdlCommandCode.TX_CTRL, (True,))
-        edl_packet_req = EdlPacket(payload, self.seq_num, SRC_DEST_ORESAT)
+        edl_packet_req = EdlPacket(payload, SRC_DEST_ORESAT)
 
         class TestEnum(IntEnum):
             """Invalid enum for VCID"""

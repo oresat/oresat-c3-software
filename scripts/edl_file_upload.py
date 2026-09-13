@@ -141,7 +141,7 @@ class Uplink(Thread):
                 print("---X DROPPED", payload)
                 continue  # simulate dropped packets
             print("--->", payload)
-            frame_payload = EdlPacket(payload, self._sequence_number, SRC_DEST_ORESAT).pack()
+            frame_payload = EdlPacket(payload, SRC_DEST_ORESAT).pack()
             message = make_frame(
                 payload=frame_payload,
                 vcid=EdlVcid.C3_COMMAND,

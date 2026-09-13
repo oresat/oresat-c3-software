@@ -85,7 +85,7 @@ class Link:
 
         self.sequence_number = self.sequence_number + 1 & 0xFFFF_FFFF
         request = EdlCommandRequest(EdlCommandCode.PING, (value,))
-        payload = EdlPacket(request, self.sequence_number, SRC_DEST_ORESAT).pack()
+        payload = EdlPacket(request, SRC_DEST_ORESAT).pack()
         message = make_frame(
             payload=payload,
             vcid=EdlVcid.C3_COMMAND,

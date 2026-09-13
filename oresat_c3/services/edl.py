@@ -123,7 +123,7 @@ class EdlService(Service):
             return
         try:
             payload = EdlCommandRequest.unpack(frame.tfdf.tfdz)
-            req_packet = EdlPacket(payload, 0, frame.header.src_dest)
+            req_packet = EdlPacket(payload, frame.header.src_dest)
         except EdlCommandError as e:
             logger.error(f"invalid EDL request packet: {e}")
             return
@@ -148,7 +148,7 @@ class EdlService(Service):
         if frame is not None:
             try:
                 payload = PduFactory.from_raw(frame.tfdf.tfdz)
-                req_packet = EdlPacket(payload, 0, frame.header.src_dest)
+                req_packet = EdlPacket(payload, frame.header.src_dest)
             except ValueError as e:
                 logger.error(f"invalid EDL packet: {e}")
             self._last_edl_obj.value = int(time())

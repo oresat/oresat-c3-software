@@ -25,7 +25,7 @@ def quat_conjugate(q: ArrayLike) -> np.ndarray:
         The conjugate of q
     """
     q1, q2, q3, qs = q
-    return np.asarray(-q1, -q2, -q3, qs)
+    return np.asarray([-q1, -q2, -q3, qs], dtype=float)
 
 
 def hemi(q: ArrayLike) -> np.ndarray:

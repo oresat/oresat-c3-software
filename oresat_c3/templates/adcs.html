@@ -1,0 +1,531 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <style>
+    table {
+      font-family: arial, sans-serif;
+      border-collapse: collapse;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    thead {
+      font-weight: bold;
+    }
+    td, th {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 8px;
+    }
+    canvas {
+      border: 1px solid #dddddd;
+    }
+    .table-container { 
+      display: flex;
+      justify-content: space-between; 
+      margin: 20px; 
+    } 
+  </style>
+  <form>
+    <h1>Manager Dashboard</h1>
+    <div id="adcsMgrTableDiv" class="table-container">
+      <span>
+      <h2>Modes</h2>
+      <input id="apply_modes_button" type="button" value="APPLY MODES"></input>
+      <input id="reset_modes_button" type="button" value="RESET MODES"></input>
+ 
+      <table id="adcsMgrModeTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Present State</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+      </span>
+
+      <span>
+      <h2>Reaction Wheel LQR Tuning</h2>
+      <input id="apply_rw_lqr_button" type="button" value="APPLY LQR"></input>
+      <input id="reset_rw_lqr_button" type="button" value="RESET LQR"></input>
+ 
+      <table id="adcsMgrLQRRWTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Present State</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+      </span>
+
+      <span>
+      <h2>Magnetorquer LQR Tuning</h2>
+      <input id="apply_mt_lqr_button" type="button" value="APPLY LQR"></input>
+      <input id="reset_mt_lqr_button" type="button" value="RESET LQR"></input>
+      <table id="adcsMgrLQRMTTable">
+        <thead>
+          <tr>
+            <td>Name</td>
+	    <td>Desired State</td>
+            <td>Present State</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+      </span>
+
+    </div>
+   
+    <h1>Sensor Dashboard</h1>
+    <div id="gyroSensorTableDiv">
+      <table id="gyroSensorTable">
+	<thead>
+            <td align="center" colspan=3>GYROSCOPE</td>
+	</thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    
+    <div id="accelSensorTableDiv">
+      <table id="accelSensorTable">
+	<thead>
+            <td align="center" colspan=3>ACCELEROMETER
+	    </td>
+	</thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+    
+    <div id="magSensorTableDiv">
+      <table id="magSensorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=3>MAGNETOMETERS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+
+
+     
+    <div id="mtActuatorTableDiv">
+      <table id="mtActuatorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=3>MAGNETORQUERS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+
+
+    <div id="rwActuatorTableDiv">
+      <table id="rwActuatorTable">
+        <thead>
+          <tr>
+            <td align="center" colspan=4>REACTION WHEELS</td>
+          </tr>
+        </thead>
+        <tbody>
+        </tbody>
+      </table>
+    </div>
+
+
+<script>
+
+  async function buildMngrRow(tbodyRef, index, subindex) {
+    let mode = await readValue(index, subindex);
+
+    // Add guidance mode
+    let newRow = tbodyRef.insertRow();
+    let nameCell = newRow.insertCell();
+    nameCell.id = subindex + "_info";
+    let nameText = document.createTextNode(subindex);
+    nameCell.appendChild(document.createTextNode(subindex));
+    // add input cell
+    var inputCell = newRow.insertCell();
+    inputCell.id = subindex + "_form";
+    var inputField = document.createElement("select");
+    inputField.id = subindex + "_form_input";
+    // add options to input
+    for (var option in mode.value_descriptions) {
+      var inputOption = document.createElement("option");
+      var inputOptionText = document.createTextNode((mode.value_descriptions[option]).toUpperCase());
+      inputOption.appendChild(inputOptionText);
+      inputField.appendChild(inputOption);
+    }
+    // finally, add the elements to the input cell
+    inputCell.appendChild(inputField);
+    // add readout at end of row
+    var statusCell = newRow.insertCell();
+    statusCell.id = subindex + "_state";
+    var statusText = document.createTextNode((mode.value_descriptions[mode.value]).toUpperCase());
+    statusCell.appendChild(statusText);
+  }
+
+  async function updateMngrRow(tbodyRef, index, subindex) {
+    // get the most recent data
+    // FIXME: set timeout for await, otherwise it may bog down performance
+    let mode = await readValue(index, subindex);
+    // get the element to update
+    let statusCell = document.getElementById(subindex + "_state");
+    // replace the contents of the element
+    statusCell.replaceChildren(
+      document.createTextNode(
+        (mode.value_descriptions[mode.value]).toUpperCase()
+      )
+    );
+  }
+
+
+  async function buildInputRow(tbodyRef, index, subindex) {
+    let mode = await readValue(index, subindex);
+    // console.log(mode);
+    // Add guidance mode
+    let newRow = tbodyRef.insertRow();
+    let nameCell = newRow.insertCell();
+    nameCell.id = subindex + "_info";
+    nameCell.appendChild(document.createTextNode(subindex + " (initially "+mode.value+ ")"));
+    // add input cell
+    var inputCell = newRow.insertCell();
+    inputCell.id = subindex + "_form";
+    var inputField = document.createElement("input");
+    inputField.id = subindex + "_form_input";
+    inputField.type = "number";
+    // finally, add the elements to the input cell
+    inputCell.appendChild(inputField);
+    // add readout at end of row
+    var statusCell = newRow.insertCell();
+    statusCell.id = subindex + "_state";
+    var statusText = document.createTextNode(mode.value);
+    statusCell.appendChild(statusText);
+  }
+
+
+  async function updateInputRow(tbodyRef, index, subindex) {
+    // get the most recent data
+    // FIXME: set timeout for await, otherwise it may bog down performance
+    let mode = await readValue(index, subindex);
+    // get the element to update
+    let statusCell = document.getElementById(subindex + "_state");
+    // replace the contents of the element
+    statusCell.replaceChildren(
+      document.createTextNode(
+        (mode.value)
+      )
+    );
+  }
+
+
+  async function buildSensorTable(tbodyRef, index, subindex_list) {
+    let infoRow = tbodyRef.insertRow();
+    for (s_idx in subindex_list) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = subindex_list[s_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Description: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Value [, ]: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Scale Factor: "));
+      infoCell.appendChild(document.createElement("br"));
+      infoCell.appendChild(document.createTextNode("Eng. Value: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (s_idx in subindex_list) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = subindex_list[s_idx] + "_canvas";
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateSensorInfoPlot(index, subindex, plot_min, plot_max) {
+    // FIXME: set timeout for await, otherwise it may bog down performance
+    let sensor = await readValue(index, subindex);
+    // update the information
+    infoCell = document.getElementById(subindex + "_info");
+    infoCell.replaceChildren(
+      document.createTextNode("Name: [" + index + "] " +sensor.name),
+      document.createElement("br"),
+      document.createTextNode("Description: "+sensor.description),
+      document.createElement("br"),
+      document.createTextNode("Value ["+sensor.low_limit+", "+sensor.high_limit+"]: "+sensor.value),
+      document.createElement("br"),
+      document.createTextNode("Scale Factor: " + sensor.scale_factor),
+      document.createElement("br"),
+      document.createTextNode("Eng. Value: " + sensor.eng_value + " " + sensor.unit)
+    )
+    // update the plot
+    let plotCanvas = document.getElementById(subindex + "_canvas");
+    let ctx = plotCanvas.getContext("2d");
+    let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+    ctx.putImageData(imageData, 0, 0);
+    ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+    // plot the data point
+    let factor = (plot_max - sensor.eng_value) / (plot_max - plot_min);
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
+  }
+
+
+  async function buildMagSensorTable(tbodyRef) {
+    let infoRow = tbodyRef.insertRow();
+    dirs = ["x", "y", "z"]
+    for (d_idx in dirs) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = "mag_" + dirs[d_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (d_idx in dirs) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = "mag_" + dirs[d_idx] + "_canvas";
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateMagSensorInfoPlot(index, subindex_list, plot_min, plot_max) {
+    let dirs = ["x", "y", "z"];
+    // if there are more than 4 colors, figure out something else
+    let colors = ["#ff9900cc", "#00ff19cc", "#0066ffcc", "#ff00e6cc"];
+    for (d_idx in dirs) {
+    
+      // shift the plot
+      let plotCanvas = document.getElementById("mag_"+dirs[d_idx]+ "_canvas");
+      let ctx = plotCanvas.getContext("2d");
+      let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+      ctx.putImageData(imageData, 0, 0);
+      ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+      // for each sensor, update
+      let infoCellElements = [
+        document.createTextNode("Direction: [" + dirs[d_idx] + "] ")
+      ];
+
+      let count = 0;
+      for (s_idx in subindex_list) {
+        // FIXME: set timeout for await, otherwise it may bog down performance
+        let mt_info = await readValue(index, subindex_list[s_idx] +"_"+dirs[d_idx]);
+
+        // update the information
+        if (count == 0) {
+          infoCellElements.push(document.createElement("br"))
+          infoCellElements.push(document.createTextNode("Scale Factor: " + mt_info.scale_factor));
+        }
+        let span = document.createElement('span');
+        span.style = "color: " + colors[s_idx] + ";"
+        span.appendChild
+
+        span.appendChild(document.createElement("br"))
+        span.appendChild(document.createTextNode("Name: [" + index + "] " + mt_info.name))
+        span.appendChild(document.createElement("br"))
+        span.appendChild(document.createTextNode("Value ["+mt_info.low_limit+", "+mt_info.high_limit+"]: "+mt_info.value))
+        span.appendChild(document.createElement("br"))
+        span.appendChild(document.createTextNode("Eng. Value: " + mt_info.eng_value + " " + mt_info.unit))
+        infoCellElements.push(span);
+
+        let factor = (plot_max - mt_info.value) / (plot_max - plot_min);
+        ctx.fillStyle = colors[s_idx];
+        ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
+        count++;
+      }
+      let infoCell = document.getElementById("mag_"+dirs[d_idx]+"_info")
+      // spread the array to unpack the list
+      infoCell.replaceChildren(...infoCellElements);
+    }
+  }
+
+
+  async function buildRWTable(tbodyRef, index_list) {
+    let infoRow = tbodyRef.insertRow();
+    
+    for (i_idx in index_list) {
+      let infoCell = infoRow.insertCell();
+      infoCell.id = index_list[i_idx] + "_info";
+      infoCell.appendChild(document.createTextNode("Name: "));
+      infoCell.appendChild(document.createElement("br"));
+    }
+
+    let plotRow = tbodyRef.insertRow();
+    for (i_idx in index_list) {
+      let plotCell = plotRow.insertCell();
+      let plotCanvas = document.createElement("canvas");
+      plotCanvas.id = index_list[i_idx] + "_canvas";
+      //plotCanvas.width = 600;
+      //plotCanvas.height = 300;
+      let ctx = plotCanvas.getContext("2d");
+      ctx.fillStyle = "rgb(0 0 0)";
+      ctx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+      plotCell.appendChild(plotCanvas);
+    }
+  }
+
+  async function updateRWInfoPlot(index, subindex, plot_min, plot_max) {
+    let plotCanvas = document.getElementById(index + "_canvas");
+    let ctx = plotCanvas.getContext("2d");
+    let imageData = ctx.getImageData(1, 0, ctx.canvas.width-1, ctx.canvas.height);
+    ctx.putImageData(imageData, 0, 0);
+    ctx.clearRect(ctx.canvas.width-1, 0, 1, ctx.canvas.height);
+ 
+    // FIXME: set timeout for await, otherwise it may bog down performance
+    let rw_info = await readValue(index, subindex);
+    // update the information
+    infoCell = document.getElementById(index + "_info");
+    infoCell.replaceChildren(
+      document.createTextNode("Name: ["+ index + "] " + rw_info.name),
+      document.createElement("br"),
+      document.createTextNode("Description: "+rw_info.description),
+      document.createElement("br"),
+      document.createTextNode("Value ["+rw_info.low_limit+", "+rw_info.high_limit+"]: "+rw_info.value),
+      document.createElement("br"),
+      document.createTextNode("Eng. Value: " + rw_info.eng_value + " " + rw_info.unit)
+    );
+ 
+    // update the plot
+    // plot the data point
+    let factor = (plot_max - rw_info.eng_value) / (plot_max - plot_min);
+    ctx.fillStyle = "rgb(255, 0, 0)";
+    ctx.fillRect(ctx.canvas.width-1, (factor * ctx.canvas.height) - 1, 2, 2);
+  }
+
+
+
+  async function buildTables() {
+
+    // FIXME: Remove controller update plots until futher notice: no need to modify yet, bogs down performance
+    // let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
+    // buildMngrRow(mode_tbodyRef, "adcs_manager", "mode");
+    // buildMngrRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    // buildMngrRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+ 
+    // let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
+    // buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
+    // buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
+    // buildInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
+  
+    // let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
+    // buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
+    // buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
+    // buildInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
+     
+    let gyro_tbodyRef = document.getElementById('gyroSensorTable').getElementsByTagName('tbody')[0];
+    buildSensorTable(gyro_tbodyRef, "adcs", ["gyroscope_pitch_rate", "gyroscope_yaw_rate", "gyroscope_roll_rate"]);
+
+    // FIXME: remove accelerometer plots until further notice: accel data is not sent, bogs down performance
+    // let accel_tbodyRef = document.getElementById('accelSensorTable').getElementsByTagName('tbody')[0];
+    // buildSensorTable(accel_tbodyRef, "adcs", ["accelerometer_x", "accelerometer_y", "accelerometer_z"]);
+     
+    let mag_tbodyRef = document.getElementById('magSensorTable').getElementsByTagName('tbody')[0];
+    buildMagSensorTable(
+      mag_tbodyRef, 
+      "adcs", 
+      [
+        "pos_z_magnetometer_1", 
+        "pos_z_magnetometer_2", 
+        "min_z_magnetometer_1", 
+        "min_z_magnetometer_2", 
+      ]
+    );
+    
+    // FIXME: Remove magnetorquer plots until further notice: no need for this feature, bogs down perfomance
+    // let mt_tbodyRef = document.getElementById('mtActuatorTable').getElementsByTagName('tbody')[0];
+    // buildSensorTable(mt_tbodyRef, "adcs", ["magnetorquer_current_x", "magnetorquer_current_y", "magnetorquer_current_z"]);
+
+    // FIXME: Remove reaction wheel plots until futher notice
+    // let rw_tbodyRef = document.getElementById('rwActuatorTable').getElementsByTagName('tbody')[0];
+    // buildRWTable(rw_tbodyRef, ["rw_1", "rw_2", "rw_3", "rw_4"], ["motor_velocity", "motor_velocity", "motor_velocity"]);
+    
+
+    updateTables();
+  }
+
+
+  async function updateTables() {
+    // FIXME: No need for these tables yet, bogs down performance
+    // let mode_tbodyRef = document.getElementById('adcsMgrModeTable').getElementsByTagName('tbody')[0];
+    // updateMngrRow(mode_tbodyRef, "adcs_manager", "mode");
+    // updateMngrRow(mode_tbodyRef, "adcs_manager", "control_mode");
+    // updateMngrRow(mode_tbodyRef, "adcs_manager", "pointing_reference");
+
+    //let rw_lqr_tbodyRef = document.getElementById('adcsMgrLQRRWTable').getElementsByTagName('tbody')[0];
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_input");
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_error");
+    //updateInputRow(rw_lqr_tbodyRef, "adcs_manager", "lqr_max_rate");
+
+   
+    //let mt_lqr_tbodyRef = document.getElementById('adcsMgrLQRMTTable').getElementsByTagName('tbody')[0];
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_input_mag");
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_error_mag");
+    //updateInputRow(mt_lqr_tbodyRef, "adcs_manager", "lqr_max_rate_mag");
+    
+    updateSensorInfoPlot("adcs", "gyroscope_pitch_rate", - 3000, 3000);
+    updateSensorInfoPlot("adcs", "gyroscope_yaw_rate", - 3000, 3000);
+    updateSensorInfoPlot("adcs", "gyroscope_roll_rate", - 3000, 3000);
+
+    // FIXME: no need for these tables yet, bogs down performance
+    //updateSensorInfoPlot("adcs", "accelerometer_x", - 1, 1);
+    //updateSensorInfoPlot("adcs", "accelerometer_y", - 1, 1);
+    //updateSensorInfoPlot("adcs", "accelerometer_z", - 1, 1);
+
+    updateMagSensorInfoPlot(
+      "adcs", 
+      [
+        "pos_z_magnetometer_1", 
+        "pos_z_magnetometer_2", 
+        "min_z_magnetometer_1", 
+        "min_z_magnetometer_2", 
+      ],
+      -10000,  // currently the lower limit of the value, milligauss
+      10000    // currently the upper limit of the value, milligauss
+    );
+
+    // FIXME: no need to plot these yet, bogs down performance
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_x", - 100, 100);
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_y", - 100, 100);
+    //updateSensorInfoPlot("adcs", "magnetorquer_current_z", - 100, 100);
+    
+    //updateRWInfoPlot("rw_1", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_2", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_3", "motor_velocity", - 100, 100);
+    //updateRWInfoPlot("rw_4", "motor_velocity", - 100, 100);
+    
+  }
+
+  window.addEventListener("load", (event) => {
+    buildTables();
+    const interval = setInterval(function() {
+      updateTables();
+    }, 500);
+  });
+</script>
+{% endblock %}

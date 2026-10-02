@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+	<body>
+        <p>At the moment this page only shows the magnetometer values.</p>
+        <p>This page might only work on chromium browsers!</p>
+		<script type="importmap">
+			{
+				"imports": {
+                    "three": "https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js",
+                    "three/addons/": "https://cdn.jsdelivr.net/npm/three@latest/examples/jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+            // This script was based on the script which has an MIT license:
+
+			import * as THREE from 'three';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+			import { ConvexGeometry } from 'three/addons/geometries/ConvexGeometry.js';
+			import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+			let group, camera, scene, renderer, cloud;
+			init();
+
+			function init() {
+				scene = new THREE.Scene();
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+                renderer.setAnimationLoop( animate );
+				renderer.setSize( window.innerWidth, window.innerHeight);
+				document.body.appendChild( renderer.domElement );
+
+				// camera
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 1000);
+				camera.position.set(16, 16, 16);
+				scene.add(camera);
+
+				// controls
+				const controls = new OrbitControls( camera, renderer.domElement );
+				controls.minDistance = 10;
+				controls.maxDistance = 64;
+				controls.maxPolarAngle = Math.PI / 2;
+
+				// point light
+				const light = new THREE.PointLight( 0xffffff, 3, 0, 0 );
+                camera.add( light );
+
+				// helper
+				scene.add( new THREE.AxesHelper(8));
+
+                group = new THREE.Group();
+                scene.add(group);
+
+				renderer.render( scene, camera );
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+				renderer.setSize( window.innerWidth, window.innerHeight);
+			}
+
+			async function animate() {
+                let sensors = [
+                    "pos_z_magnetometer_1_",
+                    "pos_z_magnetometer_2_",
+                    "min_z_magnetometer_1_",
+                    "min_z_magnetometer_2_",
+                ];
+                let directions = ["x", "y", "z"];
+                let mag_data = []
+
+                for (let s_idx in sensors) {
+                    for (let d_idx in directions) {
+                        let mag_info = await readValue('adcs', sensors[s_idx] + directions[d_idx]);
+                        mag_data.push(mag_info.eng_value);
+                    }
+                }
+				let vertices = new Float32Array (mag_data);
+	
+                let pointsGeometry = new THREE.BufferGeometry()
+                pointsGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
+
+				const pointsMaterial = new THREE.PointsMaterial( {
+					color: 0x0080ff,
+					size: 1,
+					alphaTest: 0.5
+				} );
+	
+                scene.remove(cloud);
+                cloud = new THREE.Points(pointsGeometry, pointsMaterial)
+                scene.add(cloud)
+				renderer.render( scene, camera );
+			}
+		</script>
+
+	</body>
+{% endblock %}

@@ -143,6 +143,13 @@ class ADCSManager(Service):
             gyro_bias_drift,
         )
 
+        # rad/s rate at which to stop detumbling for the vector length
+        # note that 0.001 rad/s is about 0.057 deg/s
+        self.detumble_norm_threshold = 1e-3
+        # rad/s rate at which to stop detumbling for each component
+        # note that 0.0001 rad/s is about 0.0057 deg/s
+        self.detumble_comp_threshold = 1e-4
+
         self.skyfield_timescale = load.timescale()
         # Earth Orientation Parameters
         # TODO: UPDATE THIS TO POINT TO ACTUAL FILE
@@ -298,6 +305,7 @@ class ADCSManager(Service):
         init_time = time()
         # reset filter states for next maneuver
         self.EKF.reset(q, omega, init_time)
+        self.filter_initialized = True
 
     def _update_sat_inertia(self, value: bytes) -> None:
         jxx, jxy, jxz, jyx, jyy, jyz, jzx, jzy, jzz = struct.unpack(">fffffffff", value)
@@ -364,33 +372,104 @@ class ADCSManager(Service):
             * j_min
         )
 
-    def _command_magnetorquer_current(self, desired_current: np.ndarray) -> None:
-        """Send current values to magnetorquers."""
-        self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", desired_current[0])
-        self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", desired_current[1])
-        self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", desired_current[2])
+    def _command_magnetorquer_current(self, desired_current: np.ndarray) -> bool:
+        """Send current values to magnetorquers.
+
+        Parameters
+        ----------
+        desired_current:
+            3x1 array of current to send to magnetorquer setpoints (currently uA).
+
+        Returns
+        -------
+        bool
+            Success in commanding all magnetorquers.
+        """
+        # TODO: before sending SDOs, check if the card handling the
+        # SDO request is sending heartbeats
+        logger.debug(f"Recieved command to set magnetorquer currents to {desired_current}")
+
+        # check if any value happens to be complex
+        # note that if it were complex, it could not be properly rounded
+        # for sending it over the CAN bus
+        if np.iscomplexobj(desired_current):
+            logger.warning("Magnetorquer currents appear to be complex.")
+            logger.warning("Setting magnetorquer currents to real components...")
+            desired_current = np.real(desired_current)
+
+        # Attempt to send commands to all magnetorquers.
+        logger.debug(
+            f"About to send the following currents to the magnetorquers: {desired_current}"
+        )
+        try:
+            logger.debug("Sending command to x-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", desired_current[0])
+
+            logger.debug("Sending command to y-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", desired_current[1])
+
+            logger.debug("Sending command to z-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", desired_current[2])
+
+            # once the sdo writes are successful, return to end
+            return True
+        except Exception as e:
+            logger.error(f"Unable to send SDO commands to all magnetorquers: {e}")
+
+        # if it was not sucessful, try to turn them off one at a time
+        try:
+            logger.debug("Attempting to turn off the x-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_x_setpoint", 0)
+        except Exception as e:
+            logger.error(f"Unable to send SDO command to turn off x-magnetorquer: {e}")
+
+        try:
+            logger.debug("Attempting to turn off the y-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_y_setpoint", 0)
+        except Exception as e:
+            logger.error(f"Unable to send SDO command to turn off y-magnetorquer: {e}")
+
+        try:
+            logger.debug("Attempting to turn off the z-magnetorquer...")
+            self.node.sdo_write("adcs", "magnetorquer", "current_z_setpoint", 0)
+        except Exception as e:
+            logger.error(f"Unable to send SDO command to turn off z-magnetorquer: {e}")
+
+        return False
 
     def on_loop(self) -> None:
+        logger.info("Start of loop on ADCSManager.")
+
+        # TODO: check if the modes have been updated externally
+
+        logger.debug(f"The control mode is {self.control_mode.value}")
+        logger.debug(f"The guidance mode is {self.guidance_mode.value}")
+        logger.debug(f"The pointing reference is {self.pointing_reference.value}")
+
         if self.control_mode.value == ControlMode.IDLE:
-            self.sleep_ms(300000)
+            self.sleep_ms(30e3)
             return
+
         if (
             self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT)
             and not self.filter_initialized
         ):
             if not self.is_data_available:
-                self.sleep_ms(5000)
+                logger.error("Data is not yet available, skipping control loop.")
+                self.sleep(5)
                 return
             imu_data = self._sensor_data["adcs"].data
             if not isinstance(imu_data, IMUData):
                 logger.error("Incorrect sensor data type")
                 self.sleep_ms(5000)
                 return
+
             omega = imu_data.gyro
             star_tracker_output = self._sensor_data["star_tracker_1"]
             if (
                 star_tracker_output
-                and isinstance(star_tracker_output, StarTrackerData)
+                and star_tracker_output is not None
+                and isinstance(star_tracker_output.data, StarTrackerData)
                 and not star_tracker_output.data.attitude_known
             ):
                 d_omega = self.spin_omega_target - omega  # desired delta omega
@@ -407,48 +486,52 @@ class ADCSManager(Service):
         # portion of the code, and just defines the target which is fed into the
         # control algorithms
 
-        gps_data = self._sensor_data["gps"].data
-        if not isinstance(gps_data, GPSData):
-            logger.error("Incorrect sensor data type")
-            self.sleep_ms(5000)
+        # retrieve IMU data
+        # TODO: wrap this in get_sensor_data
+        if "adcs" not in self._sensor_data.keys():
+            logger.error("ADCS data is not yet in sensor data.")
+            logger.error("No data recieved from ADCS yet.")
+            self.sleep(5)
             return
-        r_ecef = np.asarray(gps_data.position)
-        v_ecef = np.asarray(gps_data.velocity)
-        t = self.skyfield_timescale.now()  # set ephemeris calculation time
-        eci_2_ecef = self.skyfield_EOP.rotation_at(t)  # inertial -> ECEF rotation matrix
-        # used to get correct facing for star tracker
-        # Nadir vector is opposite of vector from earth.
-        nadir_vector_ecef = -r_ecef / np.linalg.norm(r_ecef)
-        if self.guidance_mode.value == GuidanceMode.TARGET:
-            # calculate target vector in ECEF cartesian coordinates
-            target_vector = self.ECEF_target - r_ecef
-            # normalize to unit vector
-            target_vector = target_vector / np.linalg.norm(target_vector)
-            # create orientation quaternion from cartesian target
-            new_target = guid.target_tracking_quat(target_vector, nadir_vector_ecef, eci_2_ecef)
-        elif self.guidance_mode.value == GuidanceMode.NADIR:
-            # create orientation quaternion from cartesian target
-            new_target = guid.nadir_quat(nadir_vector_ecef, v_ecef, eci_2_ecef)
-        elif (
-            self.guidance_mode.value == GuidanceMode.MAX_DRAG
-            or self.guidance_mode.value == GuidanceMode.MIN_DRAG
-        ):
-            # calculate ram-facing orientation for either +z or +x axis based on min or max drag
-            new_target = guid.ram_quaternion(
-                GuidanceMode(self.guidance_mode.value), v_ecef, nadir_vector_ecef, eci_2_ecef
-            )
-        else:
-            new_target = None
-            logger.warning(f"Unknown guidance mode: {self.guidance_mode.value}")
-
-        self.update_target(new_target)
-
-        imu_data = self._sensor_data["adcs"].data
+        try:
+            imu_data = self._sensor_data["adcs"].data
+        except Exception as e:
+            logger.error(f"Some other ADCS data error occured: {e}")
+            self.sleep(5)
+            return
         if not isinstance(imu_data, IMUData):
             logger.error("Incorrect sensor data type")
-            self.sleep_ms(5000)
+            self.sleep(5)
             return
         omega = imu_data.gyro
+
+        if self.control_mode.value != ControlMode.DETUMBLE:
+            # TODO: change this logic so this code block does not need
+            # to be before the control modes
+
+            # retreive GPS data
+            # TODO: wrap this in get_sensor_data()
+            if "gps" not in self._sensor_data.keys():
+                logger.error("GPS data is not yet in sensor data.")
+                logger.error("No data recieved from GPS yet.")
+                self.sleep(5)
+                return
+            try:
+                gps_data = self._sensor_data["gps"].data
+            except Exception as e:
+                logger.error(f"Some other GPS data error occured: {e}")
+                self.sleep(5)
+                return
+            if not isinstance(gps_data, GPSData):
+                logger.error("Incorrect sensor data type")
+                self.sleep(5)
+                return
+
+            new_target = self.calculate_target_eci(gps_data)
+            logger.debug(f"Target eci quaternion is: {new_target}")
+            self.update_target(new_target)
+
+        # Control Modes
         if self.control_mode.value in (ControlMode.RW_POINTING, ControlMode.THERMAL_REORIENT):
             # get sensor data and modify for consumption by control algorithms
             wheel_speeds = (
@@ -523,7 +606,7 @@ class ADCSManager(Service):
             if (
                 self.control_mode.value == ControlMode.THERMAL_REORIENT
                 and quat.error_angle(q_error) <= 0.1
-                and np.all(np.abs(omega) < 1e-6)
+                and np.all(np.abs(omega) < self.detumble_comp_threshold)
             ):
                 # TODO: ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS!
                 # Must wait for wheels to turn off.
@@ -532,17 +615,53 @@ class ADCSManager(Service):
                 self.control_mode.value = ControlMode.THERMAL_SPINUP.value
 
         elif self.control_mode.value in (ControlMode.DETUMBLE, ControlMode.THERMAL_DETUMBLE):
-            # enter 3-step passive thermal-spin mode by first detumbling with magnetorquers
+            # first, check if conditions have been satisfied for regular detumbling
+            if (
+                self.control_mode.value == ControlMode.DETUMBLE
+                and np.linalg.norm(omega) < self.detumble_norm_threshold
+            ):
+                logger.info(f"DETUMBLE Control Mode satisfied with omega values of {omega}.")
+                logger.debug("Attempting to set magnetorquer currents to zero...")
+                success = self._command_magnetorquer_current(desired_current=np.array([0, 0, 0]))
+                if not success:
+                    logger.warning("Unable to turn of magnetorquers")
+                    logger.debug("Attempting to set magnetorquer currents to zero one more time...")
+                    success = self._command_magnetorquer_current(
+                        desired_current=np.array([0, 0, 0])
+                    )
+                    if not success:
+                        logger.error(
+                            "Unable to turn of magnetorquers, but exiting DETUMBLE mode anyway."
+                        )
+                logger.info("Changing control mode from DETUMBLE to IDLE")
+                self.control_mode.value = ControlMode.IDLE.value
+                return
+
+            # if still detumbling, check the angular speeds
+            logger.debug(f"Angular speed values: {omega}")
+
+            # get the magnetic field data and make sure it is good
             b = self.get_magnetometer_data()
+            logger.debug(f"Magnetic field values: {b}")
+            if np.linalg.norm(b) == 0:
+                logger.warning("Magnetic field values are zero.")
+                logger.error("Magnetic field values appear to be bogus.")
+                self.sleep(5)
+                return
+
             # detumble controller as defined by Markley & Crassidis
             # this equation is for calculating the magnetic dipole
             desired_dipoles = self.detumble_gain / (np.linalg.norm(b) ** 2) * np.cross(omega, b)
+            logger.debug(f"Calculated desired dipoles: {desired_dipoles}")
+
             # send the dipole commands to magnetoruqers
             m_cmd = desired_dipoles * self.mag_constants
             self._command_magnetorquer_current(desired_current=m_cmd)
 
+            # If in the first of 3-step passive thermal-spin mode,
+            # go to next mode.
             if self.control_mode.value == ControlMode.THERMAL_DETUMBLE and np.all(
-                np.abs(omega) < 1e-4
+                np.abs(omega) < self.detumble_comp_threshold
             ):
                 # If angular velocity within threshold, switch to reorient
                 self.control_mode.value = ControlMode.THERMAL_REORIENT.value
@@ -564,24 +683,68 @@ class ADCSManager(Service):
                 self._command_magnetorquer_current(desired_current=m_cmd)
 
         elif self.control_mode.value == ControlMode.MTB_POINTING:
-            b = self.get_magnetometer_data()
-            star_tracker_output = self.get_sensor_data("star_tracker_1")
+            if "star_tracker_1" not in self._sensor_data.keys():
+                logger.error("Star Tracker is not yet in sensor data.")
+                logger.error("No data recieved from star tracker yet.")
+                self.sleep(5)
+                return
+
+            try:
+                star_tracker_output = self.get_sensor_data("star_tracker_1")
+            except Exception as e:
+                logger.error(f"Some other ADCS data error occured for star tracker: {e}")
+                self.sleep(5)
+                return
+
             if (
                 star_tracker_output
-                and isinstance(star_tracker_output, StarTrackerData)
+                and star_tracker_output is not None
+                and isinstance(star_tracker_output.data, StarTrackerData)
                 and star_tracker_output.data.attitude_known
             ):
+                logger.debug("Calculating q_st_rotated...")
                 q_star_tracker = star_tracker_output.data.orientation
                 # rotate star tracker output into body frame
                 q_st_rotated = quat.quat_mult(self.q_90_rot, q_star_tracker)
             else:
                 q_st_rotated = None
 
+            if q_st_rotated is None:
+                logger.error(f"Issue calculating q_st_rotated!")
+                logger.debug(f"Star tracker output: {star_tracker_output}")
+                if star_tracker_output is not None:
+                    logger.debug(f"Star tracker is instance: {isinstance(star_tracker_output, StarTrackerData)}")
+                    if isinstance(star_tracker_output.data, StarTrackerData):
+                        logger.debug(f"Star tracker attitude known: {star_tracker_output.data.attitude_known}")
+                logger.warning("Skipping control loop.")
+                self.sleep(1)
+                return
+
+            if not self.filter_initialized:
+                logger.debug("Initializing filter...")
+                self.initialize_filter()
+                logger.debug("Filter initialized, continuing to next control loop.")
+                return
+
+            # Get the magnetic field data
+            b = self.get_magnetometer_data()
+            if np.linalg.norm(b) == 0:
+                logger.warning("Magnetic field values are zero.")
+                logger.error("Magnetic field values appear to be bogus. Skipping control loop.")
+                self.sleep(5)
+                return
+
+
+            logger.debug(f"Pre-filtered quaternion: {q_st_rotated}")
             q, omega = self.EKF.update(datetime.now(timezone.utc).timestamp(), omega, q_st_rotated)
+            logger.debug(f"Filtered quaternion: {q}")
             q_error = quat.quat_error(self.q_target, q)
             # only apply hemisphere check once, after determining error quaternion
             # to maintain associativity across hemisphere boundaries
             q_error = quat.hemi(q_error)
+
+            logger.debug(f"q_error: {q_error}")
+            logger.debug(f"angle error: {quat.error_angle(q_error)}")
 
             # desired 3-axis torque in body frame
             tau_des = self.mag_lqr_controller(q_error, omega)
@@ -589,17 +752,89 @@ class ADCSManager(Service):
             k = 1e-8
             desired_dipoles = np.linalg.inv(bm.T @ bm + k * np.eye(3)) @ bm.T @ tau_des
             m_cmd = desired_dipoles * self.mag_constants
-            self._command_magnetoruqer_current(desired_current=m_cmd)
+            self._command_magnetorquer_current(desired_current=m_cmd)
 
             # FIXME: check logic going to this state.
             # The magnetic dipoles should be updated continuously.
             # Should it go into idle state only after state conditions are met?
-            logger.debug("ADCS satisfied: going to IDLE")
-            self.control_mode.value = ControlMode.IDLE
+
+            if (
+                quat.error_angle(q_error) <= 0.1
+                and np.all(np.abs(omega) < self.detumble_comp_threshold)
+            ):
+                # TODO: ZERO WHEEL SPEEDS/TURN OFF REACTION WHEELS!
+                # Must wait for wheels to turn off.
+                # They should be at zero by the end of the maneuver. If not, there is a problem!
+                # change mission mode to spin-up with magnetorquers
+                logger.debug("MTB_POINTING satisifed!")
+                logger.debug("Attempting to set magnetorquer currents to zero...")
+                success = self._command_magnetorquer_current(desired_current=np.array([0, 0, 0]))
+                if not success:
+                    logger.warning("Unable to turn of magnetorquers")
+                    logger.debug("Attempting to set magnetorquer currents to zero one more time...")
+                    success = self._command_magnetorquer_current(
+                        desired_current=np.array([0, 0, 0])
+                    )
+                    if not success:
+                        logger.error(
+                            "Unable to turn of magnetorquers, but exiting MTB_POINTING mode anyway."
+                        )
+                logger.info("Changing control mode from MTB_POINTING to IDLE")
+                self.control_mode.value = ControlMode.IDLE.value
+                return
+
+
         else:
             logger.error("Unknown control mode {}", self.control_mode.value)
 
+    def calculate_target_eci(self, gps_data: np.ndarray) -> None:
+        """Calculate the target quat based on gps data."""
+
+        # get position data and check if bogus
+        r_ecef = np.asarray(gps_data.position)
+        if np.linalg.norm(r_ecef) < 100:
+            logger.debug(f"GPS position: {r_ecef}")
+            logger.warning("GPS position data appears to be bogus")
+
+        # get velocity data and check if bogus
+        v_ecef = np.asarray(gps_data.velocity)
+        if np.linalg.norm(v_ecef) < 100:
+            logger.debug(f"GPS velocity: {v_ecef}")
+            logger.warning("GPS velocity data appears to be bogus")
+
+        # create inertial to ecef rotation matrix,
+        # mostly for correcting the face of the star tracker
+        eci_2_ecef = self.skyfield_EOP.rotation_at(self.skyfield_timescale.now())
+
+        # Nadir vector is opposite of vector from earth.
+        nadir_vector_ecef = -r_ecef / np.linalg.norm(r_ecef)
+
+        # Calculate the target quaternion based on guidance mode
+        if self.guidance_mode.value == GuidanceMode.TARGET:
+            # calculate target vector in ECEF cartesian coordinates and normalize
+            target_vector = self.ECEF_target - r_ecef
+            target_vector = target_vector / np.linalg.norm(target_vector)
+            # create orientation quaternion from cartesian target
+            new_target = guid.target_tracking_quat(target_vector, nadir_vector_ecef, eci_2_ecef)
+        elif self.guidance_mode.value == GuidanceMode.NADIR:
+            # create orientation quaternion from cartesian target
+            new_target = guid.nadir_quat(nadir_vector_ecef, v_ecef, eci_2_ecef)
+        elif (
+            self.guidance_mode.value == GuidanceMode.MAX_DRAG
+            or self.guidance_mode.value == GuidanceMode.MIN_DRAG
+        ):
+            # calculate ram-facing orientation for either +z or +x axis based on min or max drag
+            new_target = guid.ram_quaternion(
+                GuidanceMode(self.guidance_mode.value), v_ecef, nadir_vector_ecef, eci_2_ecef
+            )
+        else:
+            new_target = None
+            logger.warning(f"Unknown guidance mode: {self.guidance_mode.value}")
+
+        return new_target
+
     def update_target(self, target_quat: np.ndarray) -> None:
+        """Change the target quat based on pointing reference and save it."""
         if self.pointing_reference.value == PointingReference.STAR_TRACKER:
             # define target in body coordinates
             self.q_target = quat.quat_mult(self.q_90_rot, target_quat)
@@ -720,11 +955,15 @@ class ADCSManager(Service):
                 dt.microsecond // 1000
             )
             buf.timestamp = ms_since_midnight
-            buf.data.gyro[0] = value
+            # FIXME: unit mismatch,
+            # v1.0 Mag cards report in milli-degrees per second
+            # Object dictionary currently assumes it is in deg/s
+            # Desired unit is rad/s
+            buf.data.gyro[0] = value * np.pi / 180000
         elif subindex == "gyroscope_yaw_rate":
-            buf.data.gyro[1] = value
+            buf.data.gyro[1] = value * np.pi / 180000
         elif subindex == "gyroscope_roll_rate":
-            buf.data.gyro[2] = value
+            buf.data.gyro[2] = value * np.pi / 180000
         else:
             logger.error("Received invalid IMU subindex")
 
@@ -770,8 +1009,15 @@ class ADCSManager(Service):
         """
 
         data = self._sensor_data[sensor]
+        if data:
+            logger.debug(f"Data: {data}")
+            logger.debug(f"Data timestamp: {data.timestamp}")
+            logger.debug(f"Sensor timestamp for {sensor}: {self.last_sensor_time[sensor]}")
+            if data.timestamp == self.last_sensor_time[sensor]:
+                logger.warning(f"Data timstamps match, suggesting there is no new data for {sensor}")
         if data and data.timestamp != self.last_sensor_time[sensor]:
             self.last_sensor_time[sensor] = data.timestamp
             return data
         else:
+            logger.warning("Issue with data timestamp, returning default value.")
             return default

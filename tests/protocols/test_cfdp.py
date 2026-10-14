@@ -403,7 +403,7 @@ class TestCfdp(unittest.TestCase):
             destination_id=self.sat_id,
             source_file=None,
             dest_file=None,
-            trans_mode=None,
+            trans_mode=TransmissionMode.ACKNOWLEDGED,
             closure_requested=True,
             msgs_to_user=[dir_req],
         )
@@ -544,28 +544,28 @@ class TestCfdp(unittest.TestCase):
         )
 
     def _src_gnd_to_sc_dest(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pdu.pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _dest_gnd_to_sc_src(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pack())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue_gnd.get().pdu.pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _src_sc_to_gnd_dest(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pack())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pdu.pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_dest_queue_gnd.put(pdu)
         if delay > 0:
             time.sleep(delay)
 
     def _dest_sc_to_gnd_src(self, delay: float, expected_type: ABCMeta) -> None:
-        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pack())
+        pdu = PduFactory.from_raw(self._cfdp_tm_queue.get().pdu.pack())
         self.assertIsInstance(pdu, expected_type)
         self._cfdp_src_queue_gnd.put(pdu)
         if delay > 0:

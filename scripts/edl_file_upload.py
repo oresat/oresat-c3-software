@@ -19,8 +19,6 @@ from typing import Any
 
 from cfdppy import CfdpState, PacketDestination, get_packet_destination
 from cfdppy.exceptions import NoRemoteEntityConfigFound
-from cfdppy.handler.dest import DestHandler
-from cfdppy.handler.source import SourceHandler
 from cfdppy.mib import (
     CheckTimerProvider,
     DefaultFaultHandlerBase,
@@ -51,6 +49,7 @@ from spacepackets.seqcount import SeqCountProvider
 from spacepackets.uslp.defs import UslpInvalidRawPacketOrFrameLenError
 from spacepackets.util import ByteFieldU8
 
+from oresat_c3.protocols.cfdp import FixedDestHandler, VfsSourceHandler
 from oresat_c3.protocols.edl_packet import SRC_DEST_ORESAT, EdlPacket, EdlVcid
 from oresat_c3.protocols.uslp import unpack_frame
 
@@ -206,7 +205,7 @@ class Source(Thread):
         self.uplink = uplink
         self.downlink = downlink
 
-        self.src = SourceHandler(
+        self.src = VfsSourceHandler(
             cfg=localcfg,
             user=PrintUser(),
             remote_cfg_table=remote_entities,
@@ -259,7 +258,7 @@ class Dest(Thread):
         self.uplink = uplink
         self.downlink = downlink
 
-        self.dest = DestHandler(
+        self.dest = FixedDestHandler(
             cfg=localcfg,
             user=PrintUser(),
             remote_cfg_table=remote_entities,

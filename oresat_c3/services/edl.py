@@ -255,7 +255,7 @@ class EdlService(Service):
 
     def _handle_pdu(self, pdu: AbstractFileDirectiveBase):
         packet_dest = get_packet_destination(pdu)
-        logger.warning(f"putting cfdp pdu in {packet_dest} queue")
+        logger.debug(f"putting cfdp pdu in {packet_dest} queue")
         if packet_dest == PacketDestination.DEST_HANDLER:
             self._cfdp_dest_queue.put(pdu)
         elif packet_dest == PacketDestination.SOURCE_HANDLER:

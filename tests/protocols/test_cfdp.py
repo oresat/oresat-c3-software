@@ -49,7 +49,7 @@ def put_request(destination: ByteFieldU8, file_path: str) -> PutRequest:
 
 
 class TestCfdp(unittest.TestCase):
-    TIMEOUT_DUR = 0.6
+    TIMEOUT_DUR = 1
 
     def setUp(self):
         self.sat_file = Path("c3_tmp_123")
@@ -217,7 +217,6 @@ class TestCfdp(unittest.TestCase):
         # dst --> Finished
         # ??? According to 4.7.1 b) the origional PDU should be re-issued. So:
         # src --> EoF
-        # dst --> Finished # same timeout as the EOF, not acked so re-issued as well.
         # dst --> Ack (EoF)
         # dst --> Finished
         # src --> Ack (Finished)
@@ -231,6 +230,9 @@ class TestCfdp(unittest.TestCase):
         # src --> Filedata
         self._src_gnd_to_sc_dest(0.15, FileDataPdu)
         # src --> EoF
+        time.sleep(0.5)
+        # Without this delay, this test is nondeterministic since the Finished PDU is sometimes
+        # reissued. It has no effect on the operation, but causes this test to fail randomly.
         self._src_gnd_to_sc_dest(0.15, EofPdu)
         # dst X-- Ack (EoF)
         time.sleep(0.15)

@@ -29,6 +29,8 @@ from .services.node_flasher import NodeFlasherService
 from .services.node_manager import NodeManagerService
 from .services.radios import RadiosService
 from .services.state import StateService
+#adding temp services to test
+from .services.time_sync import TimeSyncService
 from .subsystems.rtc import set_system_time_to_rtc_time
 
 
@@ -144,6 +146,8 @@ def main():
     beacon_service = BeaconService(config.beacon_def, radios_service)
     node_mgr_service = NodeManagerService(config.cards, mock_hw=mock_hw)
     node_flasher_service = NodeFlasherService(app.node.fwrite_cache.dir, node_mgr_service)
+    #temporarily adding time_sync_service for testing
+    time_sync_service = TimeSyncService(node_mgr_service, mock_hw)
     cop_service = CopManagerService()
     channel_router_service = ChannelRouterService(radios_service, cop_service)
     edl_service = EdlService(
@@ -160,6 +164,8 @@ def main():
     app.add_service(node_mgr_service)
     app.add_service(adcs_mgr_service)
     app.add_service(node_flasher_service)
+    #temporarily adding time_sync_service for testing
+    app.add_service(time_sync_service)
 
     for file_name in os.listdir(f"{path}/templates"):
         rest_api.add_template(f"{path}/templates/{file_name}")

@@ -9,7 +9,7 @@ from time import CLOCK_REALTIME, clock_settime, time
 from olaf import logger
 
 
-def get_rtc_time() -> float:
+def get_rtc_time(rtc: str="rtc0") -> float:
     """
     Get the RTC time.
 
@@ -19,7 +19,7 @@ def get_rtc_time() -> float:
         The RTC time or -1.0 on error.
     """
 
-    rtc_time_path = "/sys/class/rtc/rtc0/since_epoch"
+    rtc_time_path = f"/sys/class/rtc/{rtc}/since_epoch"
     if not os.path.exists(rtc_time_path):
         logger.error("RTC does not exist")
         return -1.0
@@ -30,11 +30,11 @@ def get_rtc_time() -> float:
     return ts
 
 
-def set_rtc_time(ts: float) -> bool:
+def set_rtc_time(ts: float, rtc_path: str="/dev/rtc") -> bool:
     """
     Set the RTC time.
 
-    Note: All times older than January 1, 2000 are round upi to Januay 1, 2000 at midmight.
+    Note: All times older than January 1, 2000 are round up to Januay 1, 2000 at midmight.
 
     Parameters
     -----------
@@ -42,7 +42,7 @@ def set_rtc_time(ts: float) -> bool:
         The timestamp to set the RTC to.
     """
 
-    rtc_path = "/dev/rtc"
+    #rtc_path = "/dev/rtc"
     if not os.path.exists(rtc_path):
         logger.error("RTC does not exist")
         return False

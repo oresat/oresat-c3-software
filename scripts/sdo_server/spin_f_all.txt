@@ -1,0 +1,8 @@
+sdo can0 rw_1 w requested state 16
+sdo can0 rw_2 w requested state 16
+sdo can0 rw_3 w requested state 16
+sdo can0 rw_4 w requested state 16
+sdo can0 rw_1 w signals setpoint 200.0
+sdo can0 rw_2 w signals setpoint 200.0
+sdo can0 rw_3 w signals setpoint 200.0
+sdo can0 rw_4 w signals setpoint 200.0

@@ -1,0 +1,8 @@
+sdo can0 rw_1 w requested state 1
+sdo can0 rw_2 w requested state 1
+sdo can0 rw_3 w requested state 1
+sdo can0 rw_4 w requested state 1
+sdo can0 rw_1 w reboot request 1
+sdo can0 rw_2 w reboot request 1
+sdo can0 rw_3 w reboot request 1
+sdo can0 rw_4 w reboot request 1
